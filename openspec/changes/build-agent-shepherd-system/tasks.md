@@ -1,6 +1,6 @@
 ## 1. Project Setup
 - [ ] 1.1 Create package.json with Bun, TypeScript, dependencies (@opencode-ai/sdk, react, reactflow, etc.)
-- [x] 1.2 Create tsconfig.json and bunfig.toml
+- [ ] 1.2 Create tsconfig.json and bunfig.toml
 - [ ] 1.3 Set up directory structure (src/cli, src/core, src/utils, .agent-shepherd, docs, schemas, ui)
 - [ ] 1.4 Initialize git repo if not present
 
