@@ -1,0 +1,422 @@
+/**
+ * Logging System
+ * Dual storage: JSONL as source of truth, SQLite for fast queries
+ */
+
+import { Database } from "bun:sqlite";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "fs";
+import { join } from "path";
+
+export interface RunRecord {
+  id: string;
+  issue_id: string;
+  session_id: string;
+  agent_id: string;
+  policy_name: string;
+  phase: string;
+  status: "pending" | "running" | "completed" | "failed" | "blocked";
+  created_at: number;
+  updated_at: number;
+  completed_at?: number;
+  outcome?: RunOutcome;
+  metadata?: {
+    [key: string]: unknown;
+  };
+}
+
+export interface RunOutcome {
+  success: boolean;
+  message?: string;
+  artifacts?: string[];
+  requires_approval?: boolean;
+  error?: string;
+  metrics?: {
+    duration_ms?: number;
+    tokens_used?: number;
+    cost?: number;
+  };
+}
+
+export interface DecisionRecord {
+  id: string;
+  run_id: string;
+  timestamp: number;
+  type: "agent_selection" | "phase_transition" | "retry" | "hitl";
+  decision: string;
+  reasoning?: string;
+  metadata?: {
+    [key: string]: unknown;
+  };
+}
+
+export interface RunQuery {
+  issue_id?: string;
+  agent_id?: string;
+  status?: string;
+  phase?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Logging system with JSONL and SQLite dual storage
+ */
+export class Logger {
+  private db: Database;
+  private jsonlPath: string;
+  private decisionsPath: string;
+
+  constructor(dataDir?: string) {
+    const dir = dataDir || join(process.cwd(), ".agent-shepherd");
+
+    // Ensure directory exists
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+
+    this.jsonlPath = join(dir, "runs.jsonl");
+    this.decisionsPath = join(dir, "decisions.jsonl");
+    const dbPath = join(dir, "runs.db");
+
+    // Initialize SQLite database
+    this.db = new Database(dbPath);
+    this.initializeSchema();
+
+    // Load existing JSONL records into SQLite if database is new
+    this.syncFromJSONL();
+  }
+
+  /**
+   * Initialize SQLite schema
+   */
+  private initializeSchema(): void {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        policy_name TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        outcome TEXT,
+        metadata TEXT
+      )
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_id ON runs(issue_id)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_agent_id ON runs(agent_id)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)
+    `);
+
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS decisions (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reasoning TEXT,
+        metadata TEXT,
+        FOREIGN KEY (run_id) REFERENCES runs(id)
+      )
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_run_id ON decisions(run_id)
+    `);
+  }
+
+  /**
+   * Sync JSONL records into SQLite
+   */
+  private syncFromJSONL(): void {
+    // Check if JSONL file exists
+    if (!existsSync(this.jsonlPath)) {
+      return;
+    }
+
+    // Read JSONL and insert into SQLite
+    const content = readFileSync(this.jsonlPath, "utf-8");
+    const lines = content.trim().split("\n");
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      try {
+        const record = JSON.parse(line) as RunRecord;
+        this.upsertToSQLite(record);
+      } catch (error) {
+        console.error("Failed to parse JSONL line:", error);
+      }
+    }
+
+    // Sync decisions if file exists
+    if (existsSync(this.decisionsPath)) {
+      const decisionsContent = readFileSync(this.decisionsPath, "utf-8");
+      const decisionLines = decisionsContent.trim().split("\n");
+
+      for (const line of decisionLines) {
+        if (!line.trim()) continue;
+
+        try {
+          const decision = JSON.parse(line) as DecisionRecord;
+          this.upsertDecisionToSQLite(decision);
+        } catch (error) {
+          console.error("Failed to parse decision JSONL line:", error);
+        }
+      }
+    }
+  }
+
+  /**
+   * Upsert run record to SQLite
+   */
+  private upsertToSQLite(record: RunRecord): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO runs (
+        id, issue_id, session_id, agent_id, policy_name, phase,
+        status, created_at, updated_at, completed_at, outcome, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      record.id,
+      record.issue_id,
+      record.session_id,
+      record.agent_id,
+      record.policy_name,
+      record.phase,
+      record.status,
+      record.created_at,
+      record.updated_at,
+      record.completed_at || null,
+      record.outcome ? JSON.stringify(record.outcome) : null,
+      record.metadata ? JSON.stringify(record.metadata) : null
+    );
+  }
+
+  /**
+   * Upsert decision record to SQLite
+   */
+  private upsertDecisionToSQLite(decision: DecisionRecord): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO decisions (
+        id, run_id, timestamp, type, decision, reasoning, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      decision.id,
+      decision.run_id,
+      decision.timestamp,
+      decision.type,
+      decision.decision,
+      decision.reasoning || null,
+      decision.metadata ? JSON.stringify(decision.metadata) : null
+    );
+  }
+
+  /**
+   * Create a new run record
+   */
+  createRun(record: Omit<RunRecord, "created_at" | "updated_at">): RunRecord {
+    const now = Date.now();
+    const fullRecord: RunRecord = {
+      ...record,
+      created_at: now,
+      updated_at: now,
+    };
+
+    // Append to JSONL (source of truth)
+    appendFileSync(this.jsonlPath, JSON.stringify(fullRecord) + "\n");
+
+    // Update SQLite cache
+    this.upsertToSQLite(fullRecord);
+
+    return fullRecord;
+  }
+
+  /**
+   * Update an existing run record
+   */
+  updateRun(
+    runId: string,
+    updates: Partial<Omit<RunRecord, "id" | "created_at">>
+  ): RunRecord | null {
+    const existing = this.getRun(runId);
+    if (!existing) {
+      return null;
+    }
+
+    const updated: RunRecord = {
+      ...existing,
+      ...updates,
+      updated_at: Date.now(),
+    };
+
+    // Append to JSONL
+    appendFileSync(this.jsonlPath, JSON.stringify(updated) + "\n");
+
+    // Update SQLite cache
+    this.upsertToSQLite(updated);
+
+    return updated;
+  }
+
+  /**
+   * Get a run record by ID
+   */
+  getRun(runId: string): RunRecord | null {
+    const stmt = this.db.prepare("SELECT * FROM runs WHERE id = ?");
+    const row = stmt.get(runId) as any;
+
+    if (!row) {
+      return null;
+    }
+
+    return this.rowToRunRecord(row);
+  }
+
+  /**
+   * Query run records
+   */
+  queryRuns(query: RunQuery): RunRecord[] {
+    let sql = "SELECT * FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    sql += " ORDER BY created_at DESC";
+
+    if (query.limit) {
+      sql += " LIMIT ?";
+      params.push(query.limit);
+    }
+
+    if (query.offset) {
+      sql += " OFFSET ?";
+      params.push(query.offset);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as any[];
+
+    return rows.map((row) => this.rowToRunRecord(row));
+  }
+
+  /**
+   * Log a decision record
+   */
+  logDecision(
+    decision: Omit<DecisionRecord, "id" | "timestamp">
+  ): DecisionRecord {
+    const fullDecision: DecisionRecord = {
+      ...decision,
+      id: `decision-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      timestamp: Date.now(),
+    };
+
+    // Append to JSONL
+    appendFileSync(this.decisionsPath, JSON.stringify(fullDecision) + "\n");
+
+    // Update SQLite cache
+    this.upsertDecisionToSQLite(fullDecision);
+
+    return fullDecision;
+  }
+
+  /**
+   * Get decisions for a run
+   */
+  getDecisions(runId: string): DecisionRecord[] {
+    const stmt = this.db.prepare(
+      "SELECT * FROM decisions WHERE run_id = ? ORDER BY timestamp ASC"
+    );
+    const rows = stmt.all(runId) as any[];
+
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+
+  /**
+   * Convert SQLite row to RunRecord
+   */
+  private rowToRunRecord(row: any): RunRecord {
+    return {
+      id: row.id,
+      issue_id: row.issue_id,
+      session_id: row.session_id,
+      agent_id: row.agent_id,
+      policy_name: row.policy_name,
+      phase: row.phase,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at || undefined,
+      outcome: row.outcome ? JSON.parse(row.outcome) : undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    };
+  }
+
+  /**
+   * Convert SQLite row to DecisionRecord
+   */
+  private rowToDecisionRecord(row: any): DecisionRecord {
+    return {
+      id: row.id,
+      run_id: row.run_id,
+      timestamp: row.timestamp,
+      type: row.type,
+      decision: row.decision,
+      reasoning: row.reasoning || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    };
+  }
+
+  /**
+   * Close database connection
+   */
+  close(): void {
+    this.db.close();
+  }
+}
+
+/**
+ * Create a singleton Logger instance
+ */
+let defaultLogger: Logger | null = null;
+
+export function getLogger(dataDir?: string): Logger {
+  if (!defaultLogger) {
+    defaultLogger = new Logger(dataDir);
+  }
+  return defaultLogger;
+}
