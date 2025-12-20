@@ -337,7 +337,7 @@ async function cmdSyncAgents(): Promise<void> {
 /**
  * UI command - start visualization server
  */
-async function cmdUI(): Promise<void> {
+async function cmdUI(port?: number, host?: string): Promise<void> {
   console.log("Starting Agent Shepherd UI...");
 
   try {
@@ -350,8 +350,8 @@ async function cmdUI(): Promise<void> {
 
     const { UIServer } = await import("../ui/ui-server.ts");
     const uiServer = new UIServer({
-      port: config.ui?.port || 3000,
-      host: config.ui?.host || 'localhost'
+      port: port || config.ui?.port || 3000,
+      host: host || config.ui?.host || 'localhost'
     });
 
     // Handle graceful shutdown
@@ -407,9 +407,24 @@ async function main(): Promise<void> {
       await cmdSyncAgents();
       break;
 
-    case "ui":
-      await cmdUI();
+    case "ui": {
+      // Parse UI arguments: --port <number> --host <string>
+      let port: number | undefined;
+      let host: string | undefined;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--port' && i + 1 < args.length) {
+          port = parseInt(args[i + 1], 10);
+          i++; // skip the next arg
+        } else if (args[i] === '--host' && i + 1 < args.length) {
+          host = args[i + 1];
+          i++; // skip the next arg
+        }
+      }
+
+      await cmdUI(port, host);
       break;
+    }
 
     default:
       console.error(`Unknown command: ${command}`);

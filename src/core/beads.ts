@@ -58,7 +58,9 @@ export async function getReadyIssues(): Promise<BeadsIssue[]> {
 export async function getIssue(issueId: string): Promise<BeadsIssue | null> {
   try {
     const output = await execBeadsCommand(["show", issueId, "--json"]);
-    return JSON.parse(output);
+    const result = JSON.parse(output);
+    // Beads returns an array, so take the first element
+    return Array.isArray(result) ? result[0] || null : result;
   } catch {
     return null;
   }
