@@ -1,0 +1,189 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentshepherd.dev/schemas/policies.json",
+  "title": "Agent Shepherd Policies",
+  "description": "Policy definitions for workflow phases and transition rules",
+  "type": "object",
+  "required": ["policies"],
+  "properties": {
+    "policies": {
+      "type": "object",
+      "description": "Map of policy definitions",
+      "patternProperties": {
+        "^[a-zA-Z][a-zA-Z0-9_-]*$": {
+          "$ref": "#/definitions/policyConfig"
+        }
+      },
+      "additionalProperties": false
+    },
+    "default_policy": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+      "description": "Name of the default policy to use"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "policyConfig": {
+      "type": "object",
+      "required": ["name", "phases"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable policy name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Policy description"
+        },
+        "phases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/phaseConfig"
+          },
+          "description": "Workflow phases in order"
+        },
+        "retry": {
+          "$ref": "#/definitions/retryConfig",
+          "description": "Retry configuration"
+        },
+        "timeout_base_ms": {
+          "type": "integer",
+          "minimum": 60000,
+          "maximum": 3600000,
+          "default": 300000,
+          "description": "Base timeout for phases in milliseconds"
+        },
+        "stall_threshold_ms": {
+          "type": "integer",
+          "minimum": 10000,
+          "maximum": 300000,
+          "default": 60000,
+          "description": "Time threshold to detect stalled runs"
+        },
+        "require_hitl": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether human-in-the-loop approval is required"
+        }
+      },
+      "additionalProperties": false
+    },
+    "phaseConfig": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Phase name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Phase description"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "description": "Required agent capabilities for this phase"
+        },
+        "timeout_multiplier": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 5.0,
+          "default": 1.0,
+          "description": "Multiplier for base timeout"
+        },
+        "require_approval": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this phase requires explicit approval"
+        }
+      },
+      "additionalProperties": false
+    },
+    "retryConfig": {
+      "type": "object",
+      "required": ["max_attempts", "backoff_strategy"],
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3,
+          "description": "Maximum number of retry attempts"
+        },
+        "backoff_strategy": {
+          "type": "string",
+          "enum": ["exponential", "linear", "fixed"],
+          "default": "exponential",
+          "description": "Backoff strategy for retries"
+        },
+        "initial_delay_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000,
+          "default": 5000,
+          "description": "Initial delay for backoff"
+        },
+        "max_delay_ms": {
+          "type": "integer",
+          "minimum": 30000,
+          "maximum": 600000,
+          "default": 300000,
+          "description": "Maximum delay for backoff"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "policies": {
+        "default": {
+          "name": "Default Workflow",
+          "description": "Standard development workflow",
+          "phases": [
+            {
+              "name": "plan",
+              "description": "Planning and design phase",
+              "capabilities": ["planning", "architecture"],
+              "timeout_multiplier": 1.0
+            },
+            {
+              "name": "implement",
+              "description": "Implementation phase",
+              "capabilities": ["coding", "refactoring"],
+              "timeout_multiplier": 2.0
+            },
+            {
+              "name": "test",
+              "description": "Testing phase",
+              "capabilities": ["testing", "qa"],
+              "timeout_multiplier": 1.5
+            },
+            {
+              "name": "review",
+              "description": "Code review phase",
+              "capabilities": ["review", "documentation"],
+              "require_approval": true
+            }
+          ],
+          "retry": {
+            "max_attempts": 3,
+            "backoff_strategy": "exponential",
+            "initial_delay_ms": 5000,
+            "max_delay_ms": 300000
+          },
+          "timeout_base_ms": 300000,
+          "stall_threshold_ms": 60000,
+          "require_hitl": false
+        }
+      },
+      "default_policy": "default"
+    }
+  ]
+}

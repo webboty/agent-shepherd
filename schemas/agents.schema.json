@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentshepherd.dev/schemas/agents.json",
+  "title": "Agent Registry",
+  "description": "Registry of available AI coding agents and their capabilities",
+  "type": "object",
+  "required": ["version", "agents"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Agent registry version",
+      "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/agent"
+      },
+      "description": "List of available agents"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "agent": {
+      "type": "object",
+      "required": ["id", "name", "description", "capabilities", "provider_id", "model_id", "priority"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Unique agent identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable agent name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Agent description"
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "description": "Agent capabilities"
+        },
+        "provider_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "AI provider identifier"
+        },
+        "model_id": {
+          "type": "string",
+          "description": "Model identifier from provider"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Agent priority for selection (higher = more preferred)"
+        },
+        "constraints": {
+          "type": "object",
+          "properties": {
+            "performance_tier": {
+              "type": "string",
+              "enum": ["fast", "balanced", "thorough"],
+              "default": "balanced",
+              "description": "Performance tier preference"
+            },
+            "max_complexity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "description": "Maximum task complexity this agent can handle"
+            },
+            "specialized_domains": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "description": "Specialized domains this agent handles"
+            }
+          },
+          "additionalProperties": false
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Tags for categorizing agents"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When agent was added"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When agent was last updated"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "version": "1.0",
+      "agents": [
+        {
+          "id": "default-coder",
+          "name": "Default Coding Agent",
+          "description": "General-purpose coding agent",
+          "capabilities": ["coding", "refactoring", "planning"],
+          "provider_id": "anthropic",
+          "model_id": "claude-3-5-sonnet-20241022",
+          "priority": 10,
+          "constraints": {
+            "performance_tier": "balanced"
+          }
+        },
+        {
+          "id": "test-specialist",
+          "name": "Testing Specialist",
+          "description": "Agent specialized in testing and quality assurance",
+          "capabilities": ["testing", "qa"],
+          "provider_id": "anthropic",
+          "model_id": "claude-3-5-sonnet-20241022",
+          "priority": 15,
+          "constraints": {
+            "performance_tier": "fast"
+          }
+        }
+      ]
+    }
+  ]
+}

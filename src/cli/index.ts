@@ -50,6 +50,10 @@ Examples:
 async function cmdWorker(): Promise<void> {
   console.log("Starting Agent Shepherd Worker...");
 
+  // Validate configuration first
+  const { validateStartup } = await import("../core/config-validator.ts");
+  await validateStartup();
+
   const worker = getWorkerEngine();
 
   // Handle graceful shutdown
@@ -67,6 +71,10 @@ async function cmdWorker(): Promise<void> {
  */
 async function cmdMonitor(): Promise<void> {
   console.log("Starting Agent Shepherd Monitor...");
+
+  // Validate configuration first
+  const { validateStartup } = await import("../core/config-validator.ts");
+  await validateStartup();
 
   const monitor = getMonitorEngine();
 
@@ -329,8 +337,35 @@ async function cmdSyncAgents(): Promise<void> {
  */
 async function cmdUI(): Promise<void> {
   console.log("Starting Agent Shepherd UI...");
-  console.log("UI server is not yet implemented (placeholder)");
-  console.log("Will launch ReactFlow visualization on http://localhost:3000");
+
+  try {
+    // Validate and load configuration
+    const { validateStartup } = await import("../core/config-validator.ts");
+    await validateStartup();
+
+    const { loadConfig } = await import("../core/config.ts");
+    const config = loadConfig();
+
+    const { UIServer } = await import("../ui/ui-server.ts");
+    const uiServer = new UIServer({
+      port: config.ui?.port || 3000,
+      host: config.ui?.host || 'localhost'
+    });
+
+    // Handle graceful shutdown
+    process.on("SIGINT", () => {
+      console.log("\nStopping UI server...");
+      uiServer.stop().then(() => {
+        process.exit(0);
+      });
+    });
+
+    await uiServer.start();
+  } catch (error) {
+    console.error("Failed to start UI server:", error);
+    console.log("Make sure configuration is initialized: ashep init");
+    process.exit(1);
+  }
 }
 
 /**

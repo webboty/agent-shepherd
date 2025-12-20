@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentshepherd.dev/schemas/config.json",
+  "title": "Agent Shepherd Configuration",
+  "description": "Configuration schema for Agent Shepherd orchestration system",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Configuration version",
+      "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"
+    },
+    "worker": {
+      "type": "object",
+      "description": "Worker engine configuration",
+      "properties": {
+        "poll_interval_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 600000,
+          "default": 30000,
+          "description": "Polling interval for ready issues in milliseconds"
+        },
+        "max_concurrent_runs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3,
+          "description": "Maximum number of concurrent agent runs"
+        }
+      },
+      "additionalProperties": false
+    },
+    "monitor": {
+      "type": "object",
+      "description": "Monitor engine configuration",
+      "properties": {
+        "poll_interval_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 300000,
+          "default": 10000,
+          "description": "Polling interval for monitoring active runs"
+        },
+        "stall_threshold_ms": {
+          "type": "integer",
+          "minimum": 30000,
+          "maximum": 600000,
+          "default": 60000,
+          "description": "Time threshold to detect stalled runs"
+        },
+        "timeout_multiplier": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 5.0,
+          "default": 1.0,
+          "description": "Multiplier for base timeout values"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "description": "UI server configuration",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 3000,
+          "description": "Port for UI server"
+        },
+        "host": {
+          "type": "string",
+          "format": "hostname",
+          "default": "localhost",
+          "description": "Host for UI server"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "version": "1.0",
+      "worker": {
+        "poll_interval_ms": 30000,
+        "max_concurrent_runs": 3
+      },
+      "monitor": {
+        "poll_interval_ms": 10000,
+        "stall_threshold_ms": 60000,
+        "timeout_multiplier": 1.0
+      },
+      "ui": {
+        "port": 3000,
+        "host": "localhost"
+      }
+    }
+  ]
+}

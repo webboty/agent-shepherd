@@ -1,0 +1,269 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentshepherd.dev/schemas/run-outcome.json",
+  "title": "Agent Run Outcome",
+  "description": "Outcome and status of an agent execution run",
+  "type": "object",
+  "required": ["id", "issue_id", "agent_id", "phase", "status", "start_time"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^run-[a-zA-Z0-9_-]+$",
+      "description": "Unique run identifier"
+    },
+    "issue_id": {
+      "type": "string",
+      "description": "ID of the issue being processed"
+    },
+    "agent_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$",
+      "description": "ID of the agent that ran"
+    },
+    "phase": {
+      "type": "string",
+      "description": "Workflow phase this run belongs to"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "running", "completed", "failed", "cancelled", "stalled"],
+      "description": "Current status of the run"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the run started"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the run ended (null for ongoing runs)"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Duration of the run in milliseconds (calculated from start/end times)"
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "OpenCode session identifier"
+    },
+    "outcome": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/successOutcome"
+        },
+        {
+          "$ref": "#/definitions/failureOutcome"
+        },
+        {
+          "$ref": "#/definitions/cancelledOutcome"
+        }
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "attempt_number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Which attempt this is (for retries)"
+        },
+        "retry_of": {
+          "type": "string",
+          "pattern": "^run-[a-zA-Z0-9_-]+$",
+          "description": "ID of the run being retried"
+        },
+        "hitl_required": {
+          "type": "boolean",
+          "description": "Whether human-in-the-loop was required"
+        },
+        "hitl_provided": {
+          "type": "boolean",
+          "description": "Whether human-in-the-loop was provided"
+        },
+        "timeout_extension": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Additional time granted in milliseconds"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "successOutcome": {
+      "type": "object",
+      "required": ["type", "result"],
+      "properties": {
+        "type": {
+          "const": "success"
+        },
+        "result": {
+          "type": "string",
+          "description": "Description of successful outcome"
+        },
+        "next_phase": {
+          "type": "string",
+          "description": "Next phase to transition to"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/artifact"
+          },
+          "description": "Artifacts created by the run"
+        },
+        "metrics": {
+          "$ref": "#/definitions/metrics",
+          "description": "Performance metrics"
+        }
+      },
+      "additionalProperties": false
+    },
+    "failureOutcome": {
+      "type": "object",
+      "required": ["type", "error"],
+      "properties": {
+        "type": {
+          "const": "failure"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error description"
+        },
+        "error_code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "description": "Machine-readable error code"
+        },
+        "retryable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this failure can be retried"
+        },
+        "suggested_action": {
+          "type": "string",
+          "description": "Suggested action to resolve the failure"
+        },
+        "context": {
+          "type": "object",
+          "description": "Additional error context"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cancelledOutcome": {
+      "type": "object",
+      "required": ["type", "reason"],
+      "properties": {
+        "type": {
+          "const": "cancelled"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for cancellation"
+        },
+        "cancelled_by": {
+          "type": "string",
+          "enum": ["user", "system", "timeout"],
+          "description": "Who cancelled the run"
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["type", "path"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["file", "directory", "link", "document"],
+          "description": "Type of artifact"
+        },
+        "path": {
+          "type": "string",
+          "description": "Path to the artifact"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the artifact"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Size in bytes (if applicable)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "tokens_used": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total tokens consumed"
+        },
+        "messages_exchanged": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of messages exchanged"
+        },
+        "files_modified": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of files modified"
+        },
+        "tests_run": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of tests run"
+        },
+        "tests_passed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of tests passed"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "id": "run-abc123",
+      "issue_id": "agent-shepherd-001",
+      "agent_id": "default-coder",
+      "phase": "implementation",
+      "status": "completed",
+      "start_time": "2025-12-20T10:00:00Z",
+      "end_time": "2025-12-20T10:45:23Z",
+      "session_id": "session-def456",
+      "outcome": {
+        "type": "success",
+        "result": "Successfully implemented core modules",
+        "next_phase": "test",
+        "artifacts": [
+          {
+            "type": "file",
+            "path": "src/core/worker-engine.ts",
+            "description": "Worker engine implementation"
+          }
+        ],
+        "metrics": {
+          "tokens_used": 15420,
+          "messages_exchanged": 8,
+          "files_modified": 5,
+          "tests_run": 0,
+          "tests_passed": 0
+        }
+      },
+      "metadata": {
+        "attempt_number": 1,
+        "hitl_required": false
+      }
+    }
+  ]
+}
