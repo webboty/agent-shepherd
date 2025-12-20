@@ -5,7 +5,7 @@ const { execSync } = require('child_process');
 
 const proposalId = process.argv[2];
 if (!proposalId) {
-  console.error('Usage: node tools/openspec-beads-sync.js <proposal-id>');
+  console.error('Usage: node tools/openspec-beads-sync.cjs <proposal-id>');
   process.exit(1);
 }
 
