@@ -3,12 +3,6 @@
 composer.lock
 /.bmad-core
 _bmad*
-src/*
-tools/*
-docs/*
-bmad*
-bmd*
-bmm*
 .clinerules
 .codex
 .crush
@@ -19,3 +13,17 @@ bmm*
 .vscode
 .claude
 /CLINE.md
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+
+# Logs
+*.log
+.agent-shepherd/*.jsonl
+.agent-shepherd/*.db
+
+# OS
+.DS_Store

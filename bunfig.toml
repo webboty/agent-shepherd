@@ -1,0 +1,11 @@
+[install]
+# Install packages from npm registry
+registry = "https://registry.npmjs.org/"
+
+[install.cache]
+# Cache packages to speed up installs
+dir = "~/.bun/install/cache"
+
+[test]
+# Test configuration
+preload = []

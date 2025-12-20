@@ -1,0 +1,48 @@
+{
+  "name": "agent-shepherd",
+  "version": "0.1.0",
+  "description": "Orchestration system for AI coding agents across Beads issues using OpenCode",
+  "type": "module",
+  "bin": {
+    "ashep": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "bun build src/cli/index.ts --outdir dist --target bun --format esm",
+    "dev": "bun run src/cli/index.ts",
+    "test": "bun test",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.0.171",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "reactflow": "^11.11.4",
+    "yaml": "^2.5.1",
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.7.2",
+    "eslint": "^9.16.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "bun-types": "^1.1.38"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "keywords": [
+    "agent-orchestration",
+    "beads",
+    "opencode",
+    "ai-coding",
+    "workflow-automation"
+  ],
+  "author": "",
+  "license": "MIT"
+}
