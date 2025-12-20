@@ -72,7 +72,7 @@ export class UIServer {
     });
 
     // 404 handler
-    this.app.use('*', (_req, res) => {
+    this.app.use((_req, res) => {
       res.status(404).json({ error: 'Not found' });
     });
   }

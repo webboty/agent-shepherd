@@ -121,7 +121,7 @@ export class ConfigurationValidator {
         continue;
       }
 
-      const result = await this.validateConfig(configPath, schemaPath);
+      const result = await this.validateYAMLConfig(configPath, schemaPath);
       result.summary = `${result.valid ? '✅' : '❌'} ${task.description}: ${result.summary}`;
       results.push(result);
     }

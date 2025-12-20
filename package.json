@@ -7,7 +7,7 @@
     "ashep": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "bun build src/cli/index.ts --outdir dist --target bun --format esm",
+    "build": "bun build src/cli/index.ts --outdir dist/cli --target bun --format esm",
     "dev": "bun run src/cli/index.ts",
     "test": "bun test",
     "lint": "eslint src --ext .ts",
