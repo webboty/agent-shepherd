@@ -114,10 +114,10 @@ Choose between batch or incremental application:
 /openspec-beads-apply my-feature
 ```
 
-**Incremental Mode (auto-select):**
+**Strict Single-Task Mode:**
 ```
 /openspec-beads-apply-single my-feature
-# Works on next ready task, rerun for subsequent tasks
+# Works on exactly ONE ready task, then stops - must rerun for each task
 ```
 
 **Specific Issue Mode (with hierarchy support):**
@@ -134,7 +134,7 @@ Both commands automatically filter to only work on tasks from the specified prop
 | Command | Purpose | Method |
 |---------|---------|--------|
 | `openspec-beads-apply` | Apply changes with all Beads tasks (batch) | Agent |
-| `openspec-beads-apply-single` | Apply one Beads task (auto-select) | Agent |
+| `openspec-beads-apply-single` | Apply exactly one Beads task (strict single-task) | Agent |
 | `openspec-beads-apply-issue` | Apply specific Beads issue (with hierarchy) | Agent |
 | `openspec-beads-task-create` | Manual task creation | Agent |
 | `openspec-beads-task-create-script` | Automated task creation | Script |
@@ -160,7 +160,8 @@ Both commands automatically filter to only work on tasks from the specified prop
 
 - **Data Flow**: OpenSpec → Converter → Beads Hierarchy → Sync ↔ OpenSpec
 - **ID Mapping**: Hierarchical IDs preserve OpenSpec task relationships
-- **Proposal Isolation**: Commands filter Beads operations to specific epics by title/ID matching
+- **Proposal Isolation**: Commands filter to only tasks from the specified proposal
+- **Single-Task Enforcement**: Strict constraints prevent multi-task execution in single mode
 - **Error Recovery**: Scripts check for existing items before creating
 - **Performance**: Direct terminal execution for large proposals
 
