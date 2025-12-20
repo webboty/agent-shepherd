@@ -114,13 +114,17 @@ Choose between batch or incremental application:
 /openspec-beads-apply my-feature
 ```
 
-**Incremental Mode (one task at a time):**
+**Incremental Mode (auto-select):**
 ```
 /openspec-beads-apply-single my-feature
 # Works on next ready task, rerun for subsequent tasks
+```
 
-/openspec-beads-apply-single my-feature agent-shepherd-xyz.1
-# Works on specific Beads issue ID
+**Specific Issue Mode (with hierarchy support):**
+```
+/openspec-beads-apply-issue my-feature agent-shepherd-xyz.1
+# Works on specific issue, or traverses to next ready child if parent has children
+# Automatically closes parent if all children are complete
 ```
 
 Both commands automatically filter to only work on tasks from the specified proposal's epic, ensuring focused execution. The single-task command accepts an optional second parameter for a specific Beads issue ID.
@@ -130,7 +134,8 @@ Both commands automatically filter to only work on tasks from the specified prop
 | Command | Purpose | Method |
 |---------|---------|--------|
 | `openspec-beads-apply` | Apply changes with all Beads tasks (batch) | Agent |
-| `openspec-beads-apply-single` | Apply one/specific Beads task (incremental) | Agent |
+| `openspec-beads-apply-single` | Apply one Beads task (auto-select) | Agent |
+| `openspec-beads-apply-issue` | Apply specific Beads issue (with hierarchy) | Agent |
 | `openspec-beads-task-create` | Manual task creation | Agent |
 | `openspec-beads-task-create-script` | Automated task creation | Script |
 | `openspec-beads-task-sync` | Manual status sync | Agent |
