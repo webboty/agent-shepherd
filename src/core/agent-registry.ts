@@ -53,7 +53,7 @@ export class AgentRegistry {
     // Try to load agents if config exists
     try {
       this.loadAgents(this.configPath);
-    } catch (error) {
+    } catch {
       // Config file doesn't exist yet, start with empty registry
     }
   }

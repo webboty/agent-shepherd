@@ -113,7 +113,9 @@ export class WorkerEngine {
     console.log(`Processing issue: ${issue.id} - ${issue.title}`);
 
     // 1. Resolve policy and phase
-    const { policy, phase } = this.resolvePolicyAndPhase(issue);
+    const policy = this.policyEngine.getDefaultPolicyName();
+    const phases = this.policyEngine.getPhaseSequence(policy);
+    const phase = phases[0] || "plan";
 
     console.log(`Using policy '${policy}' at phase '${phase}'`);
 
@@ -218,26 +220,6 @@ export class WorkerEngine {
       message: transition.reason,
       next_phase: transition.next_phase,
     };
-  }
-
-  /**
-   * Resolve policy and phase for an issue
-   */
-  private resolvePolicyAndPhase(_issue: BeadsIssue): {
-    policy: string;
-    phase: string;
-  } {
-    // For now, use default policy and first phase
-    // In a real implementation, this would:
-    // 1. Check issue labels for policy name
-    // 2. Check issue labels for current phase
-    // 3. Default to policy's first phase if no phase label found
-
-    const policy = this.policyEngine.getDefaultPolicyName();
-    const phases = this.policyEngine.getPhaseSequence(policy);
-    const phase = phases[0] || "plan";
-
-    return { policy, phase };
   }
 
   /**

@@ -59,7 +59,7 @@ export async function getIssue(issueId: string): Promise<BeadsIssue | null> {
   try {
     const output = await execBeadsCommand(["show", issueId, "--json"]);
     return JSON.parse(output);
-  } catch (error) {
+  } catch {
     return null;
   }
 }
