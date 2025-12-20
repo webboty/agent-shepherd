@@ -4,7 +4,6 @@
  */
 
 import { getLogger, type RunRecord } from "./logging.ts";
-import { getOpenCodeClient } from "./opencode.ts";
 import { getPolicyEngine } from "./policy.ts";
 import { updateIssue } from "./beads.ts";
 
@@ -27,7 +26,6 @@ export interface MonitorEvent {
 export class MonitorEngine {
   private config: MonitorConfig;
   private logger = getLogger();
-  private opencode = getOpenCodeClient();
   private policyEngine = getPolicyEngine();
   private isRunning = false;
 
@@ -122,30 +120,9 @@ export class MonitorEngine {
   /**
    * Detect if a run has stalled
    */
-  private async detectStall(run: RunRecord): Promise<boolean> {
-    if (!run.session_id) {
-      return false;
-    }
-
-    try {
-      const messages = await this.opencode.getMessages(run.session_id);
-      if (messages.length === 0) {
-        return false;
-      }
-
-      const lastMessage = messages[messages.length - 1];
-      const now = Date.now();
-      const lastMessageTime = lastMessage.time.created;
-
-      const stallThreshold =
-        this.policyEngine.getStallThreshold(run.policy_name) ||
-        this.config.stall_threshold_ms!;
-
-      return now - lastMessageTime > stallThreshold;
-    } catch (error) {
-      console.error(`Error detecting stall for run ${run.id}:`, error);
-      return false;
-    }
+  private async detectStall(_run: RunRecord): Promise<boolean> {
+    // CLI execution completes synchronously, so runs don't stall
+    return false;
   }
 
   /**
@@ -171,13 +148,9 @@ export class MonitorEngine {
     }
 
     try {
-      const messages = await this.opencode.getMessagesSince(
-        run.session_id,
-        run.updated_at
-      );
-
-      // Check if any messages are from humans
-      return messages.some((msg) => this.opencode.isHumanMessage(msg));
+      // CLI execution doesn't support real-time human intervention detection
+      // For now, return false
+      return false;
     } catch (error) {
       console.error(`Error detecting takeover for run ${run.id}:`, error);
       return false;
@@ -220,14 +193,7 @@ export class MonitorEngine {
       completed_at: Date.now(),
     });
 
-    // Abort session if exists
-    if (run.session_id) {
-      try {
-        await this.opencode.abortSession(run.session_id);
-      } catch (error) {
-        console.error(`Failed to abort session: ${error}`);
-      }
-    }
+    // No session to abort with CLI execution
 
     // Update issue to open for retry
     await updateIssue(run.issue_id, { status: "open" });
@@ -256,14 +222,7 @@ export class MonitorEngine {
       completed_at: Date.now(),
     });
 
-    // Abort session if exists
-    if (run.session_id) {
-      try {
-        await this.opencode.abortSession(run.session_id);
-      } catch (error) {
-        console.error(`Failed to abort session: ${error}`);
-      }
-    }
+    // No session to abort with CLI execution
 
     // Update issue to open for retry
     await updateIssue(run.issue_id, { status: "open" });

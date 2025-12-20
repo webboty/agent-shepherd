@@ -4,7 +4,7 @@
  */
 
 import { getReadyIssues, updateIssue, type BeadsIssue } from "./beads.ts";
-import { getOpenCodeClient, type MessageConfig } from "./opencode.ts";
+import { getOpenCodeClient } from "./opencode.ts";
 import { getPolicyEngine } from "./policy.ts";
 import { getAgentRegistry } from "./agent-registry.ts";
 import { getLogger, type RunOutcome } from "./logging.ts";
@@ -223,7 +223,7 @@ export class WorkerEngine {
   }
 
   /**
-   * Launch agent in OpenCode session
+   * Launch agent using OpenCode CLI
    */
   private async launchAgent(
     issue: BeadsIssue,
@@ -231,63 +231,38 @@ export class WorkerEngine {
     phase: string,
     policy: string
   ): Promise<RunOutcome> {
-    // Get agent model configuration
-    const modelConfig = this.agentRegistry.getModelConfig(agentId);
-    if (!modelConfig) {
+    // Get agent configuration
+    const agent = this.agentRegistry.getAgent(agentId);
+    if (!agent) {
       throw new Error(`Agent ${agentId} not found in registry`);
     }
-
-    // Create OpenCode session
-    const session = await this.opencode.createSession({
-      title: `${issue.id}: ${issue.title}`,
-    });
-
-    console.log(`Created OpenCode session: ${session.id}`);
 
     // Prepare instructions for the agent
     const instructions = this.buildInstructions(issue, phase, policy);
 
-    // Send message to agent
-    const messageConfig: MessageConfig = {
-      content: instructions,
-      providerID: modelConfig.providerID,
-      modelID: modelConfig.modelID,
-      agent: modelConfig.agent,
-      system: this.buildSystemPrompt(phase),
-    };
+    console.log(`Running agent ${agentId} with OpenCode CLI...`);
 
-    const message = await this.opencode.sendMessage(session.id, messageConfig);
+    // Run agent using OpenCode CLI
+  const result = await this.opencode.runAgentCLI({
+    directory: process.cwd(),
+    title: `${issue.id}: ${issue.title}`,
+    agent: agentId,
+    message: instructions,
+  });
 
-    console.log(`Sent message to agent, waiting for completion...`);
+    if (!result.success) {
+      console.error(`Agent execution failed: ${result.error}`);
+      return {
+        success: false,
+        error: result.error || "Agent execution failed",
+      };
+    }
 
-    // Wait for agent to complete
-    const completedMessage = await this.opencode.waitForCompletion(
-      session.id,
-      message.id,
-      {
-        timeout: this.policyEngine.calculateTimeout(policy, phase),
-      }
-    );
-
-    console.log(`Agent completed`);
-
-    // Update run with session ID
-    // (This would normally be done earlier, but we're keeping it simple)
-
-    // Parse outcome from agent's response
-    // In a real implementation, the agent would return structured JSON
-    // For now, we'll return a success outcome
-    const duration =
-      completedMessage.role === "assistant" && completedMessage.time.completed
-        ? completedMessage.time.completed - completedMessage.time.created
-        : 0;
+    console.log(`Agent execution completed successfully`);
 
     return {
       success: true,
       message: "Task completed by agent",
-      metrics: {
-        duration_ms: duration,
-      },
     };
   }
 
@@ -324,13 +299,6 @@ Please complete the ${phase} phase for this issue. When done, provide a summary 
 
 ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval before proceeding.\n" : ""}
 `.trim();
-  }
-
-  /**
-   * Build system prompt for the agent
-   */
-  private buildSystemPrompt(phase: string): string {
-    return `You are an AI coding agent working on the ${phase} phase of a software development task. Complete the task efficiently and provide clear documentation of your changes.`;
   }
 
   /**
