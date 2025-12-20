@@ -36,11 +36,13 @@ ${Object.entries(COMMANDS)
   .join("\n")}
 
 Examples:
-  ashep worker              # Start autonomous worker
-  ashep monitor             # Start monitor loop
-  ashep work ISSUE-123      # Process specific issue
   ashep init                # Initialize configuration
+  ashep worker              # Start autonomous worker
+  ashep work ISSUE-123      # Process specific issue
   ashep ui                  # Start visualization UI
+
+For detailed documentation, see: README.md
+Configuration guide: docs/cli-reference.md
 `);
 }
 
