@@ -89,15 +89,15 @@ agents:
 | `review` | Code and content review | Quality control |
 
 #### `provider_id` (string)
-**Required**: Yes  
+**Required**: No (uses OpenCode agent default if omitted)  
 **Purpose**: AI provider for the agent (anthropic, openai, etc.)  
-**Impact**: Determines which API is called for agent execution  
+**Impact**: Determines which API is called for agent execution. If not specified, uses the provider configured in the OpenCode agent.  
 **Values**: Must match configured providers in OpenCode
 
 #### `model_id` (string)
-**Required**: Yes  
+**Required**: No (uses OpenCode agent default if omitted)  
 **Purpose**: Specific model identifier within the provider  
-**Impact**: Controls AI model capabilities, speed, and cost  
+**Impact**: Controls AI model capabilities, speed, and cost. If not specified, uses the model configured in the OpenCode agent.  
 **Values**: Valid model IDs for the specified provider
 
 #### `priority` (number)
@@ -110,6 +110,19 @@ agents:
 - `15`: Primary workflow agents
 - `10`: Standard agents (default)
 - `5`: Fallback/specialized agents
+
+#### `active` (boolean)
+**Required**: No (defaults to true)  
+**Purpose**: Controls whether agent is available for automated workflows  
+**Impact**: Inactive agents are excluded from automatic agent selection but can still be used manually  
+**Values**:
+- `true` or omitted: Agent available for automation (default)
+- `false`: Agent excluded from automated workflows
+**Use Cases**:
+- Disable problematic agents temporarily
+- Reserve specialized agents for manual use only
+- Test agent configurations before enabling automation
+- Maintain agent definitions while preventing automated usage
 
 #### `constraints` (object)
 **Required**: No  
@@ -158,26 +171,59 @@ agents:
 
 When a policy requires specific capabilities, Agent Shepherd:
 
-1. **Filters agents** that have all required capabilities
-2. **Sorts by priority** (highest first)
-3. **Applies constraints** (performance tier, read-only, etc.)
-4. **Selects the best match**
+1. **Filters active agents only** (excludes agents with `active: false`)
+2. **Filters by capabilities** (agents must have all required capabilities)
+3. **Sorts by priority** (highest first)
+4. **Applies constraints** (performance tier, read-only, etc.)
+5. **Selects the best match**
+
+**Note**: Inactive agents can still be used manually by explicitly specifying them in policies or through direct CLI usage.
 
 ## Examples
 
-### Primary Build Agent
+### Primary Build Agent (with defaults)
 ```yaml
 - id: build
   name: "Build Agent"
   description: "Handles code building and compilation tasks"
   capabilities: ["coding", "refactoring", "building"]
-  provider_id: "anthropic"
-  model_id: "claude-3-5-sonnet-20241022"
   priority: 15
   constraints:
-    performance_tier: "balanced"
+    performance_tier: balanced
   metadata:
-    agent_type: "primary"
+    agent_type: primary
+  # provider_id and model_id omitted - uses OpenCode agent defaults
+```
+
+### Specialized Agent with Custom Model
+```yaml
+- id: code-reviewer
+  name: "Code Reviewer"
+  description: "Reviews code for best practices and potential issues"
+  capabilities: ["review", "analysis", "documentation"]
+  provider_id: anthropic
+  model_id: claude-3-5-haiku-20241022  # Cost-effective model for reviews
+  priority: 12
+  active: true
+  constraints:
+    performance_tier: fast
+    read_only: true
+  metadata:
+    agent_type: subagent
+```
+
+### Inactive Agent (manual use only)
+```yaml
+- id: experimental-agent
+  name: "Experimental Agent"
+  description: "Testing new capabilities"
+  capabilities: ["analysis", "research"]
+  provider_id: openai
+  model_id: gpt-4
+  priority: 5
+  active: false  # Excluded from automated workflows
+  metadata:
+    agent_type: primary
 ```
 
 ### Specialized Code Review Agent

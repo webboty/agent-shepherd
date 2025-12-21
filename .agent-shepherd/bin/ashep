@@ -7073,12 +7073,6 @@ class AgentRegistry {
     if (!agent.capabilities || agent.capabilities.length === 0) {
       throw new Error(`Agent '${agent.id}' must have at least one capability`);
     }
-    if (!agent.provider_id) {
-      throw new Error(`Agent '${agent.id}' must have a provider_id`);
-    }
-    if (!agent.model_id) {
-      throw new Error(`Agent '${agent.id}' must have a model_id`);
-    }
   }
   registerAgent(agent) {
     this.validateAgent(agent);
@@ -7096,8 +7090,12 @@ class AgentRegistry {
   getAgentIds() {
     return Array.from(this.agents.keys());
   }
-  findByCapabilities(capabilities) {
-    return this.getAllAgents().filter((agent) => capabilities.every((cap) => agent.capabilities.includes(cap)));
+  findByCapabilities(capabilities, includeInactive = false) {
+    let candidates = this.getAllAgents();
+    if (!includeInactive) {
+      candidates = candidates.filter((agent) => agent.active !== false);
+    }
+    return candidates.filter((agent) => capabilities.every((cap) => agent.capabilities.includes(cap)));
   }
   findByTags(tags) {
     return this.getAllAgents().filter((agent) => {
@@ -7109,7 +7107,7 @@ class AgentRegistry {
     });
   }
   selectAgent(criteria) {
-    let candidates = this.getAllAgents();
+    let candidates = this.getAllAgents().filter((agent) => agent.active !== false);
     if (criteria.required_capabilities) {
       candidates = candidates.filter((agent) => criteria.required_capabilities.every((cap) => agent.capabilities.includes(cap)));
     }
@@ -7316,9 +7314,8 @@ class AgentRegistry {
       name: mapping.name,
       description: mapping.description,
       capabilities: mapping.capabilities,
-      provider_id: "anthropic",
-      model_id: "claude-3-5-sonnet-20241022",
       priority: mapping.priority,
+      active: true,
       constraints: mapping.constraints,
       metadata: {
         agent_type: agentType

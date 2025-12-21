@@ -12,9 +12,10 @@ export interface AgentConfig {
   name: string;
   description?: string;
   capabilities: string[];
-  provider_id: string;
-  model_id: string;
+  provider_id?: string;  // Optional - uses OpenCode agent default if not specified
+  model_id?: string;     // Optional - uses OpenCode agent default if not specified
   priority?: number;
+  active?: boolean;      // Optional - defaults to true, controls automation usage
   constraints?: {
     read_only?: boolean;
     max_file_size?: number;
@@ -110,12 +111,8 @@ export class AgentRegistry {
     if (!agent.capabilities || agent.capabilities.length === 0) {
       throw new Error(`Agent '${agent.id}' must have at least one capability`);
     }
-    if (!agent.provider_id) {
-      throw new Error(`Agent '${agent.id}' must have a provider_id`);
-    }
-    if (!agent.model_id) {
-      throw new Error(`Agent '${agent.id}' must have a model_id`);
-    }
+    // provider_id and model_id are now optional - will use OpenCode defaults if not specified
+    // active field is optional and defaults to true
   }
 
   /**
@@ -157,8 +154,12 @@ export class AgentRegistry {
   /**
    * Find agents matching capabilities
    */
-  findByCapabilities(capabilities: string[]): AgentConfig[] {
-    return this.getAllAgents().filter((agent) =>
+  findByCapabilities(capabilities: string[], includeInactive = false): AgentConfig[] {
+    let candidates = this.getAllAgents();
+    if (!includeInactive) {
+      candidates = candidates.filter(agent => agent.active !== false);
+    }
+    return candidates.filter((agent) =>
       capabilities.every((cap) => agent.capabilities.includes(cap))
     );
   }
@@ -180,7 +181,7 @@ export class AgentRegistry {
    * Select best agent based on criteria
    */
   selectAgent(criteria: AgentSelectionCriteria): AgentConfig | null {
-    let candidates = this.getAllAgents();
+    let candidates = this.getAllAgents().filter(agent => agent.active !== false); // Only consider active agents
 
     // Filter by required capabilities
     if (criteria.required_capabilities) {
@@ -239,8 +240,8 @@ export class AgentRegistry {
    * Get agent model configuration for OpenCode
    */
   getModelConfig(agentId: string): {
-    providerID: string;
-    modelID: string;
+    providerID?: string;
+    modelID?: string;
     agent?: string;
   } | null {
     const agent = this.getAgent(agentId);
@@ -485,9 +486,9 @@ export class AgentRegistry {
       name: mapping.name!,
       description: mapping.description,
       capabilities: mapping.capabilities!,
-      provider_id: 'anthropic', // Default to Anthropic
-      model_id: 'claude-3-5-sonnet-20241022', // Default model
+      // provider_id and model_id are omitted - will use OpenCode agent defaults
       priority: mapping.priority!,
+      active: true, // New agents are active by default
       constraints: mapping.constraints!,
       metadata: {
         agent_type: agentType // Store whether it's primary or subagent
@@ -507,6 +508,8 @@ export class AgentRegistry {
     if (existing.priority !== updated.priority) return true;
 
     // Check if metadata changed (including agent_type)
+    // Note: We don't check for provider_id, model_id, or active changes during sync
+    // as these are user-controlled and should not be overwritten
     const existingMetadata = existing.metadata || {};
     const updatedMetadata = updated.metadata || {};
     if (JSON.stringify(existingMetadata) !== JSON.stringify(updatedMetadata)) return true;

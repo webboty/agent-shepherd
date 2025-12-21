@@ -213,6 +213,40 @@ build (primary)`;
       expect(agents[0].type).toBe('primary');
     });
 
+    it('should create agents with optional provider and model', () => {
+      const registry = agentRegistry as any;
+
+      const config = registry.createAgentConfig('test-agent', 'primary');
+
+      expect(config.id).toBe('test-agent');
+      expect(config.provider_id).toBeUndefined(); // Optional now
+      expect(config.model_id).toBeUndefined(); // Optional now
+      expect(config.active).toBe(true); // Active by default
+      expect(config.capabilities).toEqual(['general']); // Fallback capabilities
+    });
+
+    it('should only select active agents', () => {
+      // Add an inactive agent to the registry
+      const inactiveAgent = {
+        id: 'inactive-agent',
+        name: 'Inactive Agent',
+        capabilities: ['testing'],
+        active: false
+      };
+      agentRegistry['agents'].set('inactive-agent', inactiveAgent);
+
+      // Try to find agents with testing capability
+      const agents = agentRegistry.selectAgent({
+        required_capabilities: ['testing']
+      });
+
+      // Should not select the inactive agent
+      expect(agents).toBeDefined();
+      expect(agents?.id).toBe('test-specialist'); // Should select the active one
+    });
+  });
+
+  describe('Agent Configuration', () => {
     it('should create agents with correct metadata', () => {
       const registry = agentRegistry as any;
 
@@ -223,6 +257,38 @@ build (primary)`;
       expect(config.capabilities).toEqual(['general']); // Default for unknown agent
       expect(config.priority).toBe(10);
       expect(config.constraints?.performance_tier).toBe('balanced');
+    });
+
+    it('should create agents with optional provider and model', () => {
+      const registry = agentRegistry as any;
+
+      const config = registry.createAgentConfig('test-agent', 'primary');
+
+      expect(config.id).toBe('test-agent');
+      expect(config.provider_id).toBeUndefined(); // Optional now
+      expect(config.model_id).toBeUndefined(); // Optional now
+      expect(config.active).toBe(true); // Active by default
+      expect(config.capabilities).toEqual(['general']); // Fallback capabilities
+    });
+
+    it('should only select active agents', () => {
+      // Add an inactive agent to the registry
+      const inactiveAgent = {
+        id: 'inactive-agent',
+        name: 'Inactive Agent',
+        capabilities: ['testing'],
+        active: false
+      };
+      agentRegistry['agents'].set('inactive-agent', inactiveAgent);
+
+      // Try to find agents with testing capability
+      const agents = agentRegistry.selectAgent({
+        required_capabilities: ['testing']
+      });
+
+      // Should not select the inactive agent
+      expect(agents).toBeDefined();
+      expect(agents?.id).toBe('test-specialist'); // Should select the active one
     });
   });
 });

@@ -7,9 +7,8 @@ agents:
       - coding
       - refactoring
       - building
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
     priority: 15
+    active: true
     constraints:
       performance_tier: balanced
     metadata:
@@ -21,13 +20,25 @@ agents:
       - refactoring
       - optimization
       - compaction
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
     priority: 10
+    active: true
     constraints:
       performance_tier: balanced
     metadata:
       agent_type: primary
+  - id: explore
+    name: Exploration Agent
+    description: Handles code exploration and analysis
+    capabilities:
+      - exploration
+      - analysis
+      - discovery
+    priority: 8
+    active: true
+    constraints:
+      performance_tier: fast
+    metadata:
+      agent_type: subagent
   - id: general
     name: General Agent
     description: General purpose agent for various tasks
@@ -35,9 +46,8 @@ agents:
       - coding
       - planning
       - analysis
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
     priority: 10
+    active: true
     constraints:
       performance_tier: balanced
     metadata:
@@ -49,9 +59,8 @@ agents:
       - planning
       - architecture
       - analysis
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
     priority: 12
+    active: true
     constraints:
       performance_tier: balanced
     metadata:
@@ -63,9 +72,8 @@ agents:
       - documentation
       - summary
       - analysis
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
     priority: 8
+    active: true
     constraints:
       performance_tier: fast
     metadata:
@@ -76,35 +84,19 @@ agents:
     capabilities:
       - naming
       - documentation
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
     priority: 5
+    active: true
     constraints:
       performance_tier: fast
     metadata:
       agent_type: primary
-  - id: explore
-    name: Exploration Agent
-    description: Handles code exploration and analysis
-    capabilities:
-      - exploration
-      - analysis
-      - discovery
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
-    priority: 8
-    constraints:
-      performance_tier: fast
-    metadata:
-      agent_type: subagent
   - id: openspec-planner
     name: Openspec-planner Agent
     description: Agent for openspec-planner tasks
     capabilities:
       - general
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
     priority: 10
+    active: true
     constraints:
       performance_tier: balanced
     metadata:
