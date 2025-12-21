@@ -333,7 +333,14 @@ config/                    # User configuration files
 ├── config.yaml           # Main configuration
 └── policies.yaml         # Workflow policies
 
+plugins/                   # Plugin directory
+├── openspec/             # OpenSpec integration plugin
+│   ├── manifest.json     # Plugin metadata
+│   ├── index.js          # Command implementations
+│   └── README.md         # Plugin documentation
+
 schemas/                   # JSON schema validation
+├── plugin.schema.json    # Plugin manifest validation
 docs/                      # Documentation
 tests/                     # Test files
 ```

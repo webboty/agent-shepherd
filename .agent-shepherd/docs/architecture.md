@@ -46,6 +46,11 @@ Agent Shepherd is a sophisticated orchestration system designed to coordinate AI
                      │  UI Layer           │
                      │ (Visualization)     │
                      └─────────────────────┘
+                                  │
+                     ┌─────────────────────┐
+                     │  Plugin System      │
+                     │ (Extensions)        │
+                     └─────────────────────┘
 ```
 
 ### Data Flow
@@ -253,15 +258,29 @@ Configuration is validated at startup to catch errors early:
 - Configurable monitoring frequency
 - Batch operation support
 
-## Future Extensions
+## Plugin System
+
+Agent Shepherd includes a robust plugin system for extending functionality without modifying core code:
 
 ### Plugin Architecture
 
-Support for custom:
-- Agent providers
-- Workflow phases
-- Monitoring rules
-- UI components
+The plugin system supports:
+- **Dynamic Loading**: Automatic discovery and loading from `.agent-shepherd/plugins/`
+- **Command Registration**: Plugins can add new CLI commands
+- **Isolated Execution**: Plugins run in their own context
+- **Simple Structure**: Minimal boilerplate for plugin development
+
+### Current Plugin Extensions
+
+- **Agent Providers**: Custom AI agent integrations
+- **Workflow Phases**: Additional processing steps
+- **Monitoring Rules**: Custom supervision logic
+- **UI Components**: ReactFlow visualization extensions
+- **Integration Tools**: External system connectors (e.g., OpenSpec)
+
+For detailed plugin development information, see [docs/plugin-system.md](../docs/plugin-system.md).
+
+## Future Extensions
 
 ### Advanced Orchestration
 

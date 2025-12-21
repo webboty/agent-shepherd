@@ -123,7 +123,8 @@ ashep init
 ```
 
 **Behavior:**
-- Creates `.agent-shepherd/` directory
+- Creates `.agent-shepherd/` directory structure
+- Creates `config/` and `plugins/` subdirectories
 - Generates default configuration files:
   - `config/config.yaml` - Main settings
   - `config/policies.yaml` - Workflow definitions
@@ -134,6 +135,7 @@ ashep init
 ```
 Initializing Agent Shepherd configuration...
 Created directory: /path/to/project/.agent-shepherd/config
+Created directory: /path/to/project/.agent-shepherd/plugins
 Created: /path/to/project/.agent-shepherd/config/config.yaml
 Created: /path/to/project/.agent-shepherd/config/policies.yaml
 Created: /path/to/project/.agent-shepherd/config/agents.yaml
@@ -294,6 +296,81 @@ Summary:
   Agents: 8
   Issues: 1 warning, 2 errors
   Dead end capabilities: testing, qa
+```
+
+## Plugin Commands
+
+### `ashep plugin-install <path-or-url>`
+
+Install a plugin from a local path or git repository URL.
+
+**Usage:**
+```bash
+ashep plugin-install /path/to/plugin-directory
+ashep plugin-install https://github.com/user/plugin-repo.git
+```
+
+**Behavior:**
+- Copies local plugin directory to `.agent-shepherd/plugins/`
+- Clones git repositories for remote plugins
+- Validates plugin structure after installation
+- Plugins are activated automatically on next CLI startup
+
+### `ashep plugin-activate <plugin-name>`
+
+Activate an installed plugin.
+
+**Usage:**
+```bash
+ashep plugin-activate my-plugin
+```
+
+**Behavior:**
+- Marks plugin as active for loading
+- Commands become available immediately (restart may be required)
+
+### `ashep plugin-deactivate <plugin-name>`
+
+Deactivate an installed plugin.
+
+**Usage:**
+```bash
+ashep plugin-deactivate my-plugin
+```
+
+**Behavior:**
+- Marks plugin as inactive
+- Commands are unloaded on next CLI startup
+
+### `ashep plugin-remove <plugin-name>`
+
+Completely remove an installed plugin.
+
+**Usage:**
+```bash
+ashep plugin-remove my-plugin
+```
+
+**Behavior:**
+- Deletes plugin directory from `.agent-shepherd/plugins/`
+- Commands are immediately unavailable
+
+### `ashep plugin-list`
+
+List all installed plugins and their status.
+
+**Usage:**
+```bash
+ashep plugin-list
+```
+
+**Output:**
+```
+Installed plugins:
+  openspec: ✅ Active
+    Integration tools for OpenSpec proposals and Beads task management
+  my-plugin: ❌ Invalid
+    Plugin has configuration issues
 ```
 
 ## Configuration Files

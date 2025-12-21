@@ -229,11 +229,17 @@ function cmdInit(): void {
     configDir = join(process.cwd(), ".agent-shepherd");
   }
   const configSubDir = join(configDir, "config");
+  const pluginsDir = join(configDir, "plugins");
 
-  // Create directory if it doesn't exist
+  // Create directories if they don't exist
   if (!existsSync(configSubDir)) {
     mkdirSync(configSubDir, { recursive: true });
     console.log(`Created directory: ${configSubDir}`);
+  }
+
+  if (!existsSync(pluginsDir)) {
+    mkdirSync(pluginsDir, { recursive: true });
+    console.log(`Created directory: ${pluginsDir}`);
   }
 
   // Create default policies.yaml
