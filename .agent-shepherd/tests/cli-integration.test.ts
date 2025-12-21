@@ -123,11 +123,12 @@ agents:
       expect(output).toContain('Initializing Agent Shepherd');
       expect(output).toContain('complete');
       
-      // Check if config files were created
-      const newConfigDir = join(newTempDir, '.agent-shepherd');
-      expect(existsSync(join(newConfigDir, 'config.yaml'))).toBe(true);
-      expect(existsSync(join(newConfigDir, 'policies.yaml'))).toBe(true);
-      expect(existsSync(join(newConfigDir, 'agents.yaml'))).toBe(true);
+       // Check if config files were created
+       const newConfigDir = join(newTempDir, '.agent-shepherd');
+       const configSubDir = join(newConfigDir, 'config');
+       expect(existsSync(join(configSubDir, 'config.yaml'))).toBe(true);
+       expect(existsSync(join(configSubDir, 'policies.yaml'))).toBe(true);
+       expect(existsSync(join(configSubDir, 'agents.yaml'))).toBe(true);
       
       rmSync(newTempDir, { recursive: true, force: true });
     });

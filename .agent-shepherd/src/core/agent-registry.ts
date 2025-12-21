@@ -5,7 +5,6 @@
 
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml";
 import { readFileSync, writeFileSync } from "fs";
-import { join } from "path";
 import { getConfigPath } from "./path-utils";
 
 export interface AgentConfig {

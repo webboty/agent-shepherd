@@ -38301,12 +38301,7 @@ class MonitorEngine {
     if (!run.session_id) {
       return false;
     }
-    try {
-      return false;
-    } catch (error) {
-      console.error(`Error detecting takeover for run ${run.id}:`, error);
-      return false;
-    }
+    return false;
   }
   async detectHITL(run) {
     if (run.outcome?.requires_approval) {
@@ -38489,12 +38484,18 @@ Result:`);
 }
 function cmdInit() {
   console.log("Initializing Agent Shepherd configuration...");
-  const configDir = join6(process.cwd(), ".agent-shepherd");
-  if (!existsSync5(configDir)) {
-    mkdirSync2(configDir, { recursive: true });
-    console.log(`Created directory: ${configDir}`);
+  let configDir;
+  try {
+    configDir = findAgentShepherdDir();
+  } catch {
+    configDir = join6(process.cwd(), ".agent-shepherd");
   }
-  const policiesPath = join6(configDir, "policies.yaml");
+  const configSubDir = join6(configDir, "config");
+  if (!existsSync5(configSubDir)) {
+    mkdirSync2(configSubDir, { recursive: true });
+    console.log(`Created directory: ${configSubDir}`);
+  }
+  const policiesPath = join6(configSubDir, "policies.yaml");
   if (!existsSync5(policiesPath)) {
     const defaultPolicies = `policies:
   default:
@@ -38547,7 +38548,7 @@ default_policy: default
   } else {
     console.log(`Skipped (exists): ${policiesPath}`);
   }
-  const agentsPath = join6(configDir, "agents.yaml");
+  const agentsPath = join6(configSubDir, "agents.yaml");
   if (!existsSync5(agentsPath)) {
     const defaultAgents = `version: "1.0"
 agents:
@@ -38594,7 +38595,7 @@ agents:
   } else {
     console.log(`Skipped (exists): ${agentsPath}`);
   }
-  const configPath = join6(configDir, "config.yaml");
+  const configPath = join6(configSubDir, "config.yaml");
   if (!existsSync5(configPath)) {
     const defaultConfig = `version: "1.0"
 
@@ -38638,7 +38639,7 @@ async function cmdInstall() {
   }
   console.log(`\u2713 Bun ${Bun.version} is installed`);
   try {
-    const configDir = findAgentShepherdDir();
+    findAgentShepherdDir();
     console.log("\u2713 Configuration directory exists");
   } catch {
     console.log("\u2717 Configuration directory NOT found");

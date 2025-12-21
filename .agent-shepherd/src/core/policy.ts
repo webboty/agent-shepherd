@@ -5,7 +5,6 @@
 
 import { parse as parseYAML } from "yaml";
 import { readFileSync } from "fs";
-import { join } from "path";
 import { getConfigPath } from "./path-utils";
 
 export interface PhaseConfig {

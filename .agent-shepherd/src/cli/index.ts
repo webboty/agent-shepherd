@@ -132,16 +132,23 @@ async function cmdWork(issueId: string): Promise<void> {
 function cmdInit(): void {
   console.log("Initializing Agent Shepherd configuration...");
 
-  const configDir = join(process.cwd(), ".agent-shepherd");
+  let configDir: string;
+  try {
+    configDir = findAgentShepherdDir();
+  } catch {
+    // No existing .agent-shepherd found, create in current directory
+    configDir = join(process.cwd(), ".agent-shepherd");
+  }
+  const configSubDir = join(configDir, "config");
 
   // Create directory if it doesn't exist
-  if (!existsSync(configDir)) {
-    mkdirSync(configDir, { recursive: true });
-    console.log(`Created directory: ${configDir}`);
+  if (!existsSync(configSubDir)) {
+    mkdirSync(configSubDir, { recursive: true });
+    console.log(`Created directory: ${configSubDir}`);
   }
 
   // Create default policies.yaml
-  const policiesPath = join(configDir, "policies.yaml");
+  const policiesPath = join(configSubDir, "policies.yaml");
   if (!existsSync(policiesPath)) {
     const defaultPolicies = `policies:
   default:
@@ -196,7 +203,7 @@ default_policy: default
   }
 
   // Create default agents.yaml
-  const agentsPath = join(configDir, "agents.yaml");
+  const agentsPath = join(configSubDir, "agents.yaml");
   if (!existsSync(agentsPath)) {
     const defaultAgents = `version: "1.0"
 agents:
@@ -245,7 +252,7 @@ agents:
   }
 
   // Create default config.yaml
-  const configPath = join(configDir, "config.yaml");
+  const configPath = join(configSubDir, "config.yaml");
   if (!existsSync(configPath)) {
     const defaultConfig = `version: "1.0"
 
@@ -301,7 +308,7 @@ async function cmdInstall(): Promise<void> {
 
   // Check configuration
   try {
-    const configDir = findAgentShepherdDir();
+    findAgentShepherdDir();
     console.log("✓ Configuration directory exists");
   } catch {
     console.log("✗ Configuration directory NOT found");

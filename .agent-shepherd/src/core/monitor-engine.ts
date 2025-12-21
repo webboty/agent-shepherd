@@ -120,6 +120,7 @@ export class MonitorEngine {
   /**
    * Detect if a run has stalled
    */
+  // eslint-disable-next-line no-unused-vars
   private async detectStall(_run: RunRecord): Promise<boolean> {
     // CLI execution completes synchronously, so runs don't stall
     return false;
@@ -147,14 +148,9 @@ export class MonitorEngine {
       return false;
     }
 
-    try {
-      // CLI execution doesn't support real-time human intervention detection
-      // For now, return false
-      return false;
-    } catch (error) {
-      console.error(`Error detecting takeover for run ${run.id}:`, error);
-      return false;
-    }
+    // CLI execution doesn't support real-time human intervention detection
+    // For now, return false
+    return false;
   }
 
   /**

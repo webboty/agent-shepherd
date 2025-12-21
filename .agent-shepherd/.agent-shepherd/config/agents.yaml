@@ -1,0 +1,39 @@
+version: "1.0"
+agents:
+  - id: default-coder
+    name: Default Coding Agent
+    description: General-purpose coding agent
+    capabilities:
+      - coding
+      - refactoring
+      - planning
+      - architecture
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 10
+    constraints:
+      performance_tier: balanced
+  
+  - id: test-specialist
+    name: Testing Specialist
+    description: Agent specialized in testing
+    capabilities:
+      - testing
+      - qa
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 15
+    constraints:
+      performance_tier: fast
+  
+  - id: reviewer
+    name: Code Reviewer
+    description: Agent for code review and documentation
+    capabilities:
+      - review
+      - documentation
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 10
+    constraints:
+      performance_tier: balanced
