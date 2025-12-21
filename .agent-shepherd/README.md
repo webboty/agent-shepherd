@@ -28,30 +28,32 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 git clone <repository-url>
 cd agent-shepherd
 
-# Install dependencies
+# Install dependencies and link globally
 bun install
+bun link
 
-# Initialize configuration
-bun run ashep init
+# Initialize configuration (run from your project directory)
+cd /path/to/your/project
+ashep init
 
 # Check dependencies
-bun run ashep install
+ashep install
 ```
 
 ### Basic Usage
 
 ```bash
 # Start autonomous issue processing
-bun run ashep worker
+ashep worker
 
 # Start monitoring in another terminal
-bun run ashep monitor
+ashep monitor
 
 # Process a specific issue
-bun run ashep work ISSUE-123
+ashep work ISSUE-123
 
 # View workflow visualization
-bun run ashep ui
+ashep ui
 ```
 
 ## Architecture
@@ -145,6 +147,7 @@ For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.m
 
 ```bash
 bun run build
+bun link  # Make globally available for development
 ```
 
 ### Testing
@@ -243,7 +246,7 @@ Agent execution instances with:
 **"Configuration validation failed"**
 ```bash
 ashep init  # Reinitialize configuration
-# Check YAML syntax in .agent-shepherd/ files
+# Check YAML syntax in .agent-shepherd/config/ files
 ```
 
 **"Beads not installed"**
