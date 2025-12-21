@@ -8,6 +8,32 @@ The `agents.yaml` file defines the available agents that Agent Shepherd can use 
 .agent-shepherd/config/agents.yaml
 ```
 
+## Validation
+
+Agent Shepherd validates agent configurations and their relationships with policies:
+
+### Capability Coverage
+
+Ensure all policy-required capabilities have active agents:
+
+```bash
+ashep validate-policy-chain
+```
+
+### Relationship Visualization
+
+View how agents relate to policy capabilities:
+
+```bash
+ashep show-policy-tree
+```
+
+This shows:
+- Which agents can fulfill each capability
+- Agent status (active/inactive)
+- Capability coverage gaps
+- Single points of failure
+
 ## Structure
 
 ```yaml

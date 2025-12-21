@@ -13,33 +13,39 @@ Agent Shepherd is a sophisticated orchestration system designed to coordinate AI
 │   Beads Issues  │    │ Agent Registry  │    │ OpenCode Agents │
 │   (Issue Pool)  │    │ (Capability DB) │    │   (Execution)   │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────────┐
-                    │  Policy Engine      │
-                    │ (Workflow Rules)    │
-                    └─────────────────────┘
-                                 │
-                    ┌─────────────────────┐
-                    │  Worker Engine      │
-                    │ (Issue Processing)  │
-                    └─────────────────────┘
-                                 │
-                    ┌─────────────────────┐
-                    │  Monitor Engine     │
-                    │ (Supervision)       │
-                    └─────────────────────┘
-                                 │
-                    ┌─────────────────────┐
-                    │  Logging System     │
-                    │ (Audit Trail)       │
-                    └─────────────────────┘
-                                 │
-                    ┌─────────────────────┐
-                    │  UI Layer           │
-                    │ (Visualization)     │
-                    └─────────────────────┘
+          │                       │                       │
+          └───────────────────────┼───────────────────────┘
+                                  │
+                     ┌─────────────────────┐
+                     │  Policy Engine      │
+                     │ (Workflow Rules)    │
+                     └─────────────────────┘
+                                  │
+                     ┌─────────────────────┐
+                     │ Policy Capability   │
+                     │ Validator           │
+                     │ (Chain Integrity)   │
+                     └─────────────────────┘
+                                  │
+                     ┌─────────────────────┐
+                     │  Worker Engine      │
+                     │ (Issue Processing)  │
+                     └─────────────────────┘
+                                  │
+                     ┌─────────────────────┐
+                     │  Monitor Engine     │
+                     │ (Supervision)       │
+                     └─────────────────────┘
+                                  │
+                     ┌─────────────────────┐
+                     │  Logging System     │
+                     │ (Audit Trail)       │
+                     └─────────────────────┘
+                                  │
+                     ┌─────────────────────┐
+                     │  UI Layer           │
+                     │ (Visualization)     │
+                     └─────────────────────┘
 ```
 
 ### Data Flow
@@ -76,6 +82,24 @@ Agents are selected based on:
 - Agent priority scores
 - Performance tier preferences
 - Availability status
+
+### Chain Validation System
+
+The Policy Capability Validator ensures workflow integrity by validating the complete policy → capability → agent relationship chain:
+
+- **Dead End Detection**: Identifies capabilities without agents and policies without valid execution paths
+- **Health Monitoring**: Tracks relationship health with status indicators (valid/warning/error)
+- **Startup Validation**: Runs automatically during system startup to prevent broken configurations
+- **Visual Diagnostics**: Tree visualization shows relationship status and identifies issues
+
+### Tree Visualization
+
+The Policy Tree Visualizer provides hierarchical views of relationships:
+
+- **ASCII Tree**: Human-readable tree with status icons and metadata
+- **JSON Export**: Programmatic access for tools and integrations
+- **Status Indicators**: Visual cues for relationship health
+- **Summary Statistics**: Overview of chain health and issue counts
 
 ### Human-in-the-Loop (HITL)
 

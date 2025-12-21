@@ -213,6 +213,89 @@ Synced agents include metadata about their type and automatically assigned capab
 - **Subagents**: explore, general
 - **Custom agents**: Any user-defined agents in `.opencode/agent/`
 
+### `ashep validate-policy-chain`
+
+Validate the policy-capability-agent chain integrity to ensure all workflow requirements can be fulfilled.
+
+**Usage:**
+```bash
+ashep validate-policy-chain
+```
+
+**Behavior:**
+- Validates that all policy phases reference existing capabilities
+- Ensures capabilities have active agents available
+- Detects dead ends (capabilities without agents, policies without valid execution paths)
+- Reports warnings for single points of failure (capabilities with only one agent)
+- Provides detailed error messages with location information and fix suggestions
+
+**Output:**
+```
+🔍 Validating policy-capability-agent chain...
+✅ All policy-capability-agent chains are valid
+```
+
+**Error Output:**
+```
+❌ Validation failed: 2 errors, 1 warning found
+• policies.yaml: default.test: Capability 'testing' is not provided by any agent
+• policies.yaml: default.review: Capability 'review' has only one active agent
+```
+
+### `ashep show-policy-tree`
+
+Display a visual tree representation of policy-capability-agent relationships.
+
+**Usage:**
+```bash
+ashep show-policy-tree
+ashep show-policy-tree --format json
+```
+
+**Options:**
+- `--format json`: Output tree structure as JSON instead of ASCII art
+
+**Behavior:**
+- Shows hierarchical relationship between policies, phases, capabilities, and agents
+- Uses status indicators: ✅ (valid), ⚠️ (warning), ❌ (error), ⚪ (inactive)
+- Identifies dead ends and single points of failure
+- Provides summary statistics of the relationship chain
+- ASCII format shows tree structure with icons and metadata
+- JSON format suitable for programmatic processing or external tools
+
+**Output:**
+```
+Policy-Capability-Agent Tree
+===========================
+
+└── 📋 default
+    ├── 🔄 plan
+    │   ├── 🎯 planning
+    │   │   ├── 🤖 General Agent
+    │   │   └── 🤖 Planning Agent
+    │   └── ⚠️🎯 architecture
+    │       └── 🤖 Planning Agent (only one agent!)
+    ├── 🔄 implement
+    │   ├── 🎯 coding
+    │   │   ├── 🤖 Build Agent
+    │   │   └── 🤖 General Agent
+    │   └── 🎯 refactoring
+    │       └── 🤖 Build Agent
+    └── ❌🔄 test
+        ├── ❌🎯 testing
+        │   └── ❌🤖 No agents available
+        └── ❌🎯 qa
+            └── ❌🤖 No agents available
+
+Summary:
+  Policies: 0/1 valid
+  Phases: 4
+  Capabilities: 6
+  Agents: 8
+  Issues: 1 warning, 2 errors
+  Dead end capabilities: testing, qa
+```
+
 ## Configuration Files
 
 For detailed configuration guides, see:

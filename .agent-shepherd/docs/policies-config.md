@@ -8,6 +8,32 @@ The `policies.yaml` file defines workflow policies that govern how Agent Shepher
 .agent-shepherd/config/policies.yaml
 ```
 
+## Validation
+
+Agent Shepherd includes comprehensive validation tools to ensure policy-capability-agent relationships are healthy:
+
+### Chain Validation
+
+Run validation to check the complete policy → capability → agent chain:
+
+```bash
+ashep validate-policy-chain
+```
+
+### Visual Inspection
+
+View the relationship tree to understand policy structure and identify issues:
+
+```bash
+ashep show-policy-tree
+```
+
+The tree shows:
+- **Status Indicators**: ✅ valid, ⚠️ warning, ❌ error, ⚪ inactive
+- **Dead End Detection**: Identifies capabilities without agents
+- **Single Points of Failure**: Warns about capabilities with only one agent
+- **Health Summary**: Overview statistics and issue counts
+
 ## Structure
 
 ```yaml

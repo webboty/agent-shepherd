@@ -8,6 +8,8 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 
 - **Intelligent Agent Selection**: Automatically matches issues to the best available AI agents based on capabilities and requirements
 - **Workflow Orchestration**: Manages complex development workflows with phases, retries, and human-in-the-loop approval
+- **Configuration Validation**: Validates policy-capability-agent relationships to prevent dead ends and ensure workflow integrity
+- **Visual Relationship Tree**: ASCII/JSON tree visualization showing policy-capability-agent mappings and health status
 - **Real-time Monitoring**: Supervises agent execution with stall detection and timeout management
 - **Flow Visualization**: Interactive ReactFlow UI showing workflow progress and agent assignments
 - **Configuration Management**: YAML-based configuration with JSON schema validation
@@ -54,6 +56,12 @@ ashep work ISSUE-123
 
 # View workflow visualization
 ashep ui
+
+# Validate policy-capability-agent relationships
+ashep validate-policy-chain
+
+# Show relationship tree
+ashep show-policy-tree
 ```
 
 ## Architecture
@@ -201,37 +209,49 @@ policies:
 default_policy: default
 ```
 
-### Agent Registry (`config/agents.yaml`)
+## Policy-Capability-Agent Validation
 
-Agent Shepherd automatically syncs with OpenCode using `ashep sync-agents`:
+Agent Shepherd includes comprehensive validation tools to ensure workflow integrity:
 
-```yaml
-version: "1.0"
-agents:
-  - id: build
-    name: "Build Agent"
-    description: "Handles code building and compilation tasks"
-    capabilities: [coding, refactoring, building]
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
-    priority: 15
-    constraints:
-      performance_tier: balanced
-    metadata:
-      agent_type: primary  # primary or subagent classification
+### Chain Validation
 
-  - id: plan
-    name: "Planning Agent"
-    description: "Handles planning and architecture design"
-    capabilities: [planning, architecture, analysis]
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
-    priority: 12
-    constraints:
-      performance_tier: balanced
-    metadata:
-      agent_type: primary
+Validate that all policies can execute by checking the complete policy → capability → agent chain:
+
+```bash
+ashep validate-policy-chain
 ```
+
+This command:
+- ✅ Verifies all policy phases reference valid capabilities
+- ✅ Ensures capabilities have active agents available
+- ⚠️ Warns about single points of failure (capabilities with only one agent)
+- ❌ Detects dead ends (capabilities without agents, policies without valid paths)
+- 📍 Provides detailed location information and fix suggestions
+
+### Relationship Visualization
+
+View the complete relationship tree between policies, capabilities, and agents:
+
+```bash
+# ASCII tree view
+ashep show-policy-tree
+
+# JSON export for tools
+ashep show-policy-tree --format json
+```
+
+The tree visualization shows:
+- 📋 Policies with status indicators
+- 🔄 Phases within policies
+- 🎯 Capabilities required by phases
+- 🤖 Agents that can fulfill capabilities
+- Status: ✅ valid, ⚠️ warning, ❌ error, ⚪ inactive
+
+### Integration
+
+- **Startup Validation**: Policy chain validation runs automatically during `ashep worker` startup
+- **Configuration Checks**: Prevents execution with broken relationships
+- **Issue Prevention**: Catches configuration problems before they cause runtime failures
 
 ## CLI Commands
 
@@ -249,6 +269,8 @@ For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.m
 - **`ashep init`** - Initialize configuration directory
 - **`ashep install`** - Check system dependencies
 - **`ashep sync-agents`** - Sync agent registry with OpenCode
+- **`ashep validate-policy-chain`** - Validate policy-capability-agent relationships
+- **`ashep show-policy-tree`** - Display relationship tree visualization
 - **`ashep help`** - Show all available commands
 
 ## Development
@@ -288,6 +310,8 @@ src/
 │   ├── opencode.ts        # OpenCode integration
 │   ├── path-utils.ts      # Path resolution utilities
 │   ├── policy.ts          # Policy engine
+│   ├── policy-capability-validator.ts # Chain validation
+│   ├── policy-tree-visualizer.ts # Relationship visualization
 │   └── worker-engine.ts   # Issue processing
 ├── ui/                    # ReactFlow visualization
 │   ├── ui-server.ts       # Express server for UI
