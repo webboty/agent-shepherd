@@ -404,7 +404,7 @@ export class AgentRegistry {
       if (!trimmed) continue;
 
       // Parse format: "agent-name (type)"
-      const match = trimmed.match(/^(\w+)\s+\((\w+)\)$/);
+      const match = trimmed.match(/^([\w-]+)\s+\((\w+)\)$/);
       if (match) {
         const [, agentId, agentType] = match;
         const config = this.createAgentConfig(agentId, agentType);

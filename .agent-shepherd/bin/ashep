@@ -7243,7 +7243,7 @@ class AgentRegistry {
       const trimmed = line.trim();
       if (!trimmed)
         continue;
-      const match = trimmed.match(/^(\w+)\s+\((\w+)\)$/);
+      const match = trimmed.match(/^([\w-]+)\s+\((\w+)\)$/);
       if (match) {
         const [, agentId, agentType] = match;
         const config = this.createAgentConfig(agentId, agentType);
@@ -37681,6 +37681,9 @@ class OpenCodeClient {
       "--title",
       config.title || "Agent Shepherd Run"
     ];
+    if (config.model) {
+      args.push("--model", config.model);
+    }
     if (config.message) {
       args.push(config.message);
     }

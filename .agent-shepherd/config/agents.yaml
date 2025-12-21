@@ -97,3 +97,15 @@ agents:
       performance_tier: fast
     metadata:
       agent_type: subagent
+  - id: openspec-planner
+    name: Openspec-planner Agent
+    description: Agent for openspec-planner tasks
+    capabilities:
+      - general
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 10
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: primary

@@ -7,6 +7,7 @@ export interface SessionConfig {
   directory?: string;
   title?: string;
   agent?: string;
+  model?: string;  // Optional model override in format "provider/model"
   message?: string;
 }
 
@@ -38,6 +39,11 @@ export class OpenCodeClient {
       "--format", "json",
       "--title", config.title || "Agent Shepherd Run",
     ];
+
+    // Add model override if specified
+    if (config.model) {
+      args.push("--model", config.model);
+    }
 
     if (config.message) {
       args.push(config.message);
