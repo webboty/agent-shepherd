@@ -3,10 +3,10 @@
 ## Overview
 This change proposal addresses the problem of scattered tool files in the project root by refactoring Agent Shepherd to use a clean `.agent-shepherd/` directory structure, following developer tool conventions like Git (.git/), VSCode (.vscode/), etc.
 
-## Problem Statement
+## Why
 The current implementation clutters the project root with tool files, violating conventions and creating a poor developer experience. Other tools maintain clean separation using hidden directories.
 
-## Solution
+## What Changes
 Refactor the file structure to consolidate all Agent Shepherd files under `.agent-shepherd/`, with subdirectories for config, bin, src, schemas, tests, docs.
 
 ## Impact
