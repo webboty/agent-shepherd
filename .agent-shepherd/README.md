@@ -70,6 +70,42 @@ Beads Issues → Worker Engine → Agent Registry → OpenCode Sessions
 
 ## Configuration
 
+## Agent Management
+
+### Agent Synchronization
+
+Agent Shepherd automatically discovers and configures OpenCode agents:
+
+```bash
+# Sync with OpenCode to discover new agents
+ashep sync-agents
+
+# View available agents
+cat .agent-shepherd/config/agents.yaml
+```
+
+**Supported Agent Name Formats**: Agent IDs can contain letters, numbers, underscores (`_`), and hyphens (`-`).
+
+### Model Override Capability
+
+Policies can override the default model specified in OpenCode agent configuration:
+
+```yaml
+# Example policy with model override
+phases:
+  - name: complex-planning
+    capabilities: [planning, architecture]
+    # Override to use more capable model for complex tasks
+    model: anthropic/claude-3-5-sonnet-20241022
+
+  - name: simple-planning
+    capabilities: [planning]
+    # Use faster model for basic planning
+    model: anthropic/claude-3-5-haiku-20241022
+```
+
+This provides fine-grained control over cost, speed, and quality based on task requirements.
+
 Agent Shepherd uses YAML configuration files in the `.agent-shepherd/config/` directory:
 
 ### Main Configuration (`config/config.yaml`)
@@ -112,15 +148,34 @@ default_policy: default
 
 ### Agent Registry (`config/agents.yaml`)
 
+Agent Shepherd automatically syncs with OpenCode using `ashep sync-agents`:
+
 ```yaml
 version: "1.0"
 agents:
-  - id: default-coder
-    name: "Default Coding Agent"
-    capabilities: [coding, refactoring, planning]
+  - id: build
+    name: "Build Agent"
+    description: "Handles code building and compilation tasks"
+    capabilities: [coding, refactoring, building]
     provider_id: anthropic
     model_id: claude-3-5-sonnet-20241022
-    priority: 10
+    priority: 15
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: primary  # primary or subagent classification
+
+  - id: plan
+    name: "Planning Agent"
+    description: "Handles planning and architecture design"
+    capabilities: [planning, architecture, analysis]
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 12
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: primary
 ```
 
 ## CLI Commands
@@ -138,7 +193,7 @@ For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.m
 
 - **`ashep init`** - Initialize configuration directory
 - **`ashep install`** - Check system dependencies
-- **`ashep sync-agents`** - Update agent registry from OpenCode
+- **`ashep sync-agents`** - Sync agent registry with OpenCode
 - **`ashep help`** - Show all available commands
 
 ## Development
@@ -184,7 +239,7 @@ src/
 │   └── AgentShepherdFlow.tsx # ReactFlow component
 
 config/                    # User configuration files
-├── agents.yaml           # Agent registry
+├── agents.yaml           # Agent registry (auto-synced from OpenCode)
 ├── config.yaml           # Main configuration
 └── policies.yaml         # Workflow policies
 

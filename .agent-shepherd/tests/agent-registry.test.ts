@@ -150,6 +150,25 @@ agents:
       expect(typeof result.removed).toBe('number');
     });
 
+    it('should handle agent names with hyphens and underscores', () => {
+      const registry = agentRegistry as any;
+
+      const output = `build (primary)
+openspec-planner (primary)
+test_agent (subagent)
+complex-agent_name (primary)`;
+
+      const agents = registry.parseOpenCodeAgentList(output);
+
+      expect(agents).toHaveLength(4);
+      expect(agents[1].id).toBe('openspec-planner');
+      expect(agents[1].type).toBe('primary');
+      expect(agents[2].id).toBe('test_agent');
+      expect(agents[2].type).toBe('subagent');
+      expect(agents[3].id).toBe('complex-agent_name');
+      expect(agents[3].type).toBe('primary');
+    });
+
     it('should parse OpenCode agent list format', () => {
       // Test the parsing logic by calling the private method
       // This is a bit of a hack but allows us to test the core parsing logic

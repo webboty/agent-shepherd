@@ -183,7 +183,7 @@ Some dependencies are missing. Please install them.
 
 ### `ashep sync-agents`
 
-Update the agent registry from OpenCode.
+Sync the agent registry with OpenCode to discover available agents.
 
 **Usage:**
 ```bash
@@ -191,10 +191,11 @@ ashep sync-agents
 ```
 
 **Behavior:**
-- Queries OpenCode for available agents
-- Updates local `agents.yaml` with new/updated agents
-- Preserves existing agent configurations
-- Reports changes made
+- Runs `opencode agent list` to discover all available agents
+- Parses agent types (primary/subagent) and capabilities
+- Updates `.agent-shepherd/config/agents.yaml` with new agent configurations
+- Preserves existing agent customizations
+- Supports agent names with letters, numbers, underscores, and hyphens
 
 **Output:**
 ```
@@ -202,9 +203,15 @@ Syncing agents with OpenCode...
 
 Sync complete:
   Added: 3
-  Updated: 2
+  Updated: 0
   Removed: 1
 ```
+
+**Agent Configuration:**
+Synced agents include metadata about their type and automatically assigned capabilities:
+- **Primary agents**: build, plan, summary, title, compaction
+- **Subagents**: explore, general
+- **Custom agents**: Any user-defined agents in `.opencode/agent/`
 
 ## Configuration Files
 
@@ -266,20 +273,58 @@ default_policy: default
 
 ### `.agent-shepherd/config/agents.yaml`
 
-Agent registry:
+Agent registry (automatically maintained by `ashep sync-agents`):
 
 ```yaml
 version: "1.0"
 agents:
-  - id: default-coder
-    name: "Default Coding Agent"
-    capabilities: [coding, refactoring, planning]
+  - id: build
+    name: "Build Agent"
+    description: "Handles code building and compilation tasks"
+    capabilities: [coding, refactoring, building]
     provider_id: anthropic
     model_id: claude-3-5-sonnet-20241022
-    priority: 10
+    priority: 15
     constraints:
       performance_tier: balanced
+    metadata:
+      agent_type: primary  # primary or subagent
+
+  - id: explore
+    name: "Exploration Agent"
+    description: "Handles code exploration and analysis"
+    capabilities: [exploration, analysis, discovery]
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 8
+    constraints:
+      performance_tier: fast
+    metadata:
+      agent_type: subagent
 ```
+
+## Model Override Support
+
+Agent Shepherd supports overriding the model specified in OpenCode agent configurations. This allows policies to use different models for the same agent based on task requirements.
+
+### Usage in Policies
+
+```yaml
+phases:
+  - name: complex-implementation
+    agent: build
+    model: anthropic/claude-3-5-sonnet-20241022  # High capability for complex tasks
+
+  - name: simple-refactoring
+    agent: build
+    model: anthropic/claude-3-5-haiku-20241022   # Fast and cost-effective for simple tasks
+```
+
+### Benefits
+
+- **Cost Optimization**: Use appropriate models for task complexity
+- **Performance Tuning**: Balance speed vs. capability
+- **Resource Management**: Match model requirements to task needs
 
 ## REST API
 
@@ -356,7 +401,8 @@ Get workflow phases.
 
 **"Configuration validation failed"**
 - Run `ashep init` to create missing config files
-- Check YAML syntax in configuration files
+- Run `ashep sync-agents` to ensure agent registry is up to date
+- Check YAML syntax in `.agent-shepherd/config/` files
 - Verify required fields are present
 
 **"Beads not installed"**
