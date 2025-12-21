@@ -6981,6 +6981,12 @@ var require_dist = __commonJS((exports) => {
 });
 
 // src/core/path-utils.ts
+var exports_path_utils = {};
+__export(exports_path_utils, {
+  getConfigPath: () => getConfigPath,
+  getConfigDir: () => getConfigDir,
+  findAgentShepherdDir: () => findAgentShepherdDir
+});
 import { existsSync } from "fs";
 import { join, dirname } from "path";
 function findAgentShepherdDir() {
@@ -13688,7 +13694,9 @@ class ConfigurationValidator {
     }
   }
   async validateAllConfigs(configDir) {
-    const baseDir = configDir || join3(process.cwd(), ".agent-shepherd");
+    const { getConfigDir: getConfigDir2, findAgentShepherdDir: findAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+    const baseDir = configDir || getConfigDir2();
+    const agentShepherdDir = findAgentShepherdDir2();
     const results = [];
     const validationTasks = [
       {
@@ -13709,7 +13717,7 @@ class ConfigurationValidator {
     ];
     for (const task of validationTasks) {
       const configPath = join3(baseDir, task.config);
-      const schemaPath = join3(process.cwd(), task.schema);
+      const schemaPath = join3(agentShepherdDir, task.schema);
       if (!existsSync3(configPath)) {
         results.push({
           valid: false,
