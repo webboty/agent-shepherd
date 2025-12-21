@@ -38331,12 +38331,24 @@ class WorkerEngine {
     if (!agent) {
       throw new Error(`Agent ${agentId} not found in registry`);
     }
+    const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
+    let modelToUse;
+    if (phaseConfig?.model) {
+      modelToUse = phaseConfig.model;
+      console.log(`Using phase-specified model: ${modelToUse}`);
+    } else if (agent.model_id) {
+      modelToUse = agent.provider_id ? `${agent.provider_id}/${agent.model_id}` : agent.model_id;
+      console.log(`Using agent-configured model: ${modelToUse}`);
+    } else {
+      console.log(`Using OpenCode agent default model`);
+    }
     const instructions = this.buildInstructions(issue, phase, policy);
     console.log(`Running agent ${agentId} with OpenCode CLI...`);
     const result = await this.opencode.runAgentCLI({
       directory: process.cwd(),
       title: `${issue.id}: ${issue.title}`,
       agent: agentId,
+      model: modelToUse,
       message: instructions
     });
     if (!result.success) {

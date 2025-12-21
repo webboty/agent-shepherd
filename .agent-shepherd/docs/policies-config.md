@@ -130,6 +130,13 @@ policies:
 **Values**: Must match an `id` from `agents.yaml`
 
 #### `model` (string)
+**Required**: No (uses agent or OpenCode default)  
+**Purpose**: Model override for this specific phase  
+**Impact**: Provides fine-grained control over AI model selection per task  
+**Values**: Format `"provider/model"` (e.g., `"anthropic/claude-3-5-sonnet-20241022"`)  
+**Priority**: Phase model > Agent model > OpenCode agent default
+
+#### `model` (string)
 **Required**: No (uses agent's default)  
 **Purpose**: Override the model for this specific phase  
 **Impact**: Allows fine-tuning model selection per task type  
@@ -181,9 +188,41 @@ policies:
 1. **Trigger Matching**: Issue labels matched against policy triggers
 2. **Phase Sequencing**: Phases executed in order, respecting dependencies
 3. **Agent Selection**: Best agent chosen based on capabilities and constraints
-4. **Model Override**: Specified model used if provided
+4. **Model Resolution**: Model determined by priority hierarchy (Phase > Agent > OpenCode)
 5. **Iteration Control**: Phases can iterate until success or max_iterations reached
 6. **Dependency Resolution**: Dependent phases wait for prerequisites
+
+## Model Priority Hierarchy
+
+Agent Shepherd resolves models using this priority order:
+
+### 1. **Phase-Level Override** (Highest Priority)
+```yaml
+phases:
+  - name: complex-analysis
+    agent: plan
+    model: anthropic/claude-3-5-sonnet-20241022  # Explicit phase override
+```
+
+### 2. **Agent-Level Configuration**
+```yaml
+agents:
+  - id: plan
+    name: "Planning Agent"
+    model_id: claude-3-5-haiku-20241022  # Agent default
+    provider_id: anthropic
+```
+
+### 3. **OpenCode Agent Default** (Fallback)
+- Uses whatever model is configured in OpenCode for that agent
+- No override specified in Agent Shepherd configuration
+
+### Priority Benefits
+
+- **Task-Specific Optimization**: Use expensive models only where needed
+- **Cost Control**: Match model cost to task complexity
+- **Performance Tuning**: Balance speed vs. capability per phase
+- **Flexibility**: Override models without changing agent definitions
 
 ## Advanced Examples
 
@@ -257,9 +296,34 @@ policies:
       capabilities: ["coding"]
       depends_on: ["triage"]
       agent: "fast-coder"
-      model: "anthropic/claude-3-5-haiku-20241022"  # Fast model for simple fixes
+      # No model specified - uses agent default or OpenCode default
       max_iterations: 2
       success_criteria: ["code compiles", "basic functionality works"]
+```
+
+### Model Override Priority Example
+```yaml
+- id: "complex-development"
+  name: "Complex Feature Development"
+  trigger:
+    type: "issue"
+    patterns: ["feature", "complex"]
+  phases:
+    - name: "analysis"
+      description: "Analyze requirements"
+      capabilities: ["analysis", "planning"]
+      agent: "plan"
+      model: "anthropic/claude-3-5-haiku-20241022"  # Fast analysis (phase override)
+    - name: "implementation"
+      description: "Implement complex feature"
+      capabilities: ["coding", "architecture"]
+      agent: "build"
+      model: "anthropic/claude-3-5-sonnet-20241022"  # High capability for complex work
+    - name: "review"
+      description: "Review implementation"
+      capabilities: ["review"]
+      agent: "code-reviewer"
+      # Uses agent-configured model (if specified) or OpenCode default
 ```
 
 ## Policy Selection Logic

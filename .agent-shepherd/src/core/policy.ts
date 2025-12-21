@@ -11,6 +11,8 @@ export interface PhaseConfig {
   name: string;
   description?: string;
   capabilities?: string[];
+  agent?: string;  // Specific agent to use for this phase
+  model?: string;  // Model override in format "provider/model"
   timeout_multiplier?: number;
   require_approval?: boolean;
 }

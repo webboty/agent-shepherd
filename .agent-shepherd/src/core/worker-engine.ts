@@ -237,18 +237,37 @@ export class WorkerEngine {
       throw new Error(`Agent ${agentId} not found in registry`);
     }
 
+    // Get phase configuration to check for model override
+    const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
+
+    // Determine model to use (priority: Phase > Agent > OpenCode default)
+    let modelToUse: string | undefined;
+    if (phaseConfig?.model) {
+      // Phase-level model override (highest priority)
+      modelToUse = phaseConfig.model;
+      console.log(`Using phase-specified model: ${modelToUse}`);
+    } else if (agent.model_id) {
+      // Agent-level model configuration
+      modelToUse = agent.provider_id ? `${agent.provider_id}/${agent.model_id}` : agent.model_id;
+      console.log(`Using agent-configured model: ${modelToUse}`);
+    } else {
+      // OpenCode agent default (no override)
+      console.log(`Using OpenCode agent default model`);
+    }
+
     // Prepare instructions for the agent
     const instructions = this.buildInstructions(issue, phase, policy);
 
     console.log(`Running agent ${agentId} with OpenCode CLI...`);
 
     // Run agent using OpenCode CLI
-  const result = await this.opencode.runAgentCLI({
-    directory: process.cwd(),
-    title: `${issue.id}: ${issue.title}`,
-    agent: agentId,
-    message: instructions,
-  });
+    const result = await this.opencode.runAgentCLI({
+      directory: process.cwd(),
+      title: `${issue.id}: ${issue.title}`,
+      agent: agentId,
+      model: modelToUse,
+      message: instructions,
+    });
 
     if (!result.success) {
       console.error(`Agent execution failed: ${result.error}`);
