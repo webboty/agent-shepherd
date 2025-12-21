@@ -7,6 +7,7 @@
 import { getWorkerEngine } from "../core/worker-engine.ts";
 import { getMonitorEngine } from "../core/monitor-engine.ts";
 import { getIssue } from "../core/beads.ts";
+import { findAgentShepherdDir } from "../core/path-utils.ts";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 
@@ -299,10 +300,10 @@ async function cmdInstall(): Promise<void> {
   console.log(`✓ Bun ${Bun.version} is installed`);
 
   // Check configuration
-  const configDir = join(process.cwd(), ".agent-shepherd");
-  if (existsSync(configDir)) {
+  try {
+    const configDir = findAgentShepherdDir();
     console.log("✓ Configuration directory exists");
-  } else {
+  } catch {
     console.log("✗ Configuration directory NOT found");
     console.log("  Run: ashep init");
     allGood = false;

@@ -1,6 +1,7 @@
 import { parse as parseYAML } from "yaml";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
+import { getConfigPath } from "./path-utils";
 
 export interface UIConfig {
   port: number;
@@ -25,7 +26,9 @@ export interface AgentShepherdConfig {
  * Load configuration from .agent-shepherd/config.yaml
  */
 export function loadConfig(configDir?: string): AgentShepherdConfig {
-  const configPath = join(configDir || process.cwd(), ".agent-shepherd", "config.yaml");
+  const configPath = configDir
+    ? join(configDir, ".agent-shepherd", "config.yaml")
+    : getConfigPath("config.yaml");
   
   if (!existsSync(configPath)) {
     throw new Error(`Configuration file not found: ${configPath}`);

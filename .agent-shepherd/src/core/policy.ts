@@ -6,6 +6,7 @@
 import { parse as parseYAML } from "yaml";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { getConfigPath } from "./path-utils";
 
 export interface PhaseConfig {
   name: string;
@@ -321,8 +322,7 @@ let defaultPolicyEngine: PolicyEngine | null = null;
 
 export function getPolicyEngine(configPath?: string): PolicyEngine {
   if (!defaultPolicyEngine) {
-    const defaultPath =
-      configPath || join(process.cwd(), ".agent-shepherd", "policies.yaml");
+    const defaultPath = configPath || getConfigPath("policies.yaml");
     defaultPolicyEngine = new PolicyEngine(defaultPath);
   }
   return defaultPolicyEngine;

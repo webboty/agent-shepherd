@@ -6,6 +6,7 @@
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml";
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { getConfigPath } from "./path-utils";
 
 export interface AgentConfig {
   id: string;
@@ -47,8 +48,7 @@ export class AgentRegistry {
 
   constructor(configPath?: string) {
     this.agents = new Map();
-    this.configPath =
-      configPath || join(process.cwd(), ".agent-shepherd", "agents.yaml");
+    this.configPath = configPath || getConfigPath("agents.yaml");
 
     // Try to load agents if config exists
     try {

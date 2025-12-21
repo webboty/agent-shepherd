@@ -4,12 +4,12 @@
   "description": "Orchestration system for AI coding agents across Beads issues using OpenCode",
   "type": "module",
   "bin": {
-    "ashep": "./dist/cli/index.js"
+    "ashep": "./bin/ashep"
   },
   "scripts": {
-    "build": "bun build src/cli/index.ts --outdir dist/cli --target bun --format esm",
+    "build": "bun build src/cli/index.ts --outfile bin/ashep --target bun --format esm",
     "dev": "bun run src/cli/index.ts",
-    "test": "bun test",
+    "test": "bun test tests/",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit"
   },

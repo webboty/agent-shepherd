@@ -6,44 +6,40 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 
-// Simple CLI function test that imports CLI directly
+// Run CLI command by spawning the built binary
 async function runCLICommand(command: string, args: string[] = [], cwd?: string): Promise<string[]> {
-  const originalProcessArgv = process.argv;
-  const originalCwd = process.cwd();
-  
-  // Mock process arguments
-  process.argv = ['bun', 'src/cli/index.ts', command, ...args];
-  
-  // Change to test directory if provided
-  if (cwd) {
-    process.chdir(cwd);
-  }
-  
-  // Capture console output
+  const { spawn } = await import('child_process');
+
+  const cliPath = join(__dirname, '..', 'bin', 'ashep');
+  const proc = spawn(cliPath, [command, ...args], {
+    cwd: cwd || process.cwd(),
+    stdio: 'pipe',
+    env: { ...process.env, NODE_ENV: 'test' }
+  });
+
   const outputs: string[] = [];
-  const originalConsoleLog = console.log;
-  const originalConsoleError = console.error;
-  const originalProcessExit = process.exit;
-  
-  let exitCode = 0;
-  console.log = (...args: any[]) => outputs.push(args.join(' '));
-  console.error = (...args: any[]) => outputs.push(args.join(' '));
-  process.exit = (code?: number) => {
-    exitCode = code || 0;
-    throw new Error(`Exit with code ${exitCode}`);
-  };
-  
-  try {
-    await import('../src/cli/index.ts');
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('Exit with code')) {
-      // Expected exit
-    } else {
-      throw error;
-    }
-  }
-  
-  return outputs;
+  let stdout = '';
+  let stderr = '';
+
+  return new Promise((resolve, reject) => {
+    proc.stdout?.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr?.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      if (code !== 0 && code !== undefined) {
+        outputs.push(stderr);
+      }
+      outputs.push(stdout);
+      resolve(outputs);
+    });
+
+    proc.on('error', reject);
+  });
 }
 
 describe('CLI Integration Tests', () => {
@@ -117,7 +113,8 @@ agents:
 
   describe('Init Command', () => {
     it('should create configuration directory', async () => {
-      const newTempDir = join(process.cwd(), 'temp-init-test');
+      const { tmpdir } = await import('os');
+      const newTempDir = join(tmpdir(), 'agent-shepherd-init-test');
       mkdirSync(newTempDir, { recursive: true });
       
       const outputs = await runCLICommand('init', [], newTempDir);
@@ -153,16 +150,16 @@ agents:
     });
 
     it('should suggest installing missing dependencies', async () => {
-      // Mock missing .agent-shepherd directory
-      rmSync(configDir, { recursive: true });
-      
-      const outputs = await runCLICommand('install');
+      const { tmpdir } = await import('os');
+      const tempDir = join(tmpdir(), 'agent-shepherd-install-test');
+      mkdirSync(tempDir, { recursive: true });
+
+      const outputs = await runCLICommand('install', [], tempDir);
       const output = outputs.join(' ');
-      
+
       expect(output).toContain('Configuration directory NOT found');
-      
-      // Restore
-      mkdirSync(configDir, { recursive: true });
+
+      rmSync(tempDir, { recursive: true });
     });
   });
 
