@@ -2,7 +2,7 @@
  * Tests for Agent Registry
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { AgentRegistry } from '../src/core/agent-registry.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
@@ -130,6 +130,80 @@ agents:
         required_capabilities: ['non-existent']
       });
       expect(agent).toBeNull();
+    });
+  });
+
+  describe('OpenCode Sync', () => {
+    it('should have syncWithOpenCode method', async () => {
+      // Test that the method exists and can be called
+      // (Full integration test would require mocking OpenCode CLI)
+      expect(typeof agentRegistry.syncWithOpenCode).toBe('function');
+
+      // For now, we'll test the method signature and basic functionality
+      // A full test would require mocking the Bun.spawn functionality
+      const result = await agentRegistry.syncWithOpenCode();
+      expect(result).toHaveProperty('added');
+      expect(result).toHaveProperty('updated');
+      expect(result).toHaveProperty('removed');
+      expect(typeof result.added).toBe('number');
+      expect(typeof result.updated).toBe('number');
+      expect(typeof result.removed).toBe('number');
+    });
+
+    it('should parse OpenCode agent list format', () => {
+      // Test the parsing logic by calling the private method
+      // This is a bit of a hack but allows us to test the core parsing logic
+      const registry = agentRegistry as any; // Cast to any to access private method
+
+      const mockOutput = `build (primary)
+explore (subagent)
+general (subagent)
+plan (primary)`;
+
+      const agents = registry.parseOpenCodeAgentList(mockOutput);
+
+      expect(agents).toHaveLength(4);
+
+      // Check build agent
+      const buildAgent = agents.find((a: any) => a.id === 'build');
+      expect(buildAgent).toBeDefined();
+      expect(buildAgent.type).toBe('primary');
+      expect(buildAgent.config.metadata?.agent_type).toBe('primary');
+      expect(buildAgent.config.capabilities).toEqual(['coding', 'refactoring', 'building']);
+
+      // Check explore agent
+      const exploreAgent = agents.find((a: any) => a.id === 'explore');
+      expect(exploreAgent).toBeDefined();
+      expect(exploreAgent.type).toBe('subagent');
+      expect(exploreAgent.config.metadata?.agent_type).toBe('subagent');
+      expect(exploreAgent.config.capabilities).toEqual(['exploration', 'analysis', 'discovery']);
+    });
+
+    it('should handle malformed agent list output', () => {
+      const registry = agentRegistry as any;
+
+      const malformedOutput = `invalid format
+another invalid line
+build (primary)`;
+
+      const agents = registry.parseOpenCodeAgentList(malformedOutput);
+
+      // Should only parse the valid line
+      expect(agents).toHaveLength(1);
+      expect(agents[0].id).toBe('build');
+      expect(agents[0].type).toBe('primary');
+    });
+
+    it('should create agents with correct metadata', () => {
+      const registry = agentRegistry as any;
+
+      const config = registry.createAgentConfig('test-agent', 'subagent');
+
+      expect(config.id).toBe('test-agent');
+      expect(config.metadata?.agent_type).toBe('subagent');
+      expect(config.capabilities).toEqual(['general']); // Default for unknown agent
+      expect(config.priority).toBe(10);
+      expect(config.constraints?.performance_tier).toBe('balanced');
     });
   });
 });
