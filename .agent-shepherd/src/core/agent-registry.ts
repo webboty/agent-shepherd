@@ -395,9 +395,9 @@ export class AgentRegistry {
   /**
    * Parse OpenCode agent list output
    */
-  private parseOpenCodeAgentList(output: string): Array<{id: string, config: AgentConfig}> {
+  private parseOpenCodeAgentList(output: string): Array<{id: string, type: string, config: AgentConfig}> {
     const lines = output.trim().split('\n');
-    const agents: Array<{id: string, config: AgentConfig}> = [];
+    const agents: Array<{id: string, type: string, config: AgentConfig}> = [];
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -406,9 +406,9 @@ export class AgentRegistry {
       // Parse format: "agent-name (type)"
       const match = trimmed.match(/^(\w+)\s+\((\w+)\)$/);
       if (match) {
-        const [, agentId] = match;
-        const config = this.createAgentConfig(agentId);
-        agents.push({ id: agentId, config });
+        const [, agentId, agentType] = match;
+        const config = this.createAgentConfig(agentId, agentType);
+        agents.push({ id: agentId, type: agentType, config });
       }
     }
 
@@ -418,7 +418,7 @@ export class AgentRegistry {
   /**
    * Create agent config from OpenCode agent info
    */
-  private createAgentConfig(agentId: string): AgentConfig {
+  private createAgentConfig(agentId: string, agentType: string): AgentConfig {
     // Map agent IDs to capabilities and settings
     const agentMappings: Record<string, Partial<AgentConfig>> = {
       'build': {
@@ -488,7 +488,10 @@ export class AgentRegistry {
       provider_id: 'anthropic', // Default to Anthropic
       model_id: 'claude-3-5-sonnet-20241022', // Default model
       priority: mapping.priority!,
-      constraints: mapping.constraints!
+      constraints: mapping.constraints!,
+      metadata: {
+        agent_type: agentType // Store whether it's primary or subagent
+      }
     };
   }
 
@@ -502,6 +505,11 @@ export class AgentRegistry {
 
     // Check if priority changed
     if (existing.priority !== updated.priority) return true;
+
+    // Check if metadata changed (including agent_type)
+    const existingMetadata = existing.metadata || {};
+    const updatedMetadata = updated.metadata || {};
+    if (JSON.stringify(existingMetadata) !== JSON.stringify(updatedMetadata)) return true;
 
     return false;
   }

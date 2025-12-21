@@ -7245,14 +7245,14 @@ class AgentRegistry {
         continue;
       const match = trimmed.match(/^(\w+)\s+\((\w+)\)$/);
       if (match) {
-        const [, agentId] = match;
-        const config = this.createAgentConfig(agentId);
-        agents.push({ id: agentId, config });
+        const [, agentId, agentType] = match;
+        const config = this.createAgentConfig(agentId, agentType);
+        agents.push({ id: agentId, type: agentType, config });
       }
     }
     return agents;
   }
-  createAgentConfig(agentId) {
+  createAgentConfig(agentId, agentType) {
     const agentMappings = {
       build: {
         name: "Build Agent",
@@ -7319,7 +7319,10 @@ class AgentRegistry {
       provider_id: "anthropic",
       model_id: "claude-3-5-sonnet-20241022",
       priority: mapping.priority,
-      constraints: mapping.constraints
+      constraints: mapping.constraints,
+      metadata: {
+        agent_type: agentType
+      }
     };
   }
   needsUpdate(existing, updated) {
@@ -7328,6 +7331,10 @@ class AgentRegistry {
     if (!existing.capabilities.every((cap) => updated.capabilities.includes(cap)))
       return true;
     if (existing.priority !== updated.priority)
+      return true;
+    const existingMetadata = existing.metadata || {};
+    const updatedMetadata = updated.metadata || {};
+    if (JSON.stringify(existingMetadata) !== JSON.stringify(updatedMetadata))
       return true;
     return false;
   }

@@ -12,6 +12,8 @@ agents:
     priority: 15
     constraints:
       performance_tier: balanced
+    metadata:
+      agent_type: primary
   - id: compaction
     name: Compaction Agent
     description: Handles code compaction and optimization
@@ -24,18 +26,8 @@ agents:
     priority: 10
     constraints:
       performance_tier: balanced
-  - id: explore
-    name: Exploration Agent
-    description: Handles code exploration and analysis
-    capabilities:
-      - exploration
-      - analysis
-      - discovery
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
-    priority: 8
-    constraints:
-      performance_tier: fast
+    metadata:
+      agent_type: primary
   - id: general
     name: General Agent
     description: General purpose agent for various tasks
@@ -48,6 +40,8 @@ agents:
     priority: 10
     constraints:
       performance_tier: balanced
+    metadata:
+      agent_type: subagent
   - id: plan
     name: Planning Agent
     description: Handles planning and architecture design
@@ -60,6 +54,8 @@ agents:
     priority: 12
     constraints:
       performance_tier: balanced
+    metadata:
+      agent_type: primary
   - id: summary
     name: Summary Agent
     description: Handles summarization and documentation
@@ -72,6 +68,8 @@ agents:
     priority: 8
     constraints:
       performance_tier: fast
+    metadata:
+      agent_type: primary
   - id: title
     name: Title Agent
     description: Handles title generation and naming
@@ -83,3 +81,19 @@ agents:
     priority: 5
     constraints:
       performance_tier: fast
+    metadata:
+      agent_type: primary
+  - id: explore
+    name: Exploration Agent
+    description: Handles code exploration and analysis
+    capabilities:
+      - exploration
+      - analysis
+      - discovery
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 8
+    constraints:
+      performance_tier: fast
+    metadata:
+      agent_type: subagent
