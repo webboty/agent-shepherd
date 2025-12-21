@@ -1,0 +1,300 @@
+# Policy Configuration Reference
+
+The `policies.yaml` file defines workflow policies that govern how Agent Shepherd processes issues, from initial assessment through completion. Policies orchestrate agent selection, task breakdown, and quality control.
+
+## File Location
+
+```
+.agent-shepherd/config/policies.yaml
+```
+
+## Structure
+
+```yaml
+version: "1.0"
+policies:
+  - id: "default-workflow"
+    name: "Default Development Workflow"
+    description: "Standard workflow for code changes"
+    trigger:
+      type: "issue"
+      patterns: ["feature", "bug", "enhancement"]
+    phases:
+      - name: "analysis"
+        description: "Analyze the issue and plan approach"
+        capabilities: ["analysis", "planning"]
+        agent: "plan"
+        model: "anthropic/claude-3-5-haiku-20241022"
+        max_iterations: 3
+        success_criteria: ["clear plan documented"]
+      - name: "implementation"
+        description: "Implement the planned changes"
+        capabilities: ["coding", "refactoring"]
+        agent: "build"
+        model: "anthropic/claude-3-5-sonnet-20241022"
+        depends_on: ["analysis"]
+        max_iterations: 5
+        success_criteria: ["code compiles", "tests pass"]
+      - name: "review"
+        description: "Review and validate changes"
+        capabilities: ["review", "testing"]
+        agent: "code-reviewer"
+        depends_on: ["implementation"]
+        max_iterations: 2
+        success_criteria: ["review complete", "no critical issues"]
+```
+
+## Field Reference
+
+### `version` (string)
+**Required**: Yes  
+**Purpose**: Policy format version for compatibility  
+**Impact**: Ensures proper parsing of policy definitions  
+**Values**: Currently "1.0"
+
+### `policies` (array)
+**Required**: Yes  
+**Purpose**: List of all workflow policies  
+**Impact**: Defines available processing strategies for different issue types
+
+### Policy Object Fields
+
+#### `id` (string)
+**Required**: Yes  
+**Purpose**: Unique identifier for the policy  
+**Impact**: Referenced in issue processing to select workflow  
+**Values**: Letters, numbers, underscores, hyphens
+
+#### `name` (string)
+**Required**: Yes  
+**Purpose**: Human-readable policy name  
+**Impact**: Displayed in UI and logs for policy identification
+
+#### `description` (string)
+**Required**: No  
+**Purpose**: Detailed explanation of policy purpose and scope  
+**Impact**: Helps users understand when to apply each policy
+
+#### `trigger` (object)
+**Required**: Yes  
+**Purpose**: Conditions that activate this policy  
+**Impact**: Determines which issues use this workflow
+
+##### `type` (string)
+**Required**: Yes  
+**Purpose**: Type of trigger condition  
+**Impact**: Controls when policy is applied  
+**Values**:
+- `"issue"`: Standard issue-based triggering
+- `"manual"`: Requires explicit policy selection
+
+##### `patterns` (array of strings)
+**Required**: No (for type: "issue")  
+**Purpose**: Issue labels/tags that match this policy  
+**Impact**: Filters issues to appropriate workflows  
+**Values**: Issue labels like "bug", "feature", "enhancement", "urgent"
+
+##### `priority` (number)
+**Required**: No  
+**Purpose**: Policy selection priority when multiple match  
+**Impact**: Higher priority policies take precedence  
+**Values**: 1-100 (higher = more preferred)
+
+#### `phases` (array)
+**Required**: Yes  
+**Purpose**: Sequential workflow steps  
+**Impact**: Defines the complete processing pipeline
+
+### Phase Object Fields
+
+#### `name` (string)
+**Required**: Yes  
+**Purpose**: Unique identifier for the phase within the policy  
+**Impact**: Referenced in dependencies and logging
+
+#### `description` (string)
+**Required**: No  
+**Purpose**: Human-readable phase explanation  
+**Impact**: Helps understand phase purpose
+
+#### `capabilities` (array of strings)
+**Required**: Yes  
+**Purpose**: Required agent capabilities for this phase  
+**Impact**: Drives agent selection from the agent registry  
+**Values**: Must match capabilities defined in `agents.yaml`
+
+#### `agent` (string)
+**Required**: No (auto-selected if omitted)  
+**Purpose**: Specific agent to use for this phase  
+**Impact**: Overrides automatic agent selection  
+**Values**: Must match an `id` from `agents.yaml`
+
+#### `model` (string)
+**Required**: No (uses agent's default)  
+**Purpose**: Override the model for this specific phase  
+**Impact**: Allows fine-tuning model selection per task type  
+**Values**: Format `"provider/model-id"` (e.g., `"anthropic/claude-3-5-sonnet-20241022"`)
+
+#### `depends_on` (array of strings)
+**Required**: No  
+**Purpose**: Phase names that must complete before this phase  
+**Impact**: Enforces workflow sequencing and dependencies  
+**Values**: Names of other phases in the same policy
+
+#### `max_iterations` (number)
+**Required**: No (default: 3)  
+**Purpose**: Maximum attempts allowed for this phase  
+**Impact**: Prevents infinite loops and controls resource usage  
+**Values**: 1-10 (higher allows more complex tasks)
+
+#### `success_criteria` (array of strings)
+**Required**: No  
+**Purpose**: Conditions that indicate successful completion  
+**Impact**: Automated validation of phase completion  
+**Values**: Descriptive criteria like "code compiles", "tests pass"
+
+#### `timeout_ms` (number)
+**Required**: No (uses system default)  
+**Purpose**: Maximum execution time for the phase  
+**Impact**: Prevents runaway processes and ensures timely completion  
+**Values**: Time in milliseconds
+
+#### `retry_policy` (object)
+**Required**: No  
+**Purpose**: Rules for handling phase failures  
+**Impact**: Improves resilience and error recovery
+
+##### `backoff` (string)
+**Required**: No (default: "exponential")  
+**Purpose**: Delay strategy between retries  
+**Impact**: Controls retry frequency to avoid overwhelming systems  
+**Values**: `"fixed"`, `"linear"`, `"exponential"`
+
+##### `max_delay_ms` (number)
+**Required**: No (default: 300000)  
+**Purpose**: Maximum delay between retry attempts  
+**Impact**: Caps exponential backoff growth  
+**Values**: Time in milliseconds
+
+## Policy Execution Flow
+
+1. **Trigger Matching**: Issue labels matched against policy triggers
+2. **Phase Sequencing**: Phases executed in order, respecting dependencies
+3. **Agent Selection**: Best agent chosen based on capabilities and constraints
+4. **Model Override**: Specified model used if provided
+5. **Iteration Control**: Phases can iterate until success or max_iterations reached
+6. **Dependency Resolution**: Dependent phases wait for prerequisites
+
+## Advanced Examples
+
+### Complex Multi-Agent Workflow
+```yaml
+- id: "full-stack-feature"
+  name: "Full Stack Feature Development"
+  trigger:
+    type: "issue"
+    patterns: ["feature", "full-stack"]
+  phases:
+    - name: "architecture-review"
+      description: "Review system architecture implications"
+      capabilities: ["architecture", "planning"]
+      agent: "architect"
+      max_iterations: 2
+    - name: "backend-api"
+      description: "Implement backend API changes"
+      capabilities: ["coding", "api-design"]
+      depends_on: ["architecture-review"]
+      max_iterations: 5
+    - name: "frontend-ui"
+      description: "Implement frontend UI changes"
+      capabilities: ["coding", "ui-development"]
+      depends_on: ["backend-api"]
+      max_iterations: 4
+    - name: "integration-testing"
+      description: "Test full system integration"
+      capabilities: ["testing", "integration"]
+      depends_on: ["backend-api", "frontend-ui"]
+      max_iterations: 3
+```
+
+### Quality Assurance Pipeline
+```yaml
+- id: "security-audit"
+  name: "Security-Focused Development"
+  trigger:
+    type: "issue"
+    patterns: ["security", "audit"]
+  phases:
+    - name: "threat-modeling"
+      capabilities: ["security", "analysis"]
+      agent: "security-analyst"
+      model: "anthropic/claude-3-5-sonnet-20241022"  # High reasoning for security
+    - name: "implementation"
+      capabilities: ["coding", "security"]
+      depends_on: ["threat-modeling"]
+      agent: "secure-coder"
+    - name: "security-review"
+      capabilities: ["review", "security"]
+      depends_on: ["implementation"]
+      agent: "security-auditor"
+      success_criteria: ["no critical vulnerabilities", "secure coding practices"]
+```
+
+### Performance-Optimized Workflow
+```yaml
+- id: "quick-fixes"
+  name: "Fast Bug Fixes"
+  trigger:
+    type: "issue"
+    patterns: ["bug", "quick-fix"]
+  phases:
+    - name: "triage"
+      capabilities: ["analysis"]
+      agent: "fast-analyst"
+      model: "anthropic/claude-3-5-haiku-20241022"  # Fast model for quick analysis
+      timeout_ms: 60000  # 1 minute limit
+    - name: "fix"
+      capabilities: ["coding"]
+      depends_on: ["triage"]
+      agent: "fast-coder"
+      model: "anthropic/claude-3-5-haiku-20241022"  # Fast model for simple fixes
+      max_iterations: 2
+      success_criteria: ["code compiles", "basic functionality works"]
+```
+
+## Policy Selection Logic
+
+When processing an issue:
+
+1. **Match triggers** against issue labels/tags
+2. **Rank policies** by priority and pattern specificity
+3. **Select highest-ranked** matching policy
+4. **Execute phases** in dependency order
+5. **Handle failures** according to retry policies
+
+## Resource Management
+
+### Cost Optimization
+- Use cheaper/faster models for analysis and planning phases
+- Reserve expensive models for complex implementation tasks
+- Balance quality vs. speed based on phase requirements
+
+### Time Management
+- Set appropriate timeouts for different phase types
+- Use iteration limits to prevent excessive resource usage
+- Configure retry policies to handle transient failures
+
+### Agent Utilization
+- Match agent capabilities to phase requirements
+- Consider agent performance tiers for cost/speed trade-offs
+- Use specialized agents for domain-specific tasks
+
+## Monitoring and Metrics
+
+Policies generate metrics on:
+- Phase completion rates
+- Agent performance by task type
+- Resource usage patterns
+- Success/failure rates per policy type
+
+Use this data to optimize policy configurations over time.

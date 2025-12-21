@@ -215,25 +215,41 @@ Synced agents include metadata about their type and automatically assigned capab
 
 ## Configuration Files
 
-### `.agent-shepherd/config/config.yaml`
+For detailed configuration guides, see:
+- [Agent Configuration](agents-config.md)
+- [Main Configuration](config-config.md)
+- [Policy Configuration](policies-config.md)
 
-Main configuration file:
+### `.agent-shepherd/config/agents.yaml`
+
+Agent registry (automatically maintained by `ashep sync-agents`):
 
 ```yaml
 version: "1.0"
+agents:
+  - id: build
+    name: "Build Agent"
+    description: "Handles code building and compilation tasks"
+    capabilities: [coding, refactoring, building]
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 15
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: primary  # primary or subagent
 
-worker:
-  poll_interval_ms: 30000      # Issue polling frequency
-  max_concurrent_runs: 3       # Concurrent processing limit
-
-monitor:
-  poll_interval_ms: 10000      # Monitoring frequency
-  stall_threshold_ms: 60000    # Stall detection threshold
-  timeout_multiplier: 1.0      # Base timeout multiplier
-
-ui:
-  port: 3000                   # UI server port
-  host: localhost              # UI server host
+  - id: explore
+    name: "Exploration Agent"
+    description: "Handles code exploration and analysis"
+    capabilities: [exploration, analysis, discovery]
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 8
+    constraints:
+      performance_tier: fast
+    metadata:
+      agent_type: subagent
 ```
 
 ### `.agent-shepherd/config/policies.yaml`

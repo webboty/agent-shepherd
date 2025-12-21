@@ -2,7 +2,7 @@
  * Tests for Agent Registry
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { AgentRegistry } from '../src/core/agent-registry.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';

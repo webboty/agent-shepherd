@@ -108,19 +108,74 @@ This provides fine-grained control over cost, speed, and quality based on task r
 
 Agent Shepherd uses YAML configuration files in the `.agent-shepherd/config/` directory:
 
-### Main Configuration (`config/config.yaml`)
+## Configuration Files
+
+### [Main Configuration](docs/config-config.md) (`config/config.yaml`)
+
+Controls system behavior, performance tuning, and resource management.
 
 ```yaml
 version: "1.0"
 worker:
-  poll_interval_ms: 30000
-  max_concurrent_runs: 3
+  poll_interval_ms: 30000      # How often to check for work
+  max_concurrent_runs: 3       # Maximum parallel processing
 monitor:
-  poll_interval_ms: 10000
-  stall_threshold_ms: 60000
+  poll_interval_ms: 10000      # Monitoring frequency
+  stall_threshold_ms: 60000    # Failure detection timeout
 ui:
-  port: 3000
-  host: localhost
+  port: 3000                   # Web interface port
+  host: localhost              # Network binding
+```
+
+### [Workflow Policies](docs/policies-config.md) (`config/policies.yaml`)
+
+Defines processing workflows, agent selection, and task orchestration.
+
+```yaml
+version: "1.0"
+policies:
+  - id: "default-workflow"
+    name: "Default Development Workflow"
+    trigger:
+      type: "issue"
+      patterns: ["feature", "bug"]
+    phases:
+      - name: "analysis"
+        capabilities: ["analysis", "planning"]
+        agent: "plan"
+        max_iterations: 3
+      - name: "implementation"
+        capabilities: ["coding"]
+        depends_on: ["analysis"]
+        max_iterations: 5
+```
+
+### [Agent Registry](docs/agents-config.md) (`config/agents.yaml`)
+
+Agent definitions with capabilities, constraints, and metadata. Auto-synced from OpenCode.
+
+```yaml
+version: "1.0"
+agents:
+  - id: build
+    name: "Build Agent"
+    capabilities: [coding, refactoring, building]
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 15
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: primary
+
+  - id: explore
+    name: "Exploration Agent"
+    capabilities: [exploration, analysis, discovery]
+    priority: 8
+    constraints:
+      performance_tier: fast
+    metadata:
+      agent_type: subagent
 ```
 
 ### Workflow Policies (`config/policies.yaml`)
