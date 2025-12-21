@@ -12,6 +12,7 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 - **Visual Relationship Tree**: ASCII/JSON tree visualization showing policy-capability-agent mappings and health status
 - **Real-time Monitoring**: Supervises agent execution with stall detection and timeout management
 - **Flow Visualization**: Interactive ReactFlow UI showing workflow progress and agent assignments
+- **Plugin System**: Extensible architecture for optional functionality and custom integrations - [Plugin Documentation](docs/plugin-system.md)
 - **Configuration Management**: YAML-based configuration with JSON schema validation
 - **Dual Storage**: Efficient logging with JSONL for source-of-truth and SQLite for fast queries
 
@@ -272,6 +273,16 @@ For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.m
 - **`ashep validate-policy-chain`** - Validate policy-capability-agent relationships
 - **`ashep show-policy-tree`** - Display relationship tree visualization
 - **`ashep help`** - Show all available commands
+
+### Plugin Commands
+
+- **`ashep plugin-install <path/url>`** - Install plugin from local path or git URL
+- **`ashep plugin-activate <name>`** - Activate an installed plugin
+- **`ashep plugin-deactivate <name>`** - Deactivate an installed plugin
+- **`ashep plugin-remove <name>`** - Remove an installed plugin
+- **`ashep plugin-list`** - List all installed plugins
+
+For detailed plugin documentation, see [docs/plugin-system.md](docs/plugin-system.md).
 
 ## Development
 
