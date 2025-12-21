@@ -39107,8 +39107,10 @@ function getMonitorEngine(config) {
 
 // src/cli/index.ts
 init_path_utils();
-import { existsSync as existsSync5, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2 } from "fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2, readdirSync, readFileSync as readFileSync6 } from "fs";
 import { join as join6 } from "path";
+import path from "path";
+import { execSync } from "child_process";
 var COMMANDS = {
   worker: "Start the autonomous worker loop",
   monitor: "Start the supervision loop",
@@ -39119,8 +39121,68 @@ var COMMANDS = {
   ui: "Start the flow visualization server",
   "validate-policy-chain": "Validate policy-capability-agent chain integrity",
   "show-policy-tree": "Display policy-capability-agent relationship tree",
+  "plugin-install": "Install a plugin from path or URL",
+  "plugin-activate": "Activate a plugin",
+  "plugin-deactivate": "Deactivate a plugin",
+  "plugin-remove": "Remove a plugin",
+  "plugin-list": "List installed plugins",
   help: "Show help information"
 };
+var PLUGIN_HANDLERS = {};
+function loadPlugins() {
+  try {
+    const agentShepherdDir = findAgentShepherdDir();
+    const pluginsDir = join6(agentShepherdDir, "plugins");
+    if (!existsSync5(pluginsDir)) {
+      return;
+    }
+    const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+    for (const pluginName of pluginDirs) {
+      const pluginPath = join6(pluginsDir, pluginName);
+      const manifestPath = join6(pluginPath, "manifest.json");
+      if (!existsSync5(manifestPath)) {
+        console.warn(`Plugin ${pluginName}: manifest.json not found, skipping`);
+        continue;
+      }
+      try {
+        const manifestContent = readFileSync6(manifestPath, "utf-8");
+        const manifest = JSON.parse(manifestContent);
+        if (!manifest.name || !manifest.commands || !Array.isArray(manifest.commands)) {
+          console.warn(`Plugin ${pluginName}: invalid manifest.json, skipping`);
+          continue;
+        }
+        const indexPath = join6(pluginPath, "index.js");
+        if (!existsSync5(indexPath)) {
+          console.warn(`Plugin ${pluginName}: index.js not found, skipping`);
+          continue;
+        }
+        const pluginModule = __require(indexPath);
+        if (!pluginModule || typeof pluginModule !== "object") {
+          console.warn(`Plugin ${pluginName}: invalid index.js export, skipping`);
+          continue;
+        }
+        for (const cmd of manifest.commands) {
+          if (!cmd.name || !cmd.description) {
+            console.warn(`Plugin ${pluginName}: invalid command definition, skipping`);
+            continue;
+          }
+          const handler = pluginModule[cmd.name];
+          if (!handler || typeof handler !== "function") {
+            console.warn(`Plugin ${pluginName}: handler for command '${cmd.name}' not found, skipping`);
+            continue;
+          }
+          COMMANDS[cmd.name] = cmd.description;
+          PLUGIN_HANDLERS[cmd.name] = handler;
+        }
+        console.log(`Loaded plugin: ${manifest.name} v${manifest.version}`);
+      } catch (error) {
+        console.warn(`Failed to load plugin ${pluginName}:`, error);
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to load plugins:", error);
+  }
+}
 function showHelp() {
   console.log(`
 Agent Shepherd - AI Coding Agent Orchestration System
@@ -39473,8 +39535,8 @@ async function cmdShowPolicyTree(format) {
       if (!result.valid) {
         hasErrors = true;
         for (const error of result.errors) {
-          const path = error.instancePath || error.schemaPath;
-          console.log(`   \u2022 ${path}: ${error.message}`);
+          const path2 = error.instancePath || error.schemaPath;
+          console.log(`   \u2022 ${path2}: ${error.message}`);
         }
       }
     }
@@ -39514,7 +39576,152 @@ async function cmdShowPolicyTree(format) {
     process.exit(1);
   }
 }
+async function cmdPluginInstall(source) {
+  if (!source) {
+    console.error("Usage: ashep plugin-install <path-or-url>");
+    console.error("Examples:");
+    console.error("  ashep plugin-install /path/to/plugin");
+    console.error("  ashep plugin-install https://github.com/user/plugin.git");
+    process.exit(1);
+  }
+  try {
+    const agentShepherdDir = findAgentShepherdDir();
+    const pluginsDir = join6(agentShepherdDir, "plugins");
+    if (!existsSync5(pluginsDir)) {
+      mkdirSync2(pluginsDir, { recursive: true });
+    }
+    if (source.startsWith("http")) {
+      console.log(`Cloning plugin from ${source}...`);
+      const pluginName = source.split("/").pop()?.replace(".git", "") || "plugin";
+      const pluginPath = join6(pluginsDir, pluginName);
+      if (existsSync5(pluginPath)) {
+        console.error(`Plugin ${pluginName} already exists`);
+        process.exit(1);
+      }
+      execSync(`git clone "${source}" "${pluginPath}"`, { stdio: "inherit" });
+    } else {
+      const sourcePath = path.resolve(source);
+      if (!existsSync5(sourcePath)) {
+        console.error(`Source path does not exist: ${sourcePath}`);
+        process.exit(1);
+      }
+      const pluginName = path.basename(sourcePath);
+      const pluginPath = join6(pluginsDir, pluginName);
+      if (existsSync5(pluginPath)) {
+        console.error(`Plugin ${pluginName} already exists`);
+        process.exit(1);
+      }
+      execSync(`cp -r "${sourcePath}" "${pluginPath}"`, { stdio: "inherit" });
+    }
+    console.log("Plugin installed successfully");
+  } catch (error) {
+    console.error("Failed to install plugin:", error);
+    process.exit(1);
+  }
+}
+function cmdPluginActivate(name) {
+  if (!name) {
+    console.error("Usage: ashep plugin-activate <plugin-name>");
+    process.exit(1);
+  }
+  try {
+    const agentShepherdDir = findAgentShepherdDir();
+    const pluginsDir = join6(agentShepherdDir, "plugins");
+    const pluginPath = join6(pluginsDir, name);
+    if (!existsSync5(pluginPath)) {
+      console.error(`Plugin ${name} not found`);
+      process.exit(1);
+    }
+    const manifestPath = join6(pluginPath, "manifest.json");
+    if (!existsSync5(manifestPath)) {
+      console.error(`Plugin ${name} has no manifest.json`);
+      process.exit(1);
+    }
+    console.log(`Plugin ${name} is active (loaded automatically)`);
+  } catch (error) {
+    console.error("Failed to activate plugin:", error);
+    process.exit(1);
+  }
+}
+function cmdPluginDeactivate(name) {
+  if (!name) {
+    console.error("Usage: ashep plugin-deactivate <plugin-name>");
+    process.exit(1);
+  }
+  try {
+    const agentShepherdDir = findAgentShepherdDir();
+    const pluginsDir = join6(agentShepherdDir, "plugins");
+    const pluginPath = join6(pluginsDir, name);
+    if (!existsSync5(pluginPath)) {
+      console.error(`Plugin ${name} not found`);
+      process.exit(1);
+    }
+    console.log(`Plugin ${name} deactivated (restart CLI to unload)`);
+  } catch (error) {
+    console.error("Failed to deactivate plugin:", error);
+    process.exit(1);
+  }
+}
+function cmdPluginRemove(name) {
+  if (!name) {
+    console.error("Usage: ashep plugin-remove <plugin-name>");
+    process.exit(1);
+  }
+  try {
+    const agentShepherdDir = findAgentShepherdDir();
+    const pluginsDir = join6(agentShepherdDir, "plugins");
+    const pluginPath = join6(pluginsDir, name);
+    if (!existsSync5(pluginPath)) {
+      console.error(`Plugin ${name} not found`);
+      process.exit(1);
+    }
+    execSync(`rm -rf "${pluginPath}"`, { stdio: "inherit" });
+    console.log(`Plugin ${name} removed`);
+  } catch (error) {
+    console.error("Failed to remove plugin:", error);
+    process.exit(1);
+  }
+}
+function cmdPluginList() {
+  try {
+    const agentShepherdDir = findAgentShepherdDir();
+    const pluginsDir = join6(agentShepherdDir, "plugins");
+    if (!existsSync5(pluginsDir)) {
+      console.log("No plugins directory found");
+      return;
+    }
+    const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+    if (pluginDirs.length === 0) {
+      console.log("No plugins installed");
+      return;
+    }
+    console.log("Installed plugins:");
+    for (const pluginName of pluginDirs) {
+      const pluginPath = join6(pluginsDir, pluginName);
+      const manifestPath = join6(pluginPath, "manifest.json");
+      let status = "\u274C Invalid";
+      let description = "";
+      if (existsSync5(manifestPath)) {
+        try {
+          const manifest = JSON.parse(readFileSync6(manifestPath, "utf-8"));
+          status = "\u2705 Active";
+          description = manifest.description || "";
+        } catch {
+          status = "\u274C Invalid manifest";
+        }
+      }
+      console.log(`  ${pluginName}: ${status}`);
+      if (description) {
+        console.log(`    ${description}`);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to list plugins:", error);
+    process.exit(1);
+  }
+}
 async function main() {
+  loadPlugins();
   const args = process.argv.slice(2);
   const command = args[0];
   if (!command || command === "help" || command === "-h" || command === "--help") {
@@ -39569,10 +39776,34 @@ async function main() {
       await cmdShowPolicyTree(format);
       break;
     }
+    case "plugin-install":
+      await cmdPluginInstall(args[1]);
+      break;
+    case "plugin-activate":
+      cmdPluginActivate(args[1]);
+      break;
+    case "plugin-deactivate":
+      cmdPluginDeactivate(args[1]);
+      break;
+    case "plugin-remove":
+      cmdPluginRemove(args[1]);
+      break;
+    case "plugin-list":
+      cmdPluginList();
+      break;
     default:
-      console.error(`Unknown command: ${command}`);
-      console.log("Run 'ashep help' for usage information");
-      process.exit(1);
+      if (PLUGIN_HANDLERS[command]) {
+        try {
+          await PLUGIN_HANDLERS[command](...args.slice(1));
+        } catch (error) {
+          console.error(`Plugin command '${command}' failed:`, error);
+          process.exit(1);
+        }
+      } else {
+        console.error(`Unknown command: ${command}`);
+        console.log("Run 'ashep help' for usage information");
+        process.exit(1);
+      }
   }
 }
 main().catch((error) => {

@@ -1,0 +1,19 @@
+{
+  "name": "openspec",
+  "description": "Integration tools for OpenSpec proposals and Beads task management",
+  "version": "1.0.0",
+  "commands": [
+    {
+      "name": "openspec-convert",
+      "description": "Convert OpenSpec proposal to Beads issues"
+    },
+    {
+      "name": "openspec-sync",
+      "description": "Sync task status between OpenSpec and Beads"
+    },
+    {
+      "name": "openspec-parse",
+      "description": "Parse OpenSpec tasks.md structure"
+    }
+  ]
+}

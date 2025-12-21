@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Shepherd Plugin Manifest",
+  "description": "Schema for plugin manifest.json files",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Plugin name (must be unique)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the plugin"
+    },
+    "version": {
+      "type": "string",
+      "description": "Plugin version (semantic versioning)"
+    },
+    "commands": {
+      "type": "array",
+      "description": "List of commands provided by this plugin",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Command name (will be available as 'ashep <name>')"
+          },
+          "description": {
+            "type": "string",
+            "description": "Brief description of the command"
+          }
+        },
+        "required": ["name", "description"]
+      }
+    },
+    "author": {
+      "type": "string",
+      "description": "Plugin author (optional)"
+    },
+    "license": {
+      "type": "string",
+      "description": "Plugin license (optional)"
+    }
+  },
+  "required": ["name", "description", "version", "commands"]
+}
