@@ -7150,11 +7150,76 @@ class AgentRegistry {
     };
   }
   async syncWithOpenCode() {
-    return {
-      added: 0,
-      updated: 0,
-      removed: 0
-    };
+    const { spawn } = await Promise.resolve(globalThis.Bun);
+    try {
+      const proc = spawn(["opencode", "agent", "list"], {
+        stdout: "pipe",
+        stderr: "pipe"
+      });
+      let stdout = "";
+      let stderr = "";
+      const stdoutReader = proc.stdout?.getReader();
+      if (stdoutReader) {
+        try {
+          while (true) {
+            const { done, value } = await stdoutReader.read();
+            if (done)
+              break;
+            stdout += new TextDecoder().decode(value);
+          }
+        } finally {
+          stdoutReader.releaseLock();
+        }
+      }
+      const stderrReader = proc.stderr?.getReader();
+      if (stderrReader) {
+        try {
+          while (true) {
+            const { done, value } = await stderrReader.read();
+            if (done)
+              break;
+            stderr += new TextDecoder().decode(value);
+          }
+        } finally {
+          stderrReader.releaseLock();
+        }
+      }
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        console.error(`Failed to list OpenCode agents: ${stderr}`);
+        return { added: 0, updated: 0, removed: 0 };
+      }
+      const availableAgents = this.parseOpenCodeAgentList(stdout);
+      const currentAgents = this.getAllAgents();
+      let added = 0;
+      let updated = 0;
+      let removed = 0;
+      const agentsToKeep = new Set;
+      for (const agentInfo of availableAgents) {
+        agentsToKeep.add(agentInfo.id);
+        const existingAgent = currentAgents.find((a) => a.id === agentInfo.id);
+        if (existingAgent) {
+          if (this.needsUpdate(existingAgent, agentInfo.config)) {
+            this.updateAgent(agentInfo.config);
+            updated++;
+          }
+        } else {
+          this.addAgent(agentInfo.config);
+          added++;
+        }
+      }
+      for (const currentAgent of currentAgents) {
+        if (!agentsToKeep.has(currentAgent.id)) {
+          this.removeAgent(currentAgent.id);
+          removed++;
+        }
+      }
+      this.saveAgents();
+      return { added, updated, removed };
+    } catch (error) {
+      console.error(`Error syncing with OpenCode: ${error}`);
+      return { added: 0, updated: 0, removed: 0 };
+    }
   }
   hasCapability(agentId, capability) {
     const agent = this.getAgent(agentId);
@@ -7169,6 +7234,111 @@ class AgentRegistry {
   getPerformanceTier(agentId) {
     const agent = this.getAgent(agentId);
     return agent?.constraints?.performance_tier;
+  }
+  parseOpenCodeAgentList(output) {
+    const lines = output.trim().split(`
+`);
+    const agents = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed)
+        continue;
+      const match = trimmed.match(/^(\w+)\s+\((\w+)\)$/);
+      if (match) {
+        const [, agentId] = match;
+        const config = this.createAgentConfig(agentId);
+        agents.push({ id: agentId, config });
+      }
+    }
+    return agents;
+  }
+  createAgentConfig(agentId) {
+    const agentMappings = {
+      build: {
+        name: "Build Agent",
+        description: "Handles code building and compilation tasks",
+        capabilities: ["coding", "refactoring", "building"],
+        priority: 15,
+        constraints: { performance_tier: "balanced" }
+      },
+      plan: {
+        name: "Planning Agent",
+        description: "Handles planning and architecture design",
+        capabilities: ["planning", "architecture", "analysis"],
+        priority: 12,
+        constraints: { performance_tier: "balanced" }
+      },
+      explore: {
+        name: "Exploration Agent",
+        description: "Handles code exploration and analysis",
+        capabilities: ["exploration", "analysis", "discovery"],
+        priority: 8,
+        constraints: { performance_tier: "fast" }
+      },
+      general: {
+        name: "General Agent",
+        description: "General purpose agent for various tasks",
+        capabilities: ["coding", "planning", "analysis"],
+        priority: 10,
+        constraints: { performance_tier: "balanced" }
+      },
+      compaction: {
+        name: "Compaction Agent",
+        description: "Handles code compaction and optimization",
+        capabilities: ["refactoring", "optimization", "compaction"],
+        priority: 10,
+        constraints: { performance_tier: "balanced" }
+      },
+      summary: {
+        name: "Summary Agent",
+        description: "Handles summarization and documentation",
+        capabilities: ["documentation", "summary", "analysis"],
+        priority: 8,
+        constraints: { performance_tier: "fast" }
+      },
+      title: {
+        name: "Title Agent",
+        description: "Handles title generation and naming",
+        capabilities: ["naming", "documentation"],
+        priority: 5,
+        constraints: { performance_tier: "fast" }
+      }
+    };
+    const mapping = agentMappings[agentId] || {
+      name: `${agentId.charAt(0).toUpperCase() + agentId.slice(1)} Agent`,
+      description: `Agent for ${agentId} tasks`,
+      capabilities: ["general"],
+      priority: 10,
+      constraints: { performance_tier: "balanced" }
+    };
+    return {
+      id: agentId,
+      name: mapping.name,
+      description: mapping.description,
+      capabilities: mapping.capabilities,
+      provider_id: "anthropic",
+      model_id: "claude-3-5-sonnet-20241022",
+      priority: mapping.priority,
+      constraints: mapping.constraints
+    };
+  }
+  needsUpdate(existing, updated) {
+    if (existing.capabilities.length !== updated.capabilities.length)
+      return true;
+    if (!existing.capabilities.every((cap) => updated.capabilities.includes(cap)))
+      return true;
+    if (existing.priority !== updated.priority)
+      return true;
+    return false;
+  }
+  addAgent(agent) {
+    this.agents.set(agent.id, agent);
+  }
+  updateAgent(agent) {
+    this.agents.set(agent.id, agent);
+  }
+  removeAgent(agentId) {
+    this.agents.delete(agentId);
   }
 }
 function getAgentRegistry(configPath) {

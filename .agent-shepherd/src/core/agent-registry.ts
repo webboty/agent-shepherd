@@ -264,18 +264,102 @@ export class AgentRegistry {
     updated: number;
     removed: number;
   }> {
-    // Placeholder for OpenCode sync logic
-    // In a real implementation, this would:
-    // 1. Query OpenCode for available agents
-    // 2. Compare with current registry
-    // 3. Add new agents, update existing ones, mark removed ones
-    // 4. Save the updated registry
+    const { spawn } = await import("bun");
 
-    return {
-      added: 0,
-      updated: 0,
-      removed: 0,
-    };
+    try {
+      // Run opencode agent list
+      const proc = spawn(["opencode", "agent", "list"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      let stdout = "";
+      let stderr = "";
+
+      // Collect stdout
+      const stdoutReader = proc.stdout?.getReader();
+      if (stdoutReader) {
+        try {
+          while (true) {
+            const { done, value } = await stdoutReader.read();
+            if (done) break;
+            stdout += new TextDecoder().decode(value);
+          }
+        } finally {
+          stdoutReader.releaseLock();
+        }
+      }
+
+      // Collect stderr
+      const stderrReader = proc.stderr?.getReader();
+      if (stderrReader) {
+        try {
+          while (true) {
+            const { done, value } = await stderrReader.read();
+            if (done) break;
+            stderr += new TextDecoder().decode(value);
+          }
+        } finally {
+          stderrReader.releaseLock();
+        }
+      }
+
+      const exitCode = await proc.exited;
+
+      if (exitCode !== 0) {
+        console.error(`Failed to list OpenCode agents: ${stderr}`);
+        return { added: 0, updated: 0, removed: 0 };
+      }
+
+      // Parse the output
+      const availableAgents = this.parseOpenCodeAgentList(stdout);
+
+      // Get current agents
+      const currentAgents = this.getAllAgents();
+
+      let added = 0;
+      let updated = 0;
+      let removed = 0;
+
+      // Track which agents should remain
+      const agentsToKeep = new Set<string>();
+
+      // Process available agents
+      for (const agentInfo of availableAgents) {
+        agentsToKeep.add(agentInfo.id);
+
+        const existingAgent = currentAgents.find(a => a.id === agentInfo.id);
+
+        if (existingAgent) {
+          // Check if needs update
+          if (this.needsUpdate(existingAgent, agentInfo.config)) {
+            this.updateAgent(agentInfo.config);
+            updated++;
+          }
+        } else {
+          // Add new agent
+          this.addAgent(agentInfo.config);
+          added++;
+        }
+      }
+
+      // Remove agents that are no longer available
+      for (const currentAgent of currentAgents) {
+        if (!agentsToKeep.has(currentAgent.id)) {
+          this.removeAgent(currentAgent.id);
+          removed++;
+        }
+      }
+
+      // Save the updated registry
+      this.saveAgents();
+
+      return { added, updated, removed };
+
+    } catch (error) {
+      console.error(`Error syncing with OpenCode: ${error}`);
+      return { added: 0, updated: 0, removed: 0 };
+    }
   }
 
   /**
@@ -306,6 +390,141 @@ export class AgentRegistry {
   ): "fast" | "balanced" | "slow" | undefined {
     const agent = this.getAgent(agentId);
     return agent?.constraints?.performance_tier;
+  }
+
+  /**
+   * Parse OpenCode agent list output
+   */
+  private parseOpenCodeAgentList(output: string): Array<{id: string, config: AgentConfig}> {
+    const lines = output.trim().split('\n');
+    const agents: Array<{id: string, config: AgentConfig}> = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // Parse format: "agent-name (type)"
+      const match = trimmed.match(/^(\w+)\s+\((\w+)\)$/);
+      if (match) {
+        const [, agentId] = match;
+        const config = this.createAgentConfig(agentId);
+        agents.push({ id: agentId, config });
+      }
+    }
+
+    return agents;
+  }
+
+  /**
+   * Create agent config from OpenCode agent info
+   */
+  private createAgentConfig(agentId: string): AgentConfig {
+    // Map agent IDs to capabilities and settings
+    const agentMappings: Record<string, Partial<AgentConfig>> = {
+      'build': {
+        name: 'Build Agent',
+        description: 'Handles code building and compilation tasks',
+        capabilities: ['coding', 'refactoring', 'building'],
+        priority: 15,
+        constraints: { performance_tier: 'balanced' }
+      },
+      'plan': {
+        name: 'Planning Agent',
+        description: 'Handles planning and architecture design',
+        capabilities: ['planning', 'architecture', 'analysis'],
+        priority: 12,
+        constraints: { performance_tier: 'balanced' }
+      },
+      'explore': {
+        name: 'Exploration Agent',
+        description: 'Handles code exploration and analysis',
+        capabilities: ['exploration', 'analysis', 'discovery'],
+        priority: 8,
+        constraints: { performance_tier: 'fast' }
+      },
+      'general': {
+        name: 'General Agent',
+        description: 'General purpose agent for various tasks',
+        capabilities: ['coding', 'planning', 'analysis'],
+        priority: 10,
+        constraints: { performance_tier: 'balanced' }
+      },
+      'compaction': {
+        name: 'Compaction Agent',
+        description: 'Handles code compaction and optimization',
+        capabilities: ['refactoring', 'optimization', 'compaction'],
+        priority: 10,
+        constraints: { performance_tier: 'balanced' }
+      },
+      'summary': {
+        name: 'Summary Agent',
+        description: 'Handles summarization and documentation',
+        capabilities: ['documentation', 'summary', 'analysis'],
+        priority: 8,
+        constraints: { performance_tier: 'fast' }
+      },
+      'title': {
+        name: 'Title Agent',
+        description: 'Handles title generation and naming',
+        capabilities: ['naming', 'documentation'],
+        priority: 5,
+        constraints: { performance_tier: 'fast' }
+      }
+    };
+
+    const mapping = agentMappings[agentId] || {
+      name: `${agentId.charAt(0).toUpperCase() + agentId.slice(1)} Agent`,
+      description: `Agent for ${agentId} tasks`,
+      capabilities: ['general'],
+      priority: 10,
+      constraints: { performance_tier: 'balanced' }
+    };
+
+    return {
+      id: agentId,
+      name: mapping.name!,
+      description: mapping.description,
+      capabilities: mapping.capabilities!,
+      provider_id: 'anthropic', // Default to Anthropic
+      model_id: 'claude-3-5-sonnet-20241022', // Default model
+      priority: mapping.priority!,
+      constraints: mapping.constraints!
+    };
+  }
+
+  /**
+   * Check if an agent needs updating
+   */
+  private needsUpdate(existing: AgentConfig, updated: AgentConfig): boolean {
+    // Check if capabilities changed
+    if (existing.capabilities.length !== updated.capabilities.length) return true;
+    if (!existing.capabilities.every(cap => updated.capabilities.includes(cap))) return true;
+
+    // Check if priority changed
+    if (existing.priority !== updated.priority) return true;
+
+    return false;
+  }
+
+  /**
+   * Add a new agent to the registry
+   */
+  private addAgent(agent: AgentConfig): void {
+    this.agents.set(agent.id, agent);
+  }
+
+  /**
+   * Update an existing agent
+   */
+  private updateAgent(agent: AgentConfig): void {
+    this.agents.set(agent.id, agent);
+  }
+
+  /**
+   * Remove an agent from the registry
+   */
+  private removeAgent(agentId: string): void {
+    this.agents.delete(agentId);
   }
 }
 

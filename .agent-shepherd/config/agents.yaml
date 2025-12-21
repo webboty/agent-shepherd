@@ -1,39 +1,85 @@
 version: "1.0"
 agents:
-  - id: default-coder
-    name: Default Coding Agent
-    description: General-purpose coding agent
+  - id: build
+    name: Build Agent
+    description: Handles code building and compilation tasks
     capabilities:
       - coding
       - refactoring
-      - planning
-      - architecture
-    provider_id: anthropic
-    model_id: claude-3-5-sonnet-20241022
-    priority: 10
-    constraints:
-      performance_tier: balanced
-  
-  - id: test-specialist
-    name: Testing Specialist
-    description: Agent specialized in testing
-    capabilities:
-      - testing
-      - qa
+      - building
     provider_id: anthropic
     model_id: claude-3-5-sonnet-20241022
     priority: 15
     constraints:
-      performance_tier: fast
-  
-  - id: reviewer
-    name: Code Reviewer
-    description: Agent for code review and documentation
+      performance_tier: balanced
+  - id: compaction
+    name: Compaction Agent
+    description: Handles code compaction and optimization
     capabilities:
-      - review
-      - documentation
+      - refactoring
+      - optimization
+      - compaction
     provider_id: anthropic
     model_id: claude-3-5-sonnet-20241022
     priority: 10
     constraints:
       performance_tier: balanced
+  - id: explore
+    name: Exploration Agent
+    description: Handles code exploration and analysis
+    capabilities:
+      - exploration
+      - analysis
+      - discovery
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 8
+    constraints:
+      performance_tier: fast
+  - id: general
+    name: General Agent
+    description: General purpose agent for various tasks
+    capabilities:
+      - coding
+      - planning
+      - analysis
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 10
+    constraints:
+      performance_tier: balanced
+  - id: plan
+    name: Planning Agent
+    description: Handles planning and architecture design
+    capabilities:
+      - planning
+      - architecture
+      - analysis
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 12
+    constraints:
+      performance_tier: balanced
+  - id: summary
+    name: Summary Agent
+    description: Handles summarization and documentation
+    capabilities:
+      - documentation
+      - summary
+      - analysis
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 8
+    constraints:
+      performance_tier: fast
+  - id: title
+    name: Title Agent
+    description: Handles title generation and naming
+    capabilities:
+      - naming
+      - documentation
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 5
+    constraints:
+      performance_tier: fast
