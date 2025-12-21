@@ -1,26 +1,41 @@
-# Tasks: Refactor Directory Structure
+## 1. Directory Structure Creation
+- [ ] 1.1 Create .agent-shepherd/ directory structure with subdirectories (config/, bin/, src/, schemas/, tests/, docs/)
 
-1. Create .agent-shepherd/ directory structure with subdirectories (config/, bin/, src/, schemas/, tests/, docs/)
-2. Move source files from src/ to .agent-shepherd/src/
-3. Move schema files from schemas/ to .agent-shepherd/schemas/
-4. Move test files from tests/ to .agent-shepherd/tests/
-5. Move docs from docs/ to .agent-shepherd/docs/
-6. Move README.md and package.json to .agent-shepherd/
-7. Update all import paths in source files to work from new locations
-8. Create path resolution utilities for dynamic path handling
-9. Update build system to output to .agent-shepherd/bin/ashep
-10. Modify package.json bin field to point to new location
-11. Implement CLI discovery logic (findAgentShepherdDir function)
-12. Update CLI entry point to use discovered paths
-13. Modify ashep init command to create .agent-shepherd/ structure
-14. Update default file locations in config and core modules
-15. Add migration logic for existing installations
-16. Update all test files to work with new import paths
-17. Create tests for CLI discovery functionality
-18. Update build scripts and validate build process
-19. Test installation process creates correct structure
-20. Run full test suite and fix any failures
-21. Update documentation to reference new file locations
-22. Validate end-to-end workflow in new structure
-23. Test backward compatibility and migration
-24. Update any hardcoded paths in docs or code
+## 2. File Movement
+- [ ] 2.1 Move source files from src/ to .agent-shepherd/src/
+- [ ] 2.2 Move schema files from schemas/ to .agent-shepherd/schemas/
+- [ ] 2.3 Move test files from tests/ to .agent-shepherd/tests/
+- [ ] 2.4 Move docs from docs/ to .agent-shepherd/docs/
+- [ ] 2.5 Move README.md and package.json to .agent-shepherd/
+
+## 3. Import and Path Updates
+- [ ] 3.1 Update all import paths in source files to work from new locations
+- [ ] 3.2 Create path resolution utilities for dynamic path handling
+
+## 4. Build System Updates
+- [ ] 4.1 Update build system to output to .agent-shepherd/bin/ashep
+- [ ] 4.2 Modify package.json bin field to point to new location
+- [ ] 4.3 Update build scripts and validate build process
+
+## 5. CLI and Discovery Implementation
+- [ ] 5.1 Implement CLI discovery logic (findAgentShepherdDir function)
+- [ ] 5.2 Update CLI entry point to use discovered paths
+
+## 6. Installation and Migration
+- [ ] 6.1 Modify ashep init command to create .agent-shepherd/ structure
+- [ ] 6.2 Update default file locations in config and core modules
+- [ ] 6.3 Add migration logic for existing installations
+- [ ] 6.4 Handle backward compatibility for existing installations
+- [ ] 6.5 Implement error handling for conflicting file locations
+
+## 7. Testing and Validation
+- [ ] 7.1 Update all test files to work with new import paths
+- [ ] 7.2 Create tests for CLI discovery functionality
+- [ ] 7.3 Test installation process creates correct structure
+- [ ] 7.4 Run full test suite and fix any failures
+- [ ] 7.5 Validate end-to-end workflow in new structure
+- [ ] 7.6 Test backward compatibility and migration
+
+## 8. Documentation Updates
+- [ ] 8.1 Update documentation to reference new file locations
+- [ ] 8.2 Update any hardcoded paths in docs or code
