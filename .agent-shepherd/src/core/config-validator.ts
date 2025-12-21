@@ -128,6 +128,10 @@ export class ConfigurationValidator {
       results.push(result);
     }
 
+    // Add policy chain validation
+    const chainResult = await this.validatePolicyChain();
+    results.push(chainResult);
+
     return results;
   }
 
@@ -205,6 +209,40 @@ export class ConfigurationValidator {
   }
 
   /**
+   * Validate policy-capability-agent chain
+   */
+  async validatePolicyChain(): Promise<ValidationResult> {
+    try {
+      const { policyCapabilityValidator } = await import('./policy-capability-validator');
+      const result = await policyCapabilityValidator.validateChain();
+
+      return {
+        valid: result.valid,
+        errors: result.errors.map(error => ({
+          keyword: 'policy-chain',
+          instancePath: error.location || '',
+          schemaPath: '',
+          params: {},
+          message: error.message
+        })),
+        summary: `${result.valid ? '✅' : '❌'} Policy chain validation: ${result.summary}`
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [{
+          keyword: 'policy-chain-error',
+          instancePath: '',
+          schemaPath: '',
+          params: {},
+          message: `Failed to validate policy chain: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        summary: '❌ Policy chain validation: Failed to execute'
+      };
+    }
+  }
+
+  /**
    * Format validation summary for display
    */
   private formatValidationSummary(
@@ -218,7 +256,7 @@ export class ConfigurationValidator {
 
     const errorCount = errors.length;
     const summary = errors[0]?.message || 'Unknown error';
-    
+
     if (errorCount === 1) {
       return `Invalid: ${summary}`;
     } else {

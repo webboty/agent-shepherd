@@ -7021,6 +7021,185 @@ function getConfigPath(filename) {
 }
 var init_path_utils = () => {};
 
+// src/core/policy.ts
+import { readFileSync } from "fs";
+
+class PolicyEngine {
+  policies;
+  defaultPolicy;
+  constructor(configPath) {
+    this.policies = new Map;
+    this.defaultPolicy = "default";
+    if (configPath) {
+      this.loadPolicies(configPath);
+    }
+  }
+  loadPolicies(filePath) {
+    try {
+      const content = readFileSync(filePath, "utf-8");
+      const config = import_yaml.parse(content);
+      if (!config.policies) {
+        throw new Error("Invalid policies file: missing 'policies' key");
+      }
+      this.policies.clear();
+      for (const [name, policy] of Object.entries(config.policies)) {
+        this.validatePolicy(name, policy);
+        this.policies.set(name, policy);
+      }
+      if (config.default_policy) {
+        if (!this.policies.has(config.default_policy)) {
+          throw new Error(`Default policy '${config.default_policy}' not found`);
+        }
+        this.defaultPolicy = config.default_policy;
+      }
+    } catch (error) {
+      throw new Error(`Failed to load policies from ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  validatePolicy(name, policy) {
+    if (!policy.phases || policy.phases.length === 0) {
+      throw new Error(`Policy '${name}' must have at least one phase`);
+    }
+    for (const phase of policy.phases) {
+      if (!phase.name) {
+        throw new Error(`Policy '${name}' has a phase without a name`);
+      }
+    }
+  }
+  getPolicy(name) {
+    const policyName = name || this.defaultPolicy;
+    return this.policies.get(policyName) || null;
+  }
+  getPolicyNames() {
+    return Array.from(this.policies.keys());
+  }
+  getDefaultPolicyName() {
+    return this.defaultPolicy;
+  }
+  getPhaseSequence(policyName) {
+    const policy = this.getPolicy(policyName);
+    if (!policy) {
+      return [];
+    }
+    return policy.phases.map((p) => p.name);
+  }
+  getPhaseConfig(policyName, phaseName) {
+    const policy = this.getPolicy(policyName);
+    if (!policy) {
+      return null;
+    }
+    return policy.phases.find((p) => p.name === phaseName) || null;
+  }
+  getNextPhase(policyName, currentPhase) {
+    const sequence = this.getPhaseSequence(policyName);
+    const currentIndex = sequence.indexOf(currentPhase);
+    if (currentIndex === -1 || currentIndex === sequence.length - 1) {
+      return null;
+    }
+    return sequence[currentIndex + 1];
+  }
+  determineTransition(policyName, currentPhase, outcome) {
+    const policy = this.getPolicy(policyName);
+    if (!policy) {
+      return { type: "block", reason: "Policy not found" };
+    }
+    const phaseConfig = this.getPhaseConfig(policyName, currentPhase);
+    if (!phaseConfig) {
+      return { type: "block", reason: "Phase not found" };
+    }
+    if (outcome.requires_approval || phaseConfig.require_approval) {
+      return {
+        type: "block",
+        reason: "Human approval required"
+      };
+    }
+    if (outcome.success) {
+      const nextPhase = this.getNextPhase(policyName, currentPhase);
+      if (nextPhase) {
+        return {
+          type: "advance",
+          next_phase: nextPhase,
+          reason: "Phase completed successfully"
+        };
+      } else {
+        return {
+          type: "close",
+          reason: "All phases completed"
+        };
+      }
+    }
+    const retryConfig = policy.retry || {
+      max_attempts: 3,
+      backoff_strategy: "exponential"
+    };
+    const retryCount = outcome.retry_count || 0;
+    if (retryCount < retryConfig.max_attempts - 1) {
+      return {
+        type: "retry",
+        reason: `Retry ${retryCount + 1}/${retryConfig.max_attempts}`
+      };
+    }
+    return {
+      type: "block",
+      reason: "Max retries exceeded"
+    };
+  }
+  calculateRetryDelay(policyName, attemptNumber) {
+    const policy = this.getPolicy(policyName);
+    if (!policy || !policy.retry) {
+      return 5000;
+    }
+    const retry = policy.retry;
+    const initialDelay = retry.initial_delay_ms || 5000;
+    const maxDelay = retry.max_delay_ms || 300000;
+    let delay;
+    switch (retry.backoff_strategy) {
+      case "exponential":
+        delay = initialDelay * Math.pow(2, attemptNumber);
+        break;
+      case "linear":
+        delay = initialDelay * (attemptNumber + 1);
+        break;
+      case "fixed":
+        delay = initialDelay;
+        break;
+      default:
+        delay = initialDelay;
+    }
+    return Math.min(delay, maxDelay);
+  }
+  calculateTimeout(policyName, phaseName) {
+    const policy = this.getPolicy(policyName);
+    if (!policy) {
+      return 300000;
+    }
+    const baseTimeout = policy.timeout_base_ms || 300000;
+    const phaseConfig = this.getPhaseConfig(policyName, phaseName);
+    const multiplier = phaseConfig?.timeout_multiplier || 1;
+    return baseTimeout * multiplier;
+  }
+  getStallThreshold(policyName) {
+    const policy = this.getPolicy(policyName);
+    return policy?.stall_threshold_ms || 60000;
+  }
+  requiresHITL(policyName) {
+    const policy = this.getPolicy(policyName);
+    return policy?.require_hitl || false;
+  }
+}
+function getPolicyEngine(configPath) {
+  if (!defaultPolicyEngine) {
+    const defaultPath = configPath || getConfigPath("policies.yaml");
+    defaultPolicyEngine = new PolicyEngine(defaultPath);
+  }
+  return defaultPolicyEngine;
+}
+var import_yaml, defaultPolicyEngine = null;
+var init_policy = __esm(() => {
+  init_path_utils();
+  import_yaml = __toESM(require_dist(), 1);
+});
+
 // src/core/agent-registry.ts
 var exports_agent_registry = {};
 __export(exports_agent_registry, {
@@ -13820,6 +13999,245 @@ var require_dist2 = __commonJS((exports, module) => {
   exports.default = formatsPlugin;
 });
 
+// src/core/policy-capability-validator.ts
+var exports_policy_capability_validator = {};
+__export(exports_policy_capability_validator, {
+  policyCapabilityValidator: () => policyCapabilityValidator,
+  PolicyCapabilityValidator: () => PolicyCapabilityValidator
+});
+
+class PolicyCapabilityValidator {
+  policyEngine = getPolicyEngine();
+  agentRegistry = getAgentRegistry();
+  async validateChain() {
+    const errors = [];
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy) {
+        errors.push({
+          type: "policy",
+          severity: "error",
+          message: `Policy '${policyName}' not found`,
+          location: `policies.yaml: ${policyName}`
+        });
+        continue;
+      }
+      for (const phase of policy.phases) {
+        const phaseErrors = this.validatePhaseCapabilities(policyName, phase);
+        errors.push(...phaseErrors);
+      }
+    }
+    const valid = errors.filter((e) => e.severity === "error").length === 0;
+    const summary = this.generateValidationSummary(errors);
+    return {
+      valid,
+      errors,
+      summary
+    };
+  }
+  validatePhaseCapabilities(policyName, phase) {
+    const errors = [];
+    if (!phase.capabilities || phase.capabilities.length === 0) {
+      errors.push({
+        type: "policy",
+        severity: "warning",
+        message: `Phase '${phase.name}' in policy '${policyName}' has no capabilities defined`,
+        location: `policies.yaml: ${policyName}.${phase.name}`,
+        suggestion: "Add capabilities array or specify specific agent"
+      });
+      return errors;
+    }
+    for (const capability of phase.capabilities) {
+      const capabilityErrors = this.validateCapability(capability, policyName, phase.name);
+      errors.push(...capabilityErrors);
+    }
+    return errors;
+  }
+  validateCapability(capability, policyName, phaseName) {
+    const errors = [];
+    const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
+    const activeAgentsWithCapability = agentsWithCapability.filter((agent) => agent.active !== false);
+    if (agentsWithCapability.length === 0) {
+      errors.push({
+        type: "capability",
+        severity: "error",
+        message: `Capability '${capability}' is not provided by any agent`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: "Add this capability to an agent or remove from policy"
+      });
+    } else if (activeAgentsWithCapability.length === 0) {
+      errors.push({
+        type: "capability",
+        severity: "error",
+        message: `Capability '${capability}' is only provided by inactive agents`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: "Activate agents with this capability or add active agents"
+      });
+    } else if (activeAgentsWithCapability.length === 1) {
+      errors.push({
+        type: "capability",
+        severity: "warning",
+        message: `Capability '${capability}' has only one active agent (${activeAgentsWithCapability[0].name})`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: "Consider adding backup agents for redundancy"
+      });
+    }
+    return errors;
+  }
+  getPolicyCapabilityMappings() {
+    const mappings = [];
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy)
+        continue;
+      for (const phase of policy.phases) {
+        if (!phase.capabilities || phase.capabilities.length === 0)
+          continue;
+        const availableAgents = phase.capabilities.flatMap((capability) => this.agentRegistry.getAgentsByCapability(capability).map((agent) => ({
+          agentId: agent.id,
+          name: agent.name,
+          capabilities: agent.capabilities,
+          active: agent.active !== false,
+          priority: agent.priority || 0
+        })));
+        mappings.push({
+          policyName,
+          phaseName: phase.name,
+          capabilities: phase.capabilities,
+          availableAgents: [...new Map(availableAgents.map((a) => [a.agentId, a])).values()]
+        });
+      }
+    }
+    return mappings;
+  }
+  findDeadEnds() {
+    const deadEnds = [];
+    const mappings = this.getPolicyCapabilityMappings();
+    const allCapabilities = new Set;
+    mappings.forEach((mapping) => {
+      mapping.capabilities.forEach((cap) => allCapabilities.add(cap));
+    });
+    for (const capability of allCapabilities) {
+      const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
+      const activeAgents = agentsWithCapability.filter((agent) => agent.active !== false);
+      if (activeAgents.length === 0) {
+        const affectedPhases = mappings.filter((m) => m.capabilities.includes(capability)).map((m) => ({ policy: m.policyName, phase: m.phaseName }));
+        deadEnds.push({
+          type: "capability",
+          name: capability,
+          description: agentsWithCapability.length > 0 ? `${agentsWithCapability.length} inactive agent(s) provide this capability` : "No agents provide this capability",
+          affectedPhases
+        });
+      }
+    }
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy)
+        continue;
+      const hasValidPath = policy.phases.every((phase) => {
+        if (!phase.capabilities || phase.capabilities.length === 0)
+          return false;
+        return phase.capabilities.every((capability) => {
+          const activeAgents = this.agentRegistry.getAgentsByCapability(capability).filter((agent) => agent.active !== false);
+          return activeAgents.length > 0;
+        });
+      });
+      if (!hasValidPath) {
+        deadEnds.push({
+          type: "policy",
+          name: policyName,
+          description: "Policy has phases with capabilities that have no active agents",
+          affectedPolicies: [policyName]
+        });
+      }
+    }
+    return deadEnds;
+  }
+  generateTreeVisualization() {
+    const mappings = this.getPolicyCapabilityMappings();
+    const lines = [];
+    lines.push("Policy-Capability-Agent Chain Tree");
+    lines.push("===================================");
+    lines.push("");
+    const policies = new Map;
+    mappings.forEach((mapping) => {
+      if (!policies.has(mapping.policyName)) {
+        policies.set(mapping.policyName, []);
+      }
+      policies.get(mapping.policyName).push(mapping);
+    });
+    for (const [policyName, policyMappings] of policies) {
+      lines.push(`\uD83D\uDCCB ${policyName}`);
+      for (const mapping of policyMappings) {
+        lines.push(`  \u251C\u2500\u2500 \uD83D\uDD04 ${mapping.phaseName}`);
+        for (const capability of mapping.capabilities) {
+          const activeAgents = mapping.availableAgents.filter((a) => a.active);
+          const inactiveAgents = mapping.availableAgents.filter((a) => !a.active);
+          const status = activeAgents.length > 0 ? "\u2705" : "\u274C";
+          lines.push(`  \u2502   \u251C\u2500\u2500 ${status} ${capability}`);
+          if (activeAgents.length > 0) {
+            activeAgents.forEach((agent) => {
+              lines.push(`  \u2502   \u2502   \u251C\u2500\u2500 \uD83E\uDD16 ${agent.name} (active, priority: ${agent.priority})`);
+            });
+          }
+          if (inactiveAgents.length > 0) {
+            inactiveAgents.forEach((agent) => {
+              lines.push(`  \u2502   \u2502   \u251C\u2500\u2500 \u26AA ${agent.name} (inactive, priority: ${agent.priority})`);
+            });
+          }
+          if (activeAgents.length === 0 && inactiveAgents.length === 0) {
+            lines.push(`  \u2502   \u2502   \u2514\u2500\u2500 \uD83D\uDEAB No agents available`);
+          }
+        }
+      }
+      lines.push("");
+    }
+    const deadEnds = this.findDeadEnds();
+    if (deadEnds.length > 0) {
+      lines.push("\uD83D\uDEAB Dead Ends (Issues requiring attention)");
+      lines.push("========================================");
+      lines.push("");
+      for (const deadEnd of deadEnds) {
+        const icon = deadEnd.type === "capability" ? "\uD83C\uDFAF" : "\uD83D\uDCCB";
+        lines.push(`${icon} ${deadEnd.name} (${deadEnd.type})`);
+        lines.push(`  ${deadEnd.description}`);
+        if (deadEnd.affectedPhases) {
+          deadEnd.affectedPhases.forEach((phase) => {
+            lines.push(`  \u251C\u2500\u2500 Affected: ${phase.policy}.${phase.phase}`);
+          });
+        }
+        lines.push("");
+      }
+    }
+    return lines.join(`
+`);
+  }
+  generateValidationSummary(errors) {
+    const errorCount = errors.filter((e) => e.severity === "error").length;
+    const warningCount = errors.filter((e) => e.severity === "warning").length;
+    if (errorCount === 0 && warningCount === 0) {
+      return "\u2705 All policy-capability-agent chains are valid";
+    }
+    const parts = [];
+    if (errorCount > 0) {
+      parts.push(`${errorCount} error${errorCount > 1 ? "s" : ""}`);
+    }
+    if (warningCount > 0) {
+      parts.push(`${warningCount} warning${warningCount > 1 ? "s" : ""}`);
+    }
+    return `\u274C Validation failed: ${parts.join(", ")} found`;
+  }
+}
+var policyCapabilityValidator;
+var init_policy_capability_validator = __esm(() => {
+  init_policy();
+  init_agent_registry();
+  policyCapabilityValidator = new PolicyCapabilityValidator;
+});
+
 // src/core/config-validator.ts
 var exports_config_validator = {};
 __export(exports_config_validator, {
@@ -13924,6 +14342,8 @@ class ConfigurationValidator {
       result.summary = `${result.valid ? "\u2705" : "\u274C"} ${task.description}: ${result.summary}`;
       results.push(result);
     }
+    const chainResult = await this.validatePolicyChain();
+    results.push(chainResult);
     return results;
   }
   async validateAtStartup(configDir) {
@@ -13974,6 +14394,35 @@ class ConfigurationValidator {
           message: error instanceof Error ? error.message : String(error)
         }],
         summary: `Failed to validate ${yamlPath}: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+  async validatePolicyChain() {
+    try {
+      const { policyCapabilityValidator: policyCapabilityValidator2 } = await Promise.resolve().then(() => (init_policy_capability_validator(), exports_policy_capability_validator));
+      const result = await policyCapabilityValidator2.validateChain();
+      return {
+        valid: result.valid,
+        errors: result.errors.map((error) => ({
+          keyword: "policy-chain",
+          instancePath: error.location || "",
+          schemaPath: "",
+          params: {},
+          message: error.message
+        })),
+        summary: `${result.valid ? "\u2705" : "\u274C"} Policy chain validation: ${result.summary}`
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [{
+          keyword: "policy-chain-error",
+          instancePath: "",
+          schemaPath: "",
+          params: {},
+          message: `Failed to validate policy chain: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        summary: "\u274C Policy chain validation: Failed to execute"
       };
     }
   }
@@ -37616,6 +38065,244 @@ var init_ui_server = __esm(() => {
   import_express = __toESM(require_express2(), 1);
 });
 
+// src/core/policy-tree-visualizer.ts
+var exports_policy_tree_visualizer = {};
+__export(exports_policy_tree_visualizer, {
+  policyTreeVisualizer: () => policyTreeVisualizer,
+  PolicyTreeVisualizer: () => PolicyTreeVisualizer
+});
+
+class PolicyTreeVisualizer {
+  policyEngine = getPolicyEngine();
+  agentRegistry = getAgentRegistry();
+  generateTree() {
+    const roots = [];
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy)
+        continue;
+      const policyNode = {
+        id: `policy-${policyName}`,
+        name: policyName,
+        type: "policy",
+        status: this.getPolicyStatus(policyName),
+        children: []
+      };
+      for (const phase of policy.phases) {
+        const phaseNode = {
+          id: `phase-${policyName}-${phase.name}`,
+          name: phase.name,
+          type: "phase",
+          status: this.getPhaseStatus(phase),
+          children: []
+        };
+        if (phase.capabilities && phase.capabilities.length > 0) {
+          for (const capability of phase.capabilities) {
+            const capabilityNode = {
+              id: `capability-${capability}`,
+              name: capability,
+              type: "capability",
+              status: this.getCapabilityStatus(capability),
+              children: []
+            };
+            const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
+            for (const agent of agentsWithCapability) {
+              const agentNode = {
+                id: `agent-${agent.id}`,
+                name: agent.name,
+                type: "agent",
+                status: agent.active !== false ? "valid" : "inactive",
+                metadata: {
+                  priority: agent.priority,
+                  active: agent.active !== false,
+                  description: agent.description
+                }
+              };
+              capabilityNode.children.push(agentNode);
+            }
+            if (agentsWithCapability.length === 0) {
+              capabilityNode.children.push({
+                id: `no-agents-${capability}`,
+                name: "No agents available",
+                type: "agent",
+                status: "error"
+              });
+            }
+            phaseNode.children.push(capabilityNode);
+          }
+        }
+        policyNode.children.push(phaseNode);
+      }
+      roots.push(policyNode);
+    }
+    return roots;
+  }
+  generateAsciiTree() {
+    const tree = this.generateTree();
+    const lines = [];
+    lines.push("Policy-Capability-Agent Tree");
+    lines.push("===========================");
+    lines.push("");
+    const renderNode = (node, prefix = "", isLast = true) => {
+      const icon = this.getNodeIcon(node);
+      const connector = isLast ? "\u2514\u2500\u2500" : "\u251C\u2500\u2500";
+      const line = `${prefix}${connector} ${icon} ${node.name}`;
+      lines.push(line);
+      if (node.metadata) {
+        const metaParts = [];
+        if (node.metadata.priority !== undefined) {
+          metaParts.push(`priority: ${node.metadata.priority}`);
+        }
+        if (node.metadata.active !== undefined) {
+          metaParts.push(node.metadata.active ? "active" : "inactive");
+        }
+        if (node.metadata.description) {
+          metaParts.push(node.metadata.description);
+        }
+        if (metaParts.length > 0) {
+          const metaConnector = isLast ? "    " : "\u2502   ";
+          lines.push(`${prefix}${metaConnector}(${metaParts.join(", ")})`);
+        }
+      }
+      if (node.children && node.children.length > 0) {
+        const newPrefix = prefix + (isLast ? "    " : "\u2502   ");
+        node.children.forEach((child, index) => {
+          const isLastChild = index === node.children.length - 1;
+          renderNode(child, newPrefix, isLastChild);
+        });
+      }
+    };
+    tree.forEach((root, index) => {
+      const isLastRoot = index === tree.length - 1;
+      renderNode(root, "", isLastRoot);
+      lines.push("");
+    });
+    return lines.join(`
+`);
+  }
+  generateJsonTree() {
+    const tree = this.generateTree();
+    return JSON.stringify(tree, null, 2);
+  }
+  generateSummary() {
+    const tree = this.generateTree();
+    let totalPolicies = 0;
+    let totalPhases = 0;
+    let totalCapabilities = 0;
+    let totalAgents = 0;
+    let validPolicies = 0;
+    let policiesWithWarnings = 0;
+    let policiesWithErrors = 0;
+    const deadEndCapabilities = [];
+    const inactiveAgents = [];
+    const traverse = (node) => {
+      switch (node.type) {
+        case "policy":
+          totalPolicies++;
+          if (node.status === "valid")
+            validPolicies++;
+          else if (node.status === "warning")
+            policiesWithWarnings++;
+          else if (node.status === "error")
+            policiesWithErrors++;
+          break;
+        case "phase":
+          totalPhases++;
+          break;
+        case "capability":
+          totalCapabilities++;
+          if (node.status === "error") {
+            deadEndCapabilities.push(node.name);
+          }
+          break;
+        case "agent":
+          totalAgents++;
+          if (node.status === "inactive") {
+            inactiveAgents.push(node.name);
+          }
+          break;
+      }
+      if (node.children) {
+        node.children.forEach(traverse);
+      }
+    };
+    tree.forEach(traverse);
+    return {
+      totalPolicies,
+      totalPhases,
+      totalCapabilities,
+      totalAgents,
+      validPolicies,
+      policiesWithWarnings,
+      policiesWithErrors,
+      deadEndCapabilities,
+      inactiveAgents
+    };
+  }
+  getPolicyStatus(policyName) {
+    const policy = this.policyEngine.getPolicy(policyName);
+    if (!policy)
+      return "error";
+    let hasWarnings = false;
+    let hasErrors = false;
+    for (const phase of policy.phases) {
+      const phaseStatus = this.getPhaseStatus(phase);
+      if (phaseStatus === "error")
+        hasErrors = true;
+      else if (phaseStatus === "warning")
+        hasWarnings = true;
+    }
+    if (hasErrors)
+      return "error";
+    if (hasWarnings)
+      return "warning";
+    return "valid";
+  }
+  getPhaseStatus(phase) {
+    if (!phase.capabilities || phase.capabilities.length === 0)
+      return "warning";
+    let hasErrors = false;
+    let hasWarnings = false;
+    for (const capability of phase.capabilities) {
+      const capStatus = this.getCapabilityStatus(capability);
+      if (capStatus === "error")
+        hasErrors = true;
+      else if (capStatus === "warning")
+        hasWarnings = true;
+    }
+    if (hasErrors)
+      return "error";
+    if (hasWarnings)
+      return "warning";
+    return "valid";
+  }
+  getCapabilityStatus(capability) {
+    const agents = this.agentRegistry.getAgentsByCapability(capability);
+    const activeAgents = agents.filter((a) => a.active !== false);
+    if (activeAgents.length === 0)
+      return "error";
+    if (activeAgents.length === 1)
+      return "warning";
+    return "valid";
+  }
+  getNodeIcon(node) {
+    const icons = {
+      policy: { valid: "\uD83D\uDCCB", warning: "\u26A0\uFE0F\uD83D\uDCCB", error: "\u274C\uD83D\uDCCB", inactive: "\uD83D\uDCCB" },
+      phase: { valid: "\uD83D\uDD04", warning: "\u26A0\uFE0F\uD83D\uDD04", error: "\u274C\uD83D\uDD04", inactive: "\uD83D\uDD04" },
+      capability: { valid: "\uD83C\uDFAF", warning: "\u26A0\uFE0F\uD83C\uDFAF", error: "\u274C\uD83C\uDFAF", inactive: "\uD83C\uDFAF" },
+      agent: { valid: "\uD83E\uDD16", warning: "\u26A0\uFE0F\uD83E\uDD16", error: "\u274C\uD83E\uDD16", inactive: "\u26AA" }
+    };
+    return icons[node.type][node.status] || "\u2753";
+  }
+}
+var policyTreeVisualizer;
+var init_policy_tree_visualizer = __esm(() => {
+  init_policy();
+  init_agent_registry();
+  policyTreeVisualizer = new PolicyTreeVisualizer;
+});
+
 // src/core/beads.ts
 async function execBeadsCommand(args) {
   const proc = Bun.spawn(["bd", ...args], {
@@ -37775,184 +38462,8 @@ function getOpenCodeClient(config) {
   return defaultClient;
 }
 
-// src/core/policy.ts
-init_path_utils();
-var import_yaml = __toESM(require_dist(), 1);
-import { readFileSync } from "fs";
-
-class PolicyEngine {
-  policies;
-  defaultPolicy;
-  constructor(configPath) {
-    this.policies = new Map;
-    this.defaultPolicy = "default";
-    if (configPath) {
-      this.loadPolicies(configPath);
-    }
-  }
-  loadPolicies(filePath) {
-    try {
-      const content = readFileSync(filePath, "utf-8");
-      const config = import_yaml.parse(content);
-      if (!config.policies) {
-        throw new Error("Invalid policies file: missing 'policies' key");
-      }
-      this.policies.clear();
-      for (const [name, policy] of Object.entries(config.policies)) {
-        this.validatePolicy(name, policy);
-        this.policies.set(name, policy);
-      }
-      if (config.default_policy) {
-        if (!this.policies.has(config.default_policy)) {
-          throw new Error(`Default policy '${config.default_policy}' not found`);
-        }
-        this.defaultPolicy = config.default_policy;
-      }
-    } catch (error) {
-      throw new Error(`Failed to load policies from ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  validatePolicy(name, policy) {
-    if (!policy.phases || policy.phases.length === 0) {
-      throw new Error(`Policy '${name}' must have at least one phase`);
-    }
-    for (const phase of policy.phases) {
-      if (!phase.name) {
-        throw new Error(`Policy '${name}' has a phase without a name`);
-      }
-    }
-  }
-  getPolicy(name) {
-    const policyName = name || this.defaultPolicy;
-    return this.policies.get(policyName) || null;
-  }
-  getPolicyNames() {
-    return Array.from(this.policies.keys());
-  }
-  getDefaultPolicyName() {
-    return this.defaultPolicy;
-  }
-  getPhaseSequence(policyName) {
-    const policy = this.getPolicy(policyName);
-    if (!policy) {
-      return [];
-    }
-    return policy.phases.map((p) => p.name);
-  }
-  getPhaseConfig(policyName, phaseName) {
-    const policy = this.getPolicy(policyName);
-    if (!policy) {
-      return null;
-    }
-    return policy.phases.find((p) => p.name === phaseName) || null;
-  }
-  getNextPhase(policyName, currentPhase) {
-    const sequence = this.getPhaseSequence(policyName);
-    const currentIndex = sequence.indexOf(currentPhase);
-    if (currentIndex === -1 || currentIndex === sequence.length - 1) {
-      return null;
-    }
-    return sequence[currentIndex + 1];
-  }
-  determineTransition(policyName, currentPhase, outcome) {
-    const policy = this.getPolicy(policyName);
-    if (!policy) {
-      return { type: "block", reason: "Policy not found" };
-    }
-    const phaseConfig = this.getPhaseConfig(policyName, currentPhase);
-    if (!phaseConfig) {
-      return { type: "block", reason: "Phase not found" };
-    }
-    if (outcome.requires_approval || phaseConfig.require_approval) {
-      return {
-        type: "block",
-        reason: "Human approval required"
-      };
-    }
-    if (outcome.success) {
-      const nextPhase = this.getNextPhase(policyName, currentPhase);
-      if (nextPhase) {
-        return {
-          type: "advance",
-          next_phase: nextPhase,
-          reason: "Phase completed successfully"
-        };
-      } else {
-        return {
-          type: "close",
-          reason: "All phases completed"
-        };
-      }
-    }
-    const retryConfig = policy.retry || {
-      max_attempts: 3,
-      backoff_strategy: "exponential"
-    };
-    const retryCount = outcome.retry_count || 0;
-    if (retryCount < retryConfig.max_attempts - 1) {
-      return {
-        type: "retry",
-        reason: `Retry ${retryCount + 1}/${retryConfig.max_attempts}`
-      };
-    }
-    return {
-      type: "block",
-      reason: "Max retries exceeded"
-    };
-  }
-  calculateRetryDelay(policyName, attemptNumber) {
-    const policy = this.getPolicy(policyName);
-    if (!policy || !policy.retry) {
-      return 5000;
-    }
-    const retry = policy.retry;
-    const initialDelay = retry.initial_delay_ms || 5000;
-    const maxDelay = retry.max_delay_ms || 300000;
-    let delay;
-    switch (retry.backoff_strategy) {
-      case "exponential":
-        delay = initialDelay * Math.pow(2, attemptNumber);
-        break;
-      case "linear":
-        delay = initialDelay * (attemptNumber + 1);
-        break;
-      case "fixed":
-        delay = initialDelay;
-        break;
-      default:
-        delay = initialDelay;
-    }
-    return Math.min(delay, maxDelay);
-  }
-  calculateTimeout(policyName, phaseName) {
-    const policy = this.getPolicy(policyName);
-    if (!policy) {
-      return 300000;
-    }
-    const baseTimeout = policy.timeout_base_ms || 300000;
-    const phaseConfig = this.getPhaseConfig(policyName, phaseName);
-    const multiplier = phaseConfig?.timeout_multiplier || 1;
-    return baseTimeout * multiplier;
-  }
-  getStallThreshold(policyName) {
-    const policy = this.getPolicy(policyName);
-    return policy?.stall_threshold_ms || 60000;
-  }
-  requiresHITL(policyName) {
-    const policy = this.getPolicy(policyName);
-    return policy?.require_hitl || false;
-  }
-}
-var defaultPolicyEngine = null;
-function getPolicyEngine(configPath) {
-  if (!defaultPolicyEngine) {
-    const defaultPath = configPath || getConfigPath("policies.yaml");
-    defaultPolicyEngine = new PolicyEngine(defaultPath);
-  }
-  return defaultPolicyEngine;
-}
-
 // src/core/worker-engine.ts
+init_policy();
 init_agent_registry();
 
 // src/core/logging.ts
@@ -38423,6 +38934,7 @@ function getWorkerEngine(config) {
 }
 
 // src/core/monitor-engine.ts
+init_policy();
 class MonitorEngine {
   config;
   logger = getLogger();
@@ -38605,6 +39117,8 @@ var COMMANDS = {
   install: "Check and install dependencies",
   "sync-agents": "Sync agent registry with OpenCode",
   ui: "Start the flow visualization server",
+  "validate-policy-chain": "Validate policy-capability-agent chain integrity",
+  "show-policy-tree": "Display policy-capability-agent relationship tree",
   help: "Show help information"
 };
 function showHelp() {
@@ -38617,11 +39131,13 @@ Commands:
 ${Object.entries(COMMANDS).map(([cmd, desc]) => `  ${cmd.padEnd(15)} ${desc}`).join(`
 `)}
 
-Examples:
-  ashep init                # Initialize configuration
-  ashep worker              # Start autonomous worker
-  ashep work ISSUE-123      # Process specific issue
-  ashep ui                  # Start visualization UI
+ Examples:
+   ashep init                # Initialize configuration
+   ashep worker              # Start autonomous worker
+   ashep work ISSUE-123      # Process specific issue
+   ashep ui                  # Start visualization UI
+   ashep validate-policy-chain  # Validate policy relationships
+   ashep show-policy-tree    # Show relationship tree
 
 For detailed documentation, see: README.md
 Configuration guide: docs/cli-reference.md
@@ -38888,6 +39404,116 @@ Stopping UI server...`);
     process.exit(1);
   }
 }
+async function cmdValidatePolicyChain() {
+  console.log("\uD83D\uDD0D Validating policy-capability-agent chain...");
+  try {
+    const { validateStartup: validateStartup2 } = await Promise.resolve().then(() => (init_config_validator(), exports_config_validator));
+    await validateStartup2();
+    const { policyCapabilityValidator: policyCapabilityValidator2 } = await Promise.resolve().then(() => (init_policy_capability_validator(), exports_policy_capability_validator));
+    const result = await policyCapabilityValidator2.validateChain();
+    console.log(`
+${result.summary}
+`);
+    if (!result.valid) {
+      const errors = result.errors.filter((e) => e.severity === "error");
+      const warnings = result.errors.filter((e) => e.severity === "warning");
+      if (errors.length > 0) {
+        console.log("\u274C Errors:");
+        for (const error of errors) {
+          console.log(`  \u2022 ${error.message}`);
+          if (error.location) {
+            console.log(`    Location: ${error.location}`);
+          }
+          if (error.suggestion) {
+            console.log(`    Suggestion: ${error.suggestion}`);
+          }
+        }
+        console.log();
+      }
+      if (warnings.length > 0) {
+        console.log("\u26A0\uFE0F Warnings:");
+        for (const warning of warnings) {
+          console.log(`  \u2022 ${warning.message}`);
+          if (warning.location) {
+            console.log(`    Location: ${warning.location}`);
+          }
+          if (warning.suggestion) {
+            console.log(`    Suggestion: ${warning.suggestion}`);
+          }
+        }
+        console.log();
+      }
+      const deadEnds = policyCapabilityValidator2.findDeadEnds();
+      if (deadEnds.length > 0) {
+        console.log("\uD83D\uDEAB Dead Ends (require attention):");
+        for (const deadEnd of deadEnds) {
+          const icon = deadEnd.type === "capability" ? "\uD83C\uDFAF" : "\uD83D\uDCCB";
+          console.log(`  ${icon} ${deadEnd.name}: ${deadEnd.description}`);
+        }
+        console.log();
+      }
+      process.exit(1);
+    } else {
+      console.log("\u2705 All policy-capability-agent chains are valid");
+    }
+  } catch (error) {
+    console.error("\u274C Validation failed:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdShowPolicyTree(format) {
+  console.log("\uD83C\uDF33 Generating policy-capability-agent tree...");
+  try {
+    const { configValidator: configValidator2 } = await Promise.resolve().then(() => (init_config_validator(), exports_config_validator));
+    const results = await configValidator2.validateAllConfigs();
+    console.log("\uD83D\uDD0D Validating configuration files...");
+    let hasErrors = false;
+    for (const result of results) {
+      console.log(result.summary);
+      if (!result.valid) {
+        hasErrors = true;
+        for (const error of result.errors) {
+          const path = error.instancePath || error.schemaPath;
+          console.log(`   \u2022 ${path}: ${error.message}`);
+        }
+      }
+    }
+    if (hasErrors) {
+      console.log(`
+\u26A0\uFE0F Configuration validation found issues, but continuing with tree generation...
+`);
+    } else {
+      console.log(`\u2705 Configuration validation passed
+`);
+    }
+    const { policyTreeVisualizer: policyTreeVisualizer2 } = await Promise.resolve().then(() => (init_policy_tree_visualizer(), exports_policy_tree_visualizer));
+    if (format === "json") {
+      const jsonTree = policyTreeVisualizer2.generateJsonTree();
+      console.log(jsonTree);
+    } else {
+      const asciiTree = policyTreeVisualizer2.generateAsciiTree();
+      console.log(asciiTree);
+      const summary = policyTreeVisualizer2.generateSummary();
+      console.log("Summary:");
+      console.log(`  Policies: ${summary.validPolicies}/${summary.totalPolicies} valid`);
+      console.log(`  Phases: ${summary.totalPhases}`);
+      console.log(`  Capabilities: ${summary.totalCapabilities}`);
+      console.log(`  Agents: ${summary.totalAgents}`);
+      if (summary.policiesWithWarnings > 0 || summary.policiesWithErrors > 0) {
+        console.log(`  Issues: ${summary.policiesWithWarnings} warnings, ${summary.policiesWithErrors} errors`);
+      }
+      if (summary.deadEndCapabilities.length > 0) {
+        console.log(`  Dead end capabilities: ${summary.deadEndCapabilities.join(", ")}`);
+      }
+      if (summary.inactiveAgents.length > 0) {
+        console.log(`  Inactive agents: ${summary.inactiveAgents.join(", ")}`);
+      }
+    }
+  } catch (error) {
+    console.error("\u274C Failed to generate tree:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -38927,6 +39553,20 @@ async function main() {
         }
       }
       await cmdUI(port, host);
+      break;
+    }
+    case "validate-policy-chain":
+      await cmdValidatePolicyChain();
+      break;
+    case "show-policy-tree": {
+      let format;
+      for (let i = 1;i < args.length; i++) {
+        if (args[i] === "--format" && i + 1 < args.length) {
+          format = args[i + 1];
+          i++;
+        }
+      }
+      await cmdShowPolicyTree(format);
       break;
     }
     default:

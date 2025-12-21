@@ -21,9 +21,9 @@
   },
   "additionalProperties": false,
   "definitions": {
-    "agent": {
-      "type": "object",
-      "required": ["id", "name", "description", "capabilities", "provider_id", "model_id", "priority"],
+     "agent": {
+       "type": "object",
+       "required": ["id", "name", "capabilities"],
       "properties": {
         "id": {
           "type": "string",
@@ -47,21 +47,26 @@
           },
           "description": "Agent capabilities"
         },
-        "provider_id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$",
-          "description": "AI provider identifier"
-        },
-        "model_id": {
-          "type": "string",
-          "description": "Model identifier from provider"
-        },
-        "priority": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100,
-          "description": "Agent priority for selection (higher = more preferred)"
-        },
+         "provider_id": {
+           "type": "string",
+           "pattern": "^[a-z][a-z0-9_-]*$",
+           "description": "AI provider identifier (optional, uses OpenCode default if not specified)"
+         },
+         "model_id": {
+           "type": "string",
+           "description": "Model identifier from provider (optional, uses OpenCode default if not specified)"
+         },
+         "priority": {
+           "type": "integer",
+           "minimum": 1,
+           "maximum": 100,
+           "description": "Agent priority for selection (higher = more preferred)"
+         },
+         "active": {
+           "type": "boolean",
+           "default": true,
+           "description": "Whether the agent is active and available for use"
+         },
         "constraints": {
           "type": "object",
           "properties": {
@@ -88,29 +93,34 @@
           },
           "additionalProperties": false
         },
-        "metadata": {
-          "type": "object",
-          "properties": {
-            "tags": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "Tags for categorizing agents"
-            },
-            "created_at": {
-              "type": "string",
-              "format": "date-time",
-              "description": "When agent was added"
-            },
-            "updated_at": {
-              "type": "string",
-              "format": "date-time",
-              "description": "When agent was last updated"
-            }
-          },
-          "additionalProperties": false
-        }
+         "metadata": {
+           "type": "object",
+           "properties": {
+             "tags": {
+               "type": "array",
+               "items": {
+                 "type": "string"
+               },
+               "description": "Tags for categorizing agents"
+             },
+             "created_at": {
+               "type": "string",
+               "format": "date-time",
+               "description": "When agent was added"
+             },
+             "updated_at": {
+               "type": "string",
+               "format": "date-time",
+               "description": "When agent was last updated"
+             },
+             "agent_type": {
+               "type": "string",
+               "enum": ["primary", "subagent"],
+               "description": "Type of agent (primary or subagent)"
+             }
+           },
+           "additionalProperties": true
+         }
       },
       "additionalProperties": false
     }

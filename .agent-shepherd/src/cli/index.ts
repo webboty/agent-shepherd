@@ -19,6 +19,8 @@ const COMMANDS = {
   install: "Check and install dependencies",
   "sync-agents": "Sync agent registry with OpenCode",
   ui: "Start the flow visualization server",
+  "validate-policy-chain": "Validate policy-capability-agent chain integrity",
+  "show-policy-tree": "Display policy-capability-agent relationship tree",
   help: "Show help information",
 };
 
@@ -36,11 +38,13 @@ ${Object.entries(COMMANDS)
   .map(([cmd, desc]) => `  ${cmd.padEnd(15)} ${desc}`)
   .join("\n")}
 
-Examples:
-  ashep init                # Initialize configuration
-  ashep worker              # Start autonomous worker
-  ashep work ISSUE-123      # Process specific issue
-  ashep ui                  # Start visualization UI
+ Examples:
+   ashep init                # Initialize configuration
+   ashep worker              # Start autonomous worker
+   ashep work ISSUE-123      # Process specific issue
+   ashep ui                  # Start visualization UI
+   ashep validate-policy-chain  # Validate policy relationships
+   ashep show-policy-tree    # Show relationship tree
 
 For detailed documentation, see: README.md
 Configuration guide: docs/cli-reference.md
@@ -379,6 +383,147 @@ async function cmdUI(port?: number, host?: string): Promise<void> {
 }
 
 /**
+ * Validate policy chain command - validate policy-capability-agent relationships
+ */
+async function cmdValidatePolicyChain(): Promise<void> {
+  console.log("🔍 Validating policy-capability-agent chain...");
+
+  try {
+    // First validate basic configuration
+    const { validateStartup } = await import("../core/config-validator.ts");
+    await validateStartup();
+
+    // Then validate policy chain
+    const { policyCapabilityValidator } = await import("../core/policy-capability-validator.ts");
+    const result = await policyCapabilityValidator.validateChain();
+
+    console.log(`\n${result.summary}\n`);
+
+    if (!result.valid) {
+      // Group errors by type
+      const errors = result.errors.filter(e => e.severity === 'error');
+      const warnings = result.errors.filter(e => e.severity === 'warning');
+
+      if (errors.length > 0) {
+        console.log("❌ Errors:");
+        for (const error of errors) {
+          console.log(`  • ${error.message}`);
+          if (error.location) {
+            console.log(`    Location: ${error.location}`);
+          }
+          if (error.suggestion) {
+            console.log(`    Suggestion: ${error.suggestion}`);
+          }
+        }
+        console.log();
+      }
+
+      if (warnings.length > 0) {
+        console.log("⚠️ Warnings:");
+        for (const warning of warnings) {
+          console.log(`  • ${warning.message}`);
+          if (warning.location) {
+            console.log(`    Location: ${warning.location}`);
+          }
+          if (warning.suggestion) {
+            console.log(`    Suggestion: ${warning.suggestion}`);
+          }
+        }
+        console.log();
+      }
+
+      // Show dead ends
+      const deadEnds = policyCapabilityValidator.findDeadEnds();
+      if (deadEnds.length > 0) {
+        console.log("🚫 Dead Ends (require attention):");
+        for (const deadEnd of deadEnds) {
+          const icon = deadEnd.type === 'capability' ? '🎯' : '📋';
+          console.log(`  ${icon} ${deadEnd.name}: ${deadEnd.description}`);
+        }
+        console.log();
+      }
+
+      process.exit(1);
+    } else {
+      console.log("✅ All policy-capability-agent chains are valid");
+    }
+  } catch (error) {
+    console.error("❌ Validation failed:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Show policy tree command - display relationship tree
+ */
+async function cmdShowPolicyTree(format?: string): Promise<void> {
+  console.log("🌳 Generating policy-capability-agent tree...");
+
+  try {
+    // Validate configuration but don't exit on failure
+    const { configValidator } = await import("../core/config-validator.ts");
+    const results = await configValidator.validateAllConfigs();
+
+    console.log('🔍 Validating configuration files...');
+    let hasErrors = false;
+
+    for (const result of results) {
+      console.log(result.summary);
+
+      if (!result.valid) {
+        hasErrors = true;
+
+        // Print detailed errors
+        for (const error of result.errors) {
+          const path = error.instancePath || error.schemaPath;
+          console.log(`   • ${path}: ${error.message}`);
+        }
+      }
+    }
+
+    if (hasErrors) {
+      console.log('\n⚠️ Configuration validation found issues, but continuing with tree generation...\n');
+    } else {
+      console.log('✅ Configuration validation passed\n');
+    }
+
+    const { policyTreeVisualizer } = await import("../core/policy-tree-visualizer.ts");
+
+    if (format === 'json') {
+      const jsonTree = policyTreeVisualizer.generateJsonTree();
+      console.log(jsonTree);
+    } else {
+      // ASCII tree (default)
+      const asciiTree = policyTreeVisualizer.generateAsciiTree();
+      console.log(asciiTree);
+
+      // Add summary
+      const summary = policyTreeVisualizer.generateSummary();
+      console.log("Summary:");
+      console.log(`  Policies: ${summary.validPolicies}/${summary.totalPolicies} valid`);
+      console.log(`  Phases: ${summary.totalPhases}`);
+      console.log(`  Capabilities: ${summary.totalCapabilities}`);
+      console.log(`  Agents: ${summary.totalAgents}`);
+
+      if (summary.policiesWithWarnings > 0 || summary.policiesWithErrors > 0) {
+        console.log(`  Issues: ${summary.policiesWithWarnings} warnings, ${summary.policiesWithErrors} errors`);
+      }
+
+      if (summary.deadEndCapabilities.length > 0) {
+        console.log(`  Dead end capabilities: ${summary.deadEndCapabilities.join(', ')}`);
+      }
+
+      if (summary.inactiveAgents.length > 0) {
+        console.log(`  Inactive agents: ${summary.inactiveAgents.join(', ')}`);
+      }
+    }
+  } catch (error) {
+    console.error("❌ Failed to generate tree:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
  * Main CLI entry point
  */
 async function main(): Promise<void> {
@@ -431,6 +576,25 @@ async function main(): Promise<void> {
       }
 
       await cmdUI(port, host);
+      break;
+    }
+
+    case "validate-policy-chain":
+      await cmdValidatePolicyChain();
+      break;
+
+    case "show-policy-tree": {
+      // Parse format argument: --format json
+      let format: string | undefined;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--format' && i + 1 < args.length) {
+          format = args[i + 1];
+          i++; // skip the next arg
+        }
+      }
+
+      await cmdShowPolicyTree(format);
       break;
     }
 
