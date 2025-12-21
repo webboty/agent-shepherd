@@ -19,6 +19,7 @@ node_modules/
 
 # Build outputs
 dist/
+ashep
 
 # Logs
 *.log
