@@ -9,7 +9,7 @@ async function openspecConvert(proposalId) {
   }
 
   try {
-    const converterPath = path.join(__dirname, '..', '..', '..', 'tools', 'openspec-beads-converter.cjs');
+    const converterPath = path.join(__dirname, 'tools', 'openspec-beads-converter.cjs');
     execSync(`node "${converterPath}" "${proposalId}"`, { stdio: 'inherit', cwd: path.join(__dirname, '..', '..', '..') });
   } catch (error) {
     console.error('Failed to convert proposal:', error.message);
@@ -25,7 +25,7 @@ async function openspecSync(proposalId) {
   }
 
   try {
-    const syncPath = path.join(__dirname, '..', '..', '..', 'tools', 'openspec-beads-sync.cjs');
+    const syncPath = path.join(__dirname, 'tools', 'openspec-beads-sync.cjs');
     execSync(`node "${syncPath}" "${proposalId}"`, { stdio: 'inherit', cwd: path.join(__dirname, '..', '..', '..') });
   } catch (error) {
     console.error('Failed to sync proposal:', error.message);
@@ -41,7 +41,7 @@ async function openspecParse(proposalId) {
   }
 
   try {
-    const parserPath = path.join(__dirname, '..', '..', '..', 'tools', 'openspec-beads-parser.cjs');
+    const parserPath = path.join(__dirname, 'tools', 'openspec-beads-parser.cjs');
     execSync(`node "${parserPath}" "${proposalId}"`, { stdio: 'inherit', cwd: path.join(__dirname, '..', '..', '..') });
   } catch (error) {
     console.error('Failed to parse proposal:', error.message);

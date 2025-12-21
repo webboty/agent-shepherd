@@ -250,7 +250,7 @@ done
 
 ## Development
 
-The OpenSpec plugin is implemented using existing tools:
+The OpenSpec plugin is self-contained and includes its own tool implementations:
 
 - `tools/openspec-beads-converter.cjs` - Conversion logic
 - `tools/openspec-beads-sync.cjs` - Synchronization logic
@@ -259,6 +259,18 @@ The OpenSpec plugin is implemented using existing tools:
 **Plugin Location:** `.agent-shepherd/plugins/openspec/`
 
 **Source Code:** See `index.js` for command implementations and `manifest.json` for metadata.
+
+**Plugin Structure:**
+```
+openspec/
+├── manifest.json                    # Plugin metadata and command definitions
+├── index.js                        # Command implementations
+├── tools/                          # Self-contained tool implementations
+│   ├── openspec-beads-converter.cjs
+│   ├── openspec-beads-sync.cjs
+│   └── openspec-beads-parser.cjs
+└── README.md                       # This documentation
+```
 
 ## Related Documentation
 
