@@ -15,8 +15,8 @@ This integration bridges OpenSpec (spec-driven development) and Beads (distribut
 ## What Was Accomplished
 
 ### ✅ Core Scripts
-- `tools/openspec-beads-converter.js`: Converts OpenSpec proposals to Beads epics with hierarchical tasks
-- `tools/openspec-beads-sync.js`: Synchronizes completion status bidirectionally
+- `tools/openspec-beads-converter.cjs`: Converts OpenSpec proposals to Beads epics with hierarchical tasks
+- `tools/openspec-beads-sync.cjs`: Synchronizes completion status bidirectionally
 
 ### ✅ Command Interfaces
 - `openspec-beads-apply.md`: Apply changes using Beads for task management (batch mode)
@@ -52,7 +52,7 @@ This creates the directory structure `openspec/changes/my-feature/` with `propos
 ### 3. Convert to Beads Tasks
 **Option A: Direct Script Execution (Recommended for large proposals)**
 ```bash
-node tools/openspec-beads-converter.js my-feature
+node tools/openspec-beads-converter.cjs my-feature
 ```
 This runs directly in terminal, avoiding the 2-minute timeout limit of agent commands.
 
@@ -88,7 +88,7 @@ bd update <task-id> --status closed
 ### 5. Sync Status Back (Optional)
 **Option A: Direct Script Execution**
 ```bash
-node tools/openspec-beads-sync.js my-feature
+node tools/openspec-beads-sync.cjs my-feature
 ```
 Runs directly in terminal for reliable execution.
 
@@ -144,7 +144,7 @@ Both commands automatically filter to only work on tasks from the specified prop
 ## Example Workflow
 
 1. **Plan**: Create OpenSpec proposal with detailed tasks
-2. **Convert**: `node tools/openspec-beads-converter.js my-feature`
+2. **Convert**: `node tools/openspec-beads-converter.cjs my-feature`
 3. **Execute**: Use `bd ready` and `bd show` to work through tasks
 4. **Track**: Tasks auto-sync or use manual sync commands
 5. **Complete**: All systems stay in sync

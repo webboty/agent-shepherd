@@ -6,4 +6,4 @@ The user wants to create Beads tasks from an OpenSpec proposal using the automat
 
 Arguments: $ARGUMENTS
 
-Command: node tools/openspec-beads-converter.js $ARGUMENTS
+Command: node tools/openspec-beads-converter.cjs $ARGUMENTS

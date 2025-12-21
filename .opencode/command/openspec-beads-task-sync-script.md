@@ -6,4 +6,4 @@ The user wants to sync task completion statuses between OpenSpec tasks.md and Be
 
 Arguments: $ARGUMENTS
 
-Command: node tools/openspec-beads-sync.js $ARGUMENTS
+Command: node tools/openspec-beads-sync.cjs $ARGUMENTS
