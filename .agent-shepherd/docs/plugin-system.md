@@ -116,14 +116,48 @@ Plugins are automatically discovered when Agent Shepherd starts:
 
 ### OpenSpec Plugin
 
-The OpenSpec plugin provides integration between OpenSpec proposals and Beads issue tracking. See [plugins/openspec/README.md](plugins/openspec/README.md) for details.
+The OpenSpec plugin provides integration between OpenSpec proposals and Beads issue tracking. See [plugins/openspec/README.md](../plugins/openspec/README.md) for details.
 
 **Commands:**
 - `ashep openspec-convert <proposal-id>` - Convert OpenSpec proposal to Beads issues
 - `ashep openspec-sync <proposal-id>` - Sync task status between OpenSpec and Beads
 - `ashep openspec-parse <proposal-id>` - Parse OpenSpec tasks.md structure
 
+### Hello World Plugin
+
+The Hello World plugin is a comprehensive example demonstrating plugin development concepts. It's perfect for learning plugin development and testing the plugin system. See [plugins/hello-world/README.md](../plugins/hello-world/README.md) for complete documentation.
+
+**Commands:**
+- `ashep hello` - Print a greeting message
+- `ashep greet <name> [style]` - Greet a specific person with optional styling
+- `ashep countdown <number>` - Count down from a number
+
 ## Developing Plugins
+
+### Learning by Example
+
+The easiest way to learn plugin development is by studying the Hello World plugin:
+
+```bash
+# View the complete example
+cat .agent-shepherd/plugins/hello-world/README.md
+cat .agent-shepherd/plugins/hello-world/manifest.json
+cat .agent-shepherd/plugins/hello-world/index.js
+
+# Test the commands
+ashep hello
+ashep greet "Your Name" excited
+ashep countdown 3
+```
+
+The Hello World plugin demonstrates:
+- ✅ Basic command structure
+- ✅ Argument handling and validation
+- ✅ Error handling with helpful messages
+- ✅ Async operations and delays
+- ✅ Different output styles
+
+Start by copying the Hello World plugin structure and modifying it for your needs.
 
 ### Best Practices
 

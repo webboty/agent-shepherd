@@ -1,0 +1,21 @@
+{
+  "name": "hello-world",
+  "description": "Example plugin demonstrating basic Agent Shepherd plugin development",
+  "version": "1.0.0",
+  "commands": [
+    {
+      "name": "hello",
+      "description": "Print a greeting message"
+    },
+    {
+      "name": "greet",
+      "description": "Greet a specific person with optional style"
+    },
+    {
+      "name": "countdown",
+      "description": "Count down from a number"
+    }
+  ],
+  "author": "Agent Shepherd Team",
+  "license": "MIT"
+}
