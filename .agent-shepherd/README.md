@@ -56,19 +56,21 @@ bun run ashep ui
 
 ## Architecture
 
+For detailed architecture information, see [docs/architecture.md](docs/architecture.md).
+
 ```
 Beads Issues → Worker Engine → Agent Registry → OpenCode Sessions
                      ↓              ↓                 ↓
-                Policy Engine → Agent Selection → Agent Execution
+                 Policy Engine → Agent Selection → Agent Execution
                      ↓              ↓                 ↓
-                Monitor Engine → Logging System → Run Outcomes
+                 Monitor Engine → Logging System → Run Outcomes
 ```
 
 ## Configuration
 
-Agent Shepherd uses YAML configuration files in the `.agent-shepherd/` directory:
+Agent Shepherd uses YAML configuration files in the `.agent-shepherd/config/` directory:
 
-### Main Configuration (`config.yaml`)
+### Main Configuration (`config/config.yaml`)
 
 ```yaml
 version: "1.0"
@@ -83,7 +85,7 @@ ui:
   host: localhost
 ```
 
-### Workflow Policies (`policies.yaml`)
+### Workflow Policies (`config/policies.yaml`)
 
 ```yaml
 policies:
@@ -106,7 +108,7 @@ policies:
 default_policy: default
 ```
 
-### Agent Registry (`agents.yaml`)
+### Agent Registry (`config/agents.yaml`)
 
 ```yaml
 version: "1.0"
@@ -120,6 +122,8 @@ agents:
 ```
 
 ## CLI Commands
+
+For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.md).
 
 ### Core Commands
 
@@ -169,12 +173,17 @@ src/
 │   ├── logging.ts         # Logging system
 │   ├── monitor-engine.ts  # Supervision and monitoring
 │   ├── opencode.ts        # OpenCode integration
+│   ├── path-utils.ts      # Path resolution utilities
 │   ├── policy.ts          # Policy engine
 │   └── worker-engine.ts   # Issue processing
 ├── ui/                    # ReactFlow visualization
 │   ├── ui-server.ts       # Express server for UI
 │   └── AgentShepherdFlow.tsx # ReactFlow component
-└── modules/               # Agent modules (BMB, BMGD, CIS)
+
+config/                    # User configuration files
+├── agents.yaml           # Agent registry
+├── config.yaml           # Main configuration
+└── policies.yaml         # Workflow policies
 
 schemas/                   # JSON schema validation
 docs/                      # Documentation
@@ -273,6 +282,11 @@ DEBUG=agent-shepherd ashep worker
 6. Commit your changes (`git commit -m 'Add amazing feature'`)
 7. Push to the branch (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
+
+## Documentation
+
+- **[Architecture Guide](docs/architecture.md)** - Detailed system architecture and design decisions
+- **[CLI Reference](docs/cli-reference.md)** - Comprehensive command-line interface documentation
 
 ## License
 

@@ -125,18 +125,18 @@ ashep init
 **Behavior:**
 - Creates `.agent-shepherd/` directory
 - Generates default configuration files:
-  - `config.yaml` - Main settings
-  - `policies.yaml` - Workflow definitions
-  - `agents.yaml` - Agent registry
+  - `config/config.yaml` - Main settings
+  - `config/policies.yaml` - Workflow definitions
+  - `config/agents.yaml` - Agent registry
 - Skips existing files to avoid overwriting
 
 **Output:**
 ```
 Initializing Agent Shepherd configuration...
-Created directory: /path/to/project/.agent-shepherd
-Created: /path/to/project/.agent-shepherd/config.yaml
-Created: /path/to/project/.agent-shepherd/policies.yaml
-Created: /path/to/project/.agent-shepherd/agents.yaml
+Created directory: /path/to/project/.agent-shepherd/config
+Created: /path/to/project/.agent-shepherd/config/config.yaml
+Created: /path/to/project/.agent-shepherd/config/policies.yaml
+Created: /path/to/project/.agent-shepherd/config/agents.yaml
 
 Initialization complete!
 You can now run: ashep worker
@@ -208,7 +208,7 @@ Sync complete:
 
 ## Configuration Files
 
-### `.agent-shepherd/config.yaml`
+### `.agent-shepherd/config/config.yaml`
 
 Main configuration file:
 
@@ -229,7 +229,7 @@ ui:
   host: localhost              # UI server host
 ```
 
-### `.agent-shepherd/policies.yaml`
+### `.agent-shepherd/config/policies.yaml`
 
 Workflow policy definitions:
 
@@ -264,7 +264,7 @@ policies:
 default_policy: default
 ```
 
-### `.agent-shepherd/agents.yaml`
+### `.agent-shepherd/config/agents.yaml`
 
 Agent registry:
 
