@@ -6,6 +6,42 @@ Agent Shepherd provides a comprehensive CLI for managing the orchestration syste
 
 ## Core Commands
 
+### `ashep quickstart`
+
+One-command onboarding that sets up Agent Shepherd with dependencies, configuration, and demo workflow.
+
+**Usage:**
+```bash
+ashep quickstart
+```
+
+**Behavior:**
+- Automatically installs missing dependencies (Bun, Beads)
+- Initializes configuration directory with sample files
+- Syncs agent registry with OpenCode (if available)
+- Validates policy-capability-agent chain integrity
+- Provides instructions for next steps
+
+**Output:**
+```
+🚀 Agent Shepherd Quickstart - One-command onboarding
+
+📦 Checking dependencies...
+✅ Bun 1.2.23 is installed
+✅ Beads (bd) is installed
+
+⚙️ Initializing configuration...
+...
+
+🎉 Quickstart complete!
+
+Next steps:
+• Start the worker: ashep worker
+• Start monitoring: ashep monitor
+• View UI: ashep ui
+• Process issues: ashep work <issue-id>
+```
+
 ### `ashep worker`
 
 Start the autonomous worker engine that processes issues from Beads.

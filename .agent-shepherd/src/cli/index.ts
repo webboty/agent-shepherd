@@ -23,6 +23,7 @@ const COMMANDS: Record<string, string> = {
   ui: "Start the flow visualization server",
   "validate-policy-chain": "Validate policy-capability-agent chain integrity",
   "show-policy-tree": "Display policy-capability-agent relationship tree",
+  quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
   "plugin-activate": "Activate a plugin",
   "plugin-deactivate": "Deactivate a plugin",
@@ -124,12 +125,13 @@ ${Object.entries(COMMANDS)
   .join("\n")}
 
  Examples:
-   ashep init                # Initialize configuration
-   ashep worker              # Start autonomous worker
-   ashep work ISSUE-123      # Process specific issue
-   ashep ui                  # Start visualization UI
-   ashep validate-policy-chain  # Validate policy relationships
-   ashep show-policy-tree    # Show relationship tree
+    ashep quickstart          # One-command onboarding
+    ashep init                # Initialize configuration
+    ashep worker              # Start autonomous worker
+    ashep work ISSUE-123      # Process specific issue
+    ashep ui                  # Start visualization UI
+    ashep validate-policy-chain  # Validate policy relationships
+    ashep show-policy-tree    # Show relationship tree
 
 For detailed documentation, see: README.md
 Configuration guide: docs/cli-reference.md
@@ -759,6 +761,93 @@ function cmdPluginRemove(name: string): void {
 }
 
 /**
+ * Quickstart command - one-command onboarding
+ */
+async function cmdQuickstart(): Promise<void> {
+  console.log("🚀 Agent Shepherd Quickstart - One-command onboarding\n");
+
+  try {
+    // Step 1: Check and install dependencies
+    console.log("📦 Checking dependencies...");
+    let dependenciesOk = true;
+
+    // Check Bun
+    console.log(`✅ Bun ${Bun.version} is installed`);
+
+    // Check Beads
+    try {
+      const proc = Bun.spawn(["bd", "--version"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      await proc.exited;
+      console.log("✅ Beads (bd) is installed");
+    } catch {
+      console.log("❌ Beads (bd) is NOT installed");
+      console.log("   Installing Beads...");
+
+      try {
+        execSync("curl -fsSL https://get.beads.dev | bash", { stdio: "inherit" });
+        // Update PATH for current session
+        process.env.PATH = `${process.env.HOME}/.beads/bin:${process.env.PATH}`;
+        console.log("✅ Beads installed successfully");
+      } catch (error) {
+        console.error("❌ Failed to install Beads:", error);
+        console.log("   Please install Beads manually: curl -fsSL https://get.beads.dev | bash");
+        dependenciesOk = false;
+      }
+    }
+
+    if (!dependenciesOk) {
+      console.log("\n❌ Some dependencies could not be installed. Please resolve manually and run 'ashep quickstart' again.");
+      process.exit(1);
+    }
+
+    // Step 2: Initialize configuration
+    console.log("\n⚙️  Initializing configuration...");
+    cmdInit();
+
+    // Step 3: Sync agents (if OpenCode is available)
+    console.log("\n🤖 Syncing agents with OpenCode...");
+    try {
+      await cmdSyncAgents();
+    } catch {
+      console.log("⚠️  OpenCode not available - using sample agent configurations");
+      console.log("   You can sync agents later with: ashep sync-agents");
+    }
+
+    // Step 4: Validate configuration
+    console.log("\n🔍 Validating configuration...");
+    await cmdValidatePolicyChain();
+
+    // Step 5: Show demo workflow instructions
+    console.log("\n📝 Demo workflow ready!");
+    console.log("   To try a demo:");
+    console.log("   1. Create an issue in Beads: bd create 'Demo: Implement greeting function'");
+    console.log("   2. Process it: ashep work <issue-id>");
+    console.log("   3. View progress: ashep ui");
+
+    // Step 6: Show next steps
+    console.log("\n🎉 Quickstart complete!");
+    console.log("\nNext steps:");
+    console.log("• Start the worker: ashep worker");
+    console.log("• Start monitoring: ashep monitor");
+    console.log("• View UI: ashep ui");
+    console.log("• Process issues: ashep work <issue-id>");
+    console.log("\nFor more help: ashep help");
+
+  } catch (error) {
+    console.error("\n❌ Quickstart failed:", error instanceof Error ? error.message : String(error));
+    console.log("\nYou can try running individual commands:");
+    console.log("• ashep install");
+    console.log("• ashep init");
+    console.log("• ashep sync-agents");
+    console.log("• ashep validate-policy-chain");
+    process.exit(1);
+  }
+}
+
+/**
  * Plugin list command - list installed plugins
  */
 function cmdPluginList(): void {
@@ -847,6 +936,10 @@ async function main(): Promise<void> {
 
     case "sync-agents":
       await cmdSyncAgents();
+      break;
+
+    case "quickstart":
+      await cmdQuickstart();
       break;
 
     case "ui": {

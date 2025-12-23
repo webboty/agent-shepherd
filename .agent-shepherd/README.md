@@ -18,13 +18,33 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 
 ## Quick Start
 
-### Prerequisites
+### One-Command Onboarding (Recommended)
+
+Get started in under 5 minutes with everything set up automatically:
+
+```bash
+# From your project directory
+ashep quickstart
+```
+
+This command will:
+- ✅ Auto-install missing dependencies (Bun, Beads)
+- ✅ Generate sample configuration files
+- ✅ Sync with available AI agents
+- ✅ Validate your setup
+- ✅ Show next steps for using Agent Shepherd
+
+### Manual Installation
+
+If you prefer manual setup:
+
+#### Prerequisites
 
 - **Bun** runtime (1.0.0+)
 - **Beads** (issue tracking system) - `curl -fsSL https://get.beads.dev | bash`
 - **OpenCode** (AI agent execution platform)
 
-### Installation
+#### Installation
 
 ```bash
 # Clone the repository
@@ -46,6 +66,9 @@ ashep install
 ### Basic Usage
 
 ```bash
+# One-command setup (recommended for first-time users)
+ashep quickstart
+
 # Start autonomous issue processing
 ashep worker
 

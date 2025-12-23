@@ -39121,6 +39121,7 @@ var COMMANDS = {
   ui: "Start the flow visualization server",
   "validate-policy-chain": "Validate policy-capability-agent chain integrity",
   "show-policy-tree": "Display policy-capability-agent relationship tree",
+  quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
   "plugin-activate": "Activate a plugin",
   "plugin-deactivate": "Deactivate a plugin",
@@ -39194,12 +39195,13 @@ ${Object.entries(COMMANDS).map(([cmd, desc]) => `  ${cmd.padEnd(15)} ${desc}`).j
 `)}
 
  Examples:
-   ashep init                # Initialize configuration
-   ashep worker              # Start autonomous worker
-   ashep work ISSUE-123      # Process specific issue
-   ashep ui                  # Start visualization UI
-   ashep validate-policy-chain  # Validate policy relationships
-   ashep show-policy-tree    # Show relationship tree
+    ashep quickstart          # One-command onboarding
+    ashep init                # Initialize configuration
+    ashep worker              # Start autonomous worker
+    ashep work ISSUE-123      # Process specific issue
+    ashep ui                  # Start visualization UI
+    ashep validate-policy-chain  # Validate policy relationships
+    ashep show-policy-tree    # Show relationship tree
 
 For detailed documentation, see: README.md
 Configuration guide: docs/cli-reference.md
@@ -39266,9 +39268,14 @@ function cmdInit() {
     configDir = join6(process.cwd(), ".agent-shepherd");
   }
   const configSubDir = join6(configDir, "config");
+  const pluginsDir = join6(configDir, "plugins");
   if (!existsSync5(configSubDir)) {
     mkdirSync2(configSubDir, { recursive: true });
     console.log(`Created directory: ${configSubDir}`);
+  }
+  if (!existsSync5(pluginsDir)) {
+    mkdirSync2(pluginsDir, { recursive: true });
+    console.log(`Created directory: ${pluginsDir}`);
   }
   const policiesPath = join6(configSubDir, "policies.yaml");
   if (!existsSync5(policiesPath)) {
@@ -39682,6 +39689,80 @@ function cmdPluginRemove(name) {
     process.exit(1);
   }
 }
+async function cmdQuickstart() {
+  console.log(`\uD83D\uDE80 Agent Shepherd Quickstart - One-command onboarding
+`);
+  try {
+    console.log("\uD83D\uDCE6 Checking dependencies...");
+    let dependenciesOk = true;
+    console.log(`\u2705 Bun ${Bun.version} is installed`);
+    try {
+      const proc = Bun.spawn(["bd", "--version"], {
+        stdout: "pipe",
+        stderr: "pipe"
+      });
+      await proc.exited;
+      console.log("\u2705 Beads (bd) is installed");
+    } catch {
+      console.log("\u274C Beads (bd) is NOT installed");
+      console.log("   Installing Beads...");
+      try {
+        execSync("curl -fsSL https://get.beads.dev | bash", { stdio: "inherit" });
+        process.env.PATH = `${process.env.HOME}/.beads/bin:${process.env.PATH}`;
+        console.log("\u2705 Beads installed successfully");
+      } catch (error) {
+        console.error("\u274C Failed to install Beads:", error);
+        console.log("   Please install Beads manually: curl -fsSL https://get.beads.dev | bash");
+        dependenciesOk = false;
+      }
+    }
+    if (!dependenciesOk) {
+      console.log(`
+\u274C Some dependencies could not be installed. Please resolve manually and run 'ashep quickstart' again.`);
+      process.exit(1);
+    }
+    console.log(`
+\u2699\uFE0F  Initializing configuration...`);
+    cmdInit();
+    console.log(`
+\uD83E\uDD16 Syncing agents with OpenCode...`);
+    try {
+      await cmdSyncAgents();
+    } catch {
+      console.log("\u26A0\uFE0F  OpenCode not available - using sample agent configurations");
+      console.log("   You can sync agents later with: ashep sync-agents");
+    }
+    console.log(`
+\uD83D\uDD0D Validating configuration...`);
+    await cmdValidatePolicyChain();
+    console.log(`
+\uD83D\uDCDD Demo workflow ready!`);
+    console.log("   To try a demo:");
+    console.log("   1. Create an issue in Beads: bd create 'Demo: Implement greeting function'");
+    console.log("   2. Process it: ashep work <issue-id>");
+    console.log("   3. View progress: ashep ui");
+    console.log(`
+\uD83C\uDF89 Quickstart complete!`);
+    console.log(`
+Next steps:`);
+    console.log("\u2022 Start the worker: ashep worker");
+    console.log("\u2022 Start monitoring: ashep monitor");
+    console.log("\u2022 View UI: ashep ui");
+    console.log("\u2022 Process issues: ashep work <issue-id>");
+    console.log(`
+For more help: ashep help`);
+  } catch (error) {
+    console.error(`
+\u274C Quickstart failed:`, error instanceof Error ? error.message : String(error));
+    console.log(`
+You can try running individual commands:`);
+    console.log("\u2022 ashep install");
+    console.log("\u2022 ashep init");
+    console.log("\u2022 ashep sync-agents");
+    console.log("\u2022 ashep validate-policy-chain");
+    process.exit(1);
+  }
+}
 function cmdPluginList() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
@@ -39746,6 +39827,9 @@ async function main() {
       break;
     case "sync-agents":
       await cmdSyncAgents();
+      break;
+    case "quickstart":
+      await cmdQuickstart();
       break;
     case "ui": {
       let port;
