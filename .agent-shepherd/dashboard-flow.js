@@ -145,8 +145,7 @@ function AgentShepherdFlow() {
         }, 'Loading Agent Shepherd Flow...');
     }
 
-    return React.createElement('div', { style: { width: '100vw', height: '100vh' } }, [
-        React.createElement('div', {
+const controls = React.createElement('div', {
             key: 'controls',
             style: {
                 position: 'absolute',
@@ -181,68 +180,75 @@ function AgentShepherdFlow() {
                 React.createElement('div', { key: 'phases' }, 'Phases: ' + phases.length),
                 React.createElement('div', { key: 'runs' }, 'Runs: ' + runs.length)
             ])
-        ]),
-        ReactFlow ? React.createElement(ReactFlow, {
-            key: 'flow',
-            nodes: nodes,
-            edges: edges,
-            fitView: true,
-            style: { width: '100vw', height: '100vh' }
-        }, [
-            React.createElement(ReactFlow.Background, { key: 'bg' }),
-            React.createElement(ReactFlow.Controls, { key: 'controls' }),
-            React.createElement(ReactFlow.MiniMap, { key: 'minimap' })
-        ]) : React.createElement('div', {
-            key: 'fallback',
-            style: {
-                padding: '20px',
-                background: '#f8fafc',
-                margin: '20px',
-                borderRadius: '8px'
-            }
-        }, [
-            React.createElement('h2', { key: 'title' }, 'Workflow Visualization'),
-            React.createElement('p', { key: 'msg' }, 'React Flow not available. Using simple visualization.'),
-            React.createElement('div', {
-                key: 'phases',
-                style: { display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '20px', alignItems: 'center' }
-            }, phases.map((phase, index) => [
+        ]);
+
+        let flowContent;
+        if (ReactFlow && typeof ReactFlow === 'function') {
+            flowContent = React.createElement(ReactFlow, {
+                key: 'flow',
+                nodes: nodes,
+                edges: edges,
+                fitView: true,
+                style: { width: '100vw', height: '100vh' }
+            }, [
+                React.createElement(ReactFlow.Background, { key: 'bg' }),
+                React.createElement(ReactFlow.Controls, { key: 'controls' }),
+                React.createElement(ReactFlow.MiniMap, { key: 'minimap' })
+            ]);
+        } else {
+            flowContent = React.createElement('div', {
+                key: 'fallback',
+                style: {
+                    padding: '20px',
+                    background: '#f8fafc',
+                    margin: '20px',
+                    borderRadius: '8px'
+                }
+            }, [
+                React.createElement('h2', { key: 'title' }, 'Workflow Visualization'),
+                React.createElement('p', { key: 'msg' }, 'React Flow not available. Using simple visualization.'),
                 React.createElement('div', {
-                    key: phase.id,
-                    style: {
-                        padding: '15px',
-                        border: '2px solid #6b7280',
-                        borderRadius: '8px',
-                        backgroundColor: '#fff',
-                        minWidth: '140px',
-                        textAlign: 'center'
-                    }
-                }, [
+                    key: 'phases',
+                    style: { display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '20px', alignItems: 'center' }
+                }, phases.map((phase, index) => [
                     React.createElement('div', {
-                        key: 'num',
+                        key: phase.id,
                         style: {
-                            background: '#6b7280',
-                            color: 'white',
-                            padding: '2px 8px',
-                            borderRadius: '10px',
-                            fontSize: '12px',
-                            display: 'inline-block',
-                            marginBottom: '8px'
+                            padding: '15px',
+                            border: '2px solid #6b7280',
+                            borderRadius: '8px',
+                            backgroundColor: '#fff',
+                            minWidth: '140px',
+                            textAlign: 'center'
                         }
-                    }, 'Phase ' + (index + 1)),
-                    React.createElement('h3', { key: 'name', style: { margin: '8px 0' } }, phase.name),
-                    React.createElement('p', {
-                        key: 'desc',
-                        style: { fontSize: '12px', color: '#666', margin: '4px 0' }
-                    }, phase.description || 'No description')
-                ]),
-                index < phases.length - 1 ? React.createElement('div', {
-                    key: 'arrow-' + index,
-                    style: { fontSize: '20px', color: '#6b7280', fontWeight: 'bold' }
-                }, '→') : null
-            ]).flat().filter(Boolean))
-        ])
-    ]);
+                    }, [
+                        React.createElement('div', {
+                            key: 'num',
+                            style: {
+                                background: '#6b7280',
+                                color: 'white',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontSize: '12px',
+                                display: 'inline-block',
+                                marginBottom: '8px'
+                            }
+                        }, 'Phase ' + (index + 1)),
+                        React.createElement('h3', { key: 'name', style: { margin: '8px 0' } }, phase.name),
+                        React.createElement('p', {
+                            key: 'desc',
+                            style: { fontSize: '12px', color: '#666', margin: '4px 0' }
+                        }, phase.description || 'No description')
+                    ]),
+                    index < phases.length - 1 ? React.createElement('div', {
+                        key: 'arrow-' + index,
+                        style: { fontSize: '20px', color: '#6b7280', fontWeight: 'bold' }
+                    }, '→') : null
+                ]).flat().filter(Boolean))
+            ]);
+        }
+
+        return React.createElement('div', { style: { width: '100vw', height: '100vh' } }, [controls, flowContent]);
 }
 
 // Wait for DOM to be ready
