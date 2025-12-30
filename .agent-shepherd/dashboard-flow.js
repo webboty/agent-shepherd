@@ -204,5 +204,26 @@ function AgentShepherdFlow() {
     ]);
 }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(AgentShepherdFlow));
+// Wait for DOM to be ready
+function initApp() {
+    const rootElement = document.getElementById('root');
+    if (!rootElement) {
+        console.error('Root element not found');
+        return;
+    }
+
+    try {
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(React.createElement(AgentShepherdFlow));
+        console.log('React app initialized successfully');
+    } catch (error) {
+        console.error('Error initializing React app:', error);
+    }
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
