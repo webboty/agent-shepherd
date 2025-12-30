@@ -40,13 +40,15 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .phase-card {
-            padding: 15px;
+            padding: 20px;
             border: 2px solid #6b7280;
             border-radius: 8px;
             background: #f8fafc;
-            min-width: 140px;
-            text-align: center;
+            min-width: 250px;
+            max-width: 350px;
+            text-align: left;
             position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .phase-number {
             background: #6b7280;
@@ -157,10 +159,41 @@
                             React.createElement('div', { key: 'num', className: 'phase-number' },
                                 'Phase ' + (index + 1)
                             ),
-                            React.createElement('h3', { key: 'name' }, phase.name),
-                            React.createElement('p', { key: 'desc', style: { fontSize: '12px', color: '#666' } },
-                                phase.description || 'No description'
-                            )
+                            React.createElement('h3', { key: 'name', style: { margin: '0 0 8px 0', fontSize: '16px' } }, phase.name),
+                            React.createElement('div', { key: 'details', style: { fontSize: '13px', lineHeight: '1.4' } }, [
+                                React.createElement('div', {
+                                    key: 'desc',
+                                    style: { marginBottom: '8px', color: '#555' }
+                                }, phase.description || 'No description'),
+                                React.createElement('div', {
+                                    key: 'capabilities',
+                                    style: { marginBottom: '8px' }
+                                }, [
+                                    React.createElement('strong', { key: 'cap-label' }, 'Capabilities:'),
+                                    React.createElement('div', {
+                                        key: 'cap-list',
+                                        style: { marginTop: '4px', paddingLeft: '8px' }
+                                    }, (phase.capabilities && phase.capabilities.length > 0) ?
+                                        phase.capabilities.map(cap =>
+                                            React.createElement('span', {
+                                                key: cap,
+                                                style: {
+                                                    background: '#e3f2fd',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    margin: '2px 4px 2px 0',
+                                                    fontSize: '12px',
+                                                    display: 'inline-block'
+                                                }
+                                            }, cap)
+                                        ) : React.createElement('span', { style: { fontSize: '12px', color: '#999' } }, 'None')
+                                    )
+                                ]),
+                                React.createElement('div', {
+                                    key: 'timeout',
+                                    style: { color: '#666', fontSize: '12px' }
+                                }, 'Timeout multiplier: ' + (phase.timeout_multiplier || 1.0))
+                            ])
                         ]),
                         index < phases.length - 1 ? React.createElement('div', {
                             key: 'arrow-' + index,
