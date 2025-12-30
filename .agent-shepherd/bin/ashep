@@ -6983,13 +6983,22 @@ var require_dist = __commonJS((exports) => {
 // src/core/path-utils.ts
 var exports_path_utils = {};
 __export(exports_path_utils, {
+  getGlobalInstallDir: () => getGlobalInstallDir,
   getConfigPath: () => getConfigPath,
   getConfigDir: () => getConfigDir,
+  findPluginsDir: () => findPluginsDir,
+  findLocalAgentShepherdDir: () => findLocalAgentShepherdDir,
+  findInstallDir: () => findInstallDir,
+  findConfigDir: () => findConfigDir,
   findAgentShepherdDir: () => findAgentShepherdDir
 });
 import { existsSync } from "fs";
 import { join, dirname } from "path";
-function findAgentShepherdDir() {
+import { homedir } from "os";
+function getGlobalInstallDir() {
+  return join(homedir(), ".agent-shepherd");
+}
+function findLocalAgentShepherdDir() {
   let currentDir = process.cwd();
   while (true) {
     const agentShepherdDir = join(currentDir, ".agent-shepherd");
@@ -6997,18 +7006,57 @@ function findAgentShepherdDir() {
       return agentShepherdDir;
     }
     const parentDir = dirname(currentDir);
-    if (parentDir === currentDir) {
+    if (parentDir === currentDir)
       break;
-    }
     currentDir = parentDir;
   }
-  throw new Error(".agent-shepherd directory not found. Please run 'ashep init' or ensure you're in a project with Agent Shepherd initialized.");
+  return null;
+}
+function findInstallDir() {
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "src"))) {
+    return local;
+  }
+  const global2 = getGlobalInstallDir();
+  if (existsSync(global2)) {
+    return global2;
+  }
+  throw new Error("Agent Shepherd not installed. Run the installer or 'ashep init'");
+}
+function findConfigDir() {
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "config"))) {
+    return join(local, "config");
+  }
+  const global2 = getGlobalInstallDir();
+  const globalConfig = join(global2, "config");
+  if (existsSync(globalConfig)) {
+    return globalConfig;
+  }
+  throw new Error("No configuration found. Run 'ashep init' in your project.");
+}
+function findPluginsDir() {
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "plugins"))) {
+    return join(local, "plugins");
+  }
+  const global2 = getGlobalInstallDir();
+  return join(global2, "plugins");
+}
+function findAgentShepherdDir() {
+  const local = findLocalAgentShepherdDir();
+  if (local)
+    return local;
+  const global2 = getGlobalInstallDir();
+  if (existsSync(global2))
+    return global2;
+  throw new Error(".agent-shepherd directory not found. Run the installer or 'ashep init'");
 }
 function getConfigDir() {
-  return join(findAgentShepherdDir(), "config");
+  return findConfigDir();
 }
 function getConfigPath(filename) {
-  const newPath = join(getConfigDir(), filename);
+  const newPath = join(findConfigDir(), filename);
   if (existsSync(newPath)) {
     return newPath;
   }
@@ -37800,6 +37848,7 @@ __export(exports_ui_server, {
   UIServer: () => UIServer
 });
 import { join as join5 } from "path";
+import { readFileSync as readFileSync6 } from "fs";
 
 class UIServer {
   app;
@@ -37811,228 +37860,79 @@ class UIServer {
     this.setupRoutes();
   }
   setupRoutes() {
-    this.app.use(import_express.default.static(join5(__dirname, "../ui/public")));
     this.app.get("/api/health", (_req, res) => {
       res.json({ status: "ok", timestamp: new Date().toISOString() });
     });
     this.app.get("/api/runs", async (_req, res) => {
       try {
-        const runs = [
-          {
-            id: "run-1",
-            issueId: "agent-shepherd-001",
-            agentId: "bmad-master",
-            phase: "implementation",
-            status: "completed",
-            startTime: "2025-12-20T10:00:00Z",
-            endTime: "2025-12-20T10:45:00Z",
-            sessionId: "session-abc123",
-            outcome: "Successfully implemented core modules"
-          }
-        ];
+        const runs = [];
         res.json(runs);
+        return;
       } catch (error) {
         console.error("Error fetching runs:", error);
         res.status(500).json({ error: "Failed to fetch runs" });
+        return;
       }
     });
-    this.app.get("/api/phases", async (_req, res) => {
+    this.app.get("/api/policies", async (_req, res) => {
       try {
-        const phases = [
-          { id: "planning", name: "Planning Phase", status: "idle" },
-          { id: "implementation", name: "Implementation Phase", status: "active" },
-          { id: "review", name: "Review Phase", status: "active" },
-          { id: "testing", name: "Testing Phase", status: "idle" }
-        ];
+        const policyEngine = getPolicyEngine();
+        const policyNames = policyEngine.getPolicyNames();
+        const policies = policyNames.map((name) => {
+          const policy = policyEngine.getPolicy(name);
+          return {
+            id: name,
+            name: policy?.name || name,
+            description: policy?.description || "",
+            isDefault: name === policyEngine.getDefaultPolicyName()
+          };
+        });
+        res.json(policies);
+        return;
+      } catch (error) {
+        console.error("Error fetching policies:", error);
+        res.status(500).json({ error: "Failed to fetch policies" });
+        return;
+      }
+    });
+    this.app.get("/api/phases", async (req, res) => {
+      try {
+        const policyEngine = getPolicyEngine();
+        const policyName = req.query.policy || policyEngine.getDefaultPolicyName();
+        const policy = policyEngine.getPolicy(policyName);
+        if (!policy) {
+          return res.status(404).json({ error: "Policy not found" });
+        }
+        const phases = policy.phases.map((phase) => ({
+          id: phase.name,
+          name: phase.name,
+          description: phase.description || "",
+          capabilities: phase.capabilities || [],
+          status: "idle"
+        }));
         res.json(phases);
+        return;
       } catch (error) {
         console.error("Error fetching phases:", error);
         res.status(500).json({ error: "Failed to fetch phases" });
+        return;
       }
     });
     this.app.get("/", (_req, res) => {
-      res.send(this.generateHTML());
+      try {
+        const filePath = join5(__dirname, "..", "..", "dashboard.html");
+        console.log("Serving dashboard from:", filePath);
+        const content = readFileSync6(filePath, "utf8");
+        res.setHeader("Content-Type", "text/html");
+        res.send(content);
+      } catch (error) {
+        console.error("Error reading dashboard file:", error);
+        res.status(404).send("Dashboard file not found");
+      }
     });
     this.app.use((_req, res) => {
       res.status(404).json({ error: "Not found" });
     });
-  }
-  generateHTML() {
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent Shepherd - Flow Visualization</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/reactflow@11.11.4/dist/style.css">
-    <style>
-        body {
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-                sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        .react-flow {
-            background: #f8fafc;
-        }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
-
-    <script type="text/babel">
-        const { useState, useEffect } = React;
-        const { createElement: el } = React;
-
-        // Simplified Flow component using ReactFlow
-        function AgentShepherdFlow() {
-            const [nodes, setNodes] = useState([]);
-            const [edges, setEdges] = useState([]);
-            const [loading, setLoading] = useState(true);
-
-            useEffect(() => {
-                // Load initial data
-                const loadFlowData = async () => {
-                    try {
-                        const [runsResponse, phasesResponse] = await Promise.all([
-                            fetch('/api/runs'),
-                            fetch('/api/phases')
-                        ]);
-
-                        const runs = await runsResponse.json();
-                        const phases = await phasesResponse.json();
-
-                        // Create phase nodes
-                        const phaseNodes = phases.map((phase, index) => ({
-                            id: \`phase-\${phase.id}\`,
-                            type: 'default',
-                            position: { x: 100 + (index * 200), y: 100 },
-                            data: {
-                                label: phase.name,
-                                phase: phase.id,
-                                status: phase.status,
-                                runCount: runs.filter(r => r.phase === phase.id).length
-                            },
-                            style: {
-                                backgroundColor: phase.status === 'active' ? '#3b82f6' : '#6b7280',
-                                color: 'white',
-                                border: 'none'
-                            }
-                        }));
-
-                        // Create run nodes
-                        const runNodes = runs.map((run, index) => ({
-                            id: run.id,
-                            type: 'default',
-                            position: { x: 150 + (index * 200), y: 250 },
-                            data: {
-                                label: \`\${run.agentId} - \${run.phase}\`,
-                                run: run
-                            },
-                            style: {
-                                backgroundColor: run.status === 'completed' ? '#10b981' : 
-                                                 run.status === 'running' ? '#3b82f6' : 
-                                                 run.status === 'failed' ? '#ef4444' : '#6b7280',
-                                color: 'white',
-                                border: 'none'
-                            }
-                        }));
-
-                        // Create edges
-                        const flowEdges = [
-                            { id: 'e1', source: 'phase-planning', target: 'phase-implementation' },
-                            { id: 'e2', source: 'phase-implementation', target: 'phase-review' },
-                            { id: 'e3', source: 'phase-review', target: 'phase-testing' },
-                            ...runs.map(run => ({
-                                id: \`\${run.id}-edge\`,
-                                source: \`phase-\${run.phase}\`,
-                                target: run.id
-                            }))
-                        ];
-
-                        setNodes([...phaseNodes, ...runNodes]);
-                        setEdges(flowEdges);
-                    } catch (error) {
-                        console.error('Error loading flow data:', error);
-                    } finally {
-                        setLoading(false);
-                    }
-                };
-
-                loadFlowData();
-                
-                // Set up polling for updates
-                const interval = setInterval(loadFlowData, 5000);
-                return () => clearInterval(interval);
-            }, []);
-
-            if (loading) {
-                return el('div', { 
-                    style: { 
-                        display: 'flex', 
-                        justifyContent: 'center', 
-                        alignItems: 'center', 
-                        height: '100vh' 
-                    } 
-                }, 'Loading Agent Shepherd Flow...');
-            }
-
-            const reactFlowProps = {
-                nodes: nodes,
-                edges: edges,
-                fitView: true,
-                style: { width: '100vw', height: '100vh' }
-            };
-
-            return el('div', { style: { width: '100vw', height: '100vh' } }, [
-                el('div', { 
-                    key: 'controls',
-                    style: { 
-                        position: 'absolute', 
-                        top: 10, 
-                        left: 10, 
-                        zIndex: 1000, 
-                        background: 'white', 
-                        padding: '10px', 
-                        borderRadius: '8px',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                    } 
-                }, [
-                    el('h3', { key: 'title' }, 'Agent Shepherd Flow'),
-                    el('div', { key: 'auto-refresh' }, [
-                        el('label', { key: 'label' }, [
-                            el('input', { 
-                                key: 'checkbox',
-                                type: 'checkbox',
-                                defaultChecked: true,
-                                readOnly: true
-                            }),
-                            ' Auto Refresh (5s)'
-                        ])
-                    ])
-                ]),
-                el(ReactFlow.default, { key: 'flow', ...reactFlowProps }, [
-                    el(ReactFlow.Background, { key: 'bg' }),
-                    el(ReactFlow.Controls, { key: 'controls' }),
-                    el(ReactFlow.MiniMap, { key: 'minimap' })
-                ])
-            ]);
-        }
-
-        // Render the app
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(el(AgentShepherdFlow));
-    </script>
-</body>
-</html>
-    `;
   }
   async start() {
     return new Promise((resolve, reject) => {
@@ -38062,6 +37962,7 @@ class UIServer {
 }
 var import_express, __dirname = "/Users/tonyhartmann/DevShare/JS/agent-shepherd/.agent-shepherd/src/ui";
 var init_ui_server = __esm(() => {
+  init_policy();
   import_express = __toESM(require_express2(), 1);
 });
 
@@ -39107,10 +39008,12 @@ function getMonitorEngine(config) {
 
 // src/cli/index.ts
 init_path_utils();
-import { existsSync as existsSync5, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2, readdirSync, readFileSync as readFileSync6 } from "fs";
+import { existsSync as existsSync5, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2, readdirSync, readFileSync as readFileSync7, cpSync, rmSync } from "fs";
 import { join as join6 } from "path";
 import path from "path";
 import { execSync } from "child_process";
+import { homedir as homedir2, platform } from "os";
+var __dirname = "/Users/tonyhartmann/DevShare/JS/agent-shepherd/.agent-shepherd/src/cli";
 var COMMANDS = {
   worker: "Start the autonomous worker loop",
   monitor: "Start the supervision loop",
@@ -39127,6 +39030,8 @@ var COMMANDS = {
   "plugin-deactivate": "Deactivate a plugin",
   "plugin-remove": "Remove a plugin",
   "plugin-list": "List installed plugins",
+  update: "Update Agent Shepherd to latest or specific version",
+  version: "Show installed version",
   help: "Show help information"
 };
 var PLUGIN_HANDLERS = {};
@@ -39146,7 +39051,7 @@ function loadPlugins() {
         continue;
       }
       try {
-        const manifestContent = readFileSync6(manifestPath, "utf-8");
+        const manifestContent = readFileSync7(manifestPath, "utf-8");
         const manifest = JSON.parse(manifestContent);
         if (!manifest.name || !manifest.commands || !Array.isArray(manifest.commands)) {
           console.warn(`Plugin ${pluginName}: invalid manifest.json, skipping`);
@@ -39261,12 +39166,7 @@ Result:`);
 }
 function cmdInit() {
   console.log("Initializing Agent Shepherd configuration...");
-  let configDir;
-  try {
-    configDir = findAgentShepherdDir();
-  } catch {
-    configDir = join6(process.cwd(), ".agent-shepherd");
-  }
+  const configDir = join6(process.cwd(), ".agent-shepherd");
   const configSubDir = join6(configDir, "config");
   const pluginsDir = join6(configDir, "plugins");
   if (!existsSync5(configSubDir)) {
@@ -39618,7 +39518,7 @@ async function cmdPluginInstall(source) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
-      execSync(`cp -r "${sourcePath}" "${pluginPath}"`, { stdio: "inherit" });
+      cpSync(sourcePath, pluginPath, { recursive: true });
     }
     console.log("Plugin installed successfully");
   } catch (error) {
@@ -39682,7 +39582,7 @@ function cmdPluginRemove(name) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
-    execSync(`rm -rf "${pluginPath}"`, { stdio: "inherit" });
+    rmSync(pluginPath, { recursive: true, force: true });
     console.log(`Plugin ${name} removed`);
   } catch (error) {
     console.error("Failed to remove plugin:", error);
@@ -39706,14 +39606,19 @@ async function cmdQuickstart() {
     } catch {
       console.log("\u274C Beads (bd) is NOT installed");
       console.log("   Installing Beads...");
-      try {
-        execSync("curl -fsSL https://get.beads.dev | bash", { stdio: "inherit" });
-        process.env.PATH = `${process.env.HOME}/.beads/bin:${process.env.PATH}`;
-        console.log("\u2705 Beads installed successfully");
-      } catch (error) {
-        console.error("\u274C Failed to install Beads:", error);
-        console.log("   Please install Beads manually: curl -fsSL https://get.beads.dev | bash");
+      if (platform() === "win32") {
+        console.log("Please install Beads manually: https://get.beads.dev");
         dependenciesOk = false;
+      } else {
+        try {
+          execSync("curl -fsSL https://get.beads.dev | bash", { stdio: "inherit" });
+          process.env.PATH = `${homedir2()}/.beads/bin:${process.env.PATH}`;
+          console.log("\u2705 Beads installed successfully");
+        } catch (error) {
+          console.error("\u274C Failed to install Beads:", error);
+          console.log("   Please install Beads manually: curl -fsSL https://get.beads.dev | bash");
+          dependenciesOk = false;
+        }
       }
     }
     if (!dependenciesOk) {
@@ -39763,6 +39668,78 @@ You can try running individual commands:`);
     process.exit(1);
   }
 }
+function getCurrentVersion() {
+  try {
+    const installDir = findInstallDir();
+    const versionFile = join6(installDir, "VERSION");
+    if (existsSync5(versionFile)) {
+      return readFileSync7(versionFile, "utf-8").trim();
+    }
+  } catch {}
+  const packageJsonPath = join6(__dirname, "..", "package.json");
+  if (existsSync5(packageJsonPath)) {
+    const packageJson = JSON.parse(readFileSync7(packageJsonPath, "utf-8"));
+    return packageJson.version || "unknown";
+  }
+  return "unknown";
+}
+function cmdVersion() {
+  console.log(getCurrentVersion());
+}
+async function cmdUpdate(version) {
+  const targetVersion = version || "latest";
+  console.log(`Updating Agent Shepherd to ${targetVersion}...`);
+  try {
+    const installDir = findInstallDir();
+    const tempDir = join6(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
+    mkdirSync2(tempDir, { recursive: true });
+    const configDir = join6(installDir, "config");
+    const pluginsDir = join6(installDir, "plugins");
+    if (existsSync5(configDir)) {
+      cpSync(configDir, join6(tempDir, "config"), { recursive: true });
+    }
+    if (existsSync5(pluginsDir)) {
+      cpSync(pluginsDir, join6(tempDir, "plugins"), { recursive: true });
+    }
+    const repoUrl = "https://github.com/USER/agent-shepherd.git";
+    const cloneDir = join6(tempDir, "clone");
+    if (targetVersion === "latest") {
+      execSync(`git clone --depth 1 "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
+    } else {
+      execSync(`git clone --depth 1 --branch "${targetVersion}" "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
+    }
+    const items = readdirSync(installDir);
+    for (const item of items) {
+      if (item !== "logs" && item !== "config" && item !== "plugins") {
+        const itemPath = join6(installDir, item);
+        if (existsSync5(itemPath)) {
+          rmSync(itemPath, { recursive: true, force: true });
+        }
+      }
+    }
+    const sourceDir = join6(cloneDir, ".agent-shepherd");
+    const sourceItems = readdirSync(sourceDir);
+    for (const item of sourceItems) {
+      const srcPath = join6(sourceDir, item);
+      const destPath = join6(installDir, item);
+      cpSync(srcPath, destPath, { recursive: true });
+    }
+    if (existsSync5(join6(tempDir, "config"))) {
+      cpSync(join6(tempDir, "config"), configDir, { recursive: true });
+    }
+    if (existsSync5(join6(tempDir, "plugins"))) {
+      cpSync(join6(tempDir, "plugins"), pluginsDir, { recursive: true });
+    }
+    writeFileSync2(join6(installDir, "VERSION"), targetVersion);
+    console.log("Installing dependencies...");
+    execSync("bun install", { cwd: installDir, stdio: "inherit" });
+    rmSync(tempDir, { recursive: true, force: true });
+    console.log(`\u2705 Agent Shepherd updated to ${targetVersion}`);
+  } catch (error) {
+    console.error("\u274C Update failed:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 function cmdPluginList() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
@@ -39784,7 +39761,7 @@ function cmdPluginList() {
       let description = "";
       if (existsSync5(manifestPath)) {
         try {
-          const manifest = JSON.parse(readFileSync6(manifestPath, "utf-8"));
+          const manifest = JSON.parse(readFileSync7(manifestPath, "utf-8"));
           status = "\u2705 Active";
           description = manifest.description || "";
         } catch {
@@ -39874,6 +39851,12 @@ async function main() {
       break;
     case "plugin-list":
       cmdPluginList();
+      break;
+    case "update":
+      await cmdUpdate(args[1]);
+      break;
+    case "version":
+      cmdVersion();
       break;
     default:
       if (PLUGIN_HANDLERS[command]) {
