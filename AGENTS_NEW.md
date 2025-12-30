@@ -1,0 +1,1 @@
+.agent-shepherd/AGENTS.md
