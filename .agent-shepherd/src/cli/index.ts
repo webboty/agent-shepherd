@@ -7,11 +7,12 @@
 import { getWorkerEngine } from "../core/worker-engine.ts";
 import { getMonitorEngine } from "../core/monitor-engine.ts";
 import { getIssue } from "../core/beads.ts";
-import { findAgentShepherdDir } from "../core/path-utils.ts";
-import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from "fs";
+import { findAgentShepherdDir, findInstallDir } from "../core/path-utils.ts";
+import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync, cpSync, rmSync } from "fs";
 import { join } from "path";
 import path from "path";
 import { execSync } from "child_process";
+import { homedir, platform } from "os";
 
 const COMMANDS: Record<string, string> = {
   worker: "Start the autonomous worker loop",
@@ -29,6 +30,8 @@ const COMMANDS: Record<string, string> = {
   "plugin-deactivate": "Deactivate a plugin",
   "plugin-remove": "Remove a plugin",
   "plugin-list": "List installed plugins",
+  update: "Update Agent Shepherd to latest or specific version",
+  version: "Show installed version",
   help: "Show help information",
 };
 
@@ -223,13 +226,8 @@ async function cmdWork(issueId: string): Promise<void> {
 function cmdInit(): void {
   console.log("Initializing Agent Shepherd configuration...");
 
-  let configDir: string;
-  try {
-    configDir = findAgentShepherdDir();
-  } catch {
-    // No existing .agent-shepherd found, create in current directory
-    configDir = join(process.cwd(), ".agent-shepherd");
-  }
+  // For hybrid mode, always create local config in current directory
+  const configDir = join(process.cwd(), ".agent-shepherd");
   const configSubDir = join(configDir, "config");
   const pluginsDir = join(configDir, "plugins");
 
@@ -664,7 +662,7 @@ async function cmdPluginInstall(source: string): Promise<void> {
         process.exit(1);
       }
 
-      execSync(`cp -r "${sourcePath}" "${pluginPath}"`, { stdio: "inherit" });
+       cpSync(sourcePath, pluginPath, { recursive: true });
     }
 
     console.log("Plugin installed successfully");
@@ -752,7 +750,7 @@ function cmdPluginRemove(name: string): void {
       process.exit(1);
     }
 
-    execSync(`rm -rf "${pluginPath}"`, { stdio: "inherit" });
+     rmSync(pluginPath, { recursive: true, force: true });
     console.log(`Plugin ${name} removed`);
   } catch (error) {
     console.error("Failed to remove plugin:", error);
@@ -786,15 +784,20 @@ async function cmdQuickstart(): Promise<void> {
       console.log("❌ Beads (bd) is NOT installed");
       console.log("   Installing Beads...");
 
-      try {
-        execSync("curl -fsSL https://get.beads.dev | bash", { stdio: "inherit" });
-        // Update PATH for current session
-        process.env.PATH = `${process.env.HOME}/.beads/bin:${process.env.PATH}`;
-        console.log("✅ Beads installed successfully");
-      } catch (error) {
-        console.error("❌ Failed to install Beads:", error);
-        console.log("   Please install Beads manually: curl -fsSL https://get.beads.dev | bash");
+      if (platform() === "win32") {
+        console.log("Please install Beads manually: https://get.beads.dev");
         dependenciesOk = false;
+      } else {
+        try {
+          execSync("curl -fsSL https://get.beads.dev | bash", { stdio: "inherit" });
+          // Update PATH for current session
+          process.env.PATH = `${homedir()}/.beads/bin:${process.env.PATH}`;
+          console.log("✅ Beads installed successfully");
+        } catch (error) {
+          console.error("❌ Failed to install Beads:", error);
+          console.log("   Please install Beads manually: curl -fsSL https://get.beads.dev | bash");
+          dependenciesOk = false;
+        }
       }
     }
 
@@ -843,6 +846,118 @@ async function cmdQuickstart(): Promise<void> {
     console.log("• ashep init");
     console.log("• ashep sync-agents");
     console.log("• ashep validate-policy-chain");
+    process.exit(1);
+  }
+}
+
+/**
+ * Get current installed version
+ */
+function getCurrentVersion(): string {
+  try {
+    // Try VERSION file first
+    const installDir = findInstallDir();
+    const versionFile = join(installDir, "VERSION");
+    if (existsSync(versionFile)) {
+      return readFileSync(versionFile, "utf-8").trim();
+    }
+  } catch {
+    // Fall back to package.json
+  }
+
+  // Fall back to package.json version
+  const packageJsonPath = join(__dirname, "..", "package.json");
+  if (existsSync(packageJsonPath)) {
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+    return packageJson.version || "unknown";
+  }
+
+  return "unknown";
+}
+
+/**
+ * Version command - show installed version
+ */
+function cmdVersion(): void {
+  console.log(getCurrentVersion());
+}
+
+/**
+ * Update command - update Agent Shepherd to latest or specific version
+ */
+async function cmdUpdate(version?: string): Promise<void> {
+  const targetVersion = version || "latest";
+  console.log(`Updating Agent Shepherd to ${targetVersion}...`);
+
+  try {
+    const installDir = findInstallDir();
+
+    // Backup config and plugins
+    const tempDir = join(require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
+    mkdirSync(tempDir, { recursive: true });
+
+    const configDir = join(installDir, "config");
+    const pluginsDir = join(installDir, "plugins");
+
+    if (existsSync(configDir)) {
+      cpSync(configDir, join(tempDir, "config"), { recursive: true });
+    }
+    if (existsSync(pluginsDir)) {
+      cpSync(pluginsDir, join(tempDir, "plugins"), { recursive: true });
+    }
+
+    // Download new version
+    const repoUrl = "https://github.com/USER/agent-shepherd.git";
+    const cloneDir = join(tempDir, "clone");
+
+    if (targetVersion === "latest") {
+      execSync(`git clone --depth 1 "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
+    } else {
+      execSync(`git clone --depth 1 --branch "${targetVersion}" "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
+    }
+
+    // Remove old installation (preserve logs)
+    const items = readdirSync(installDir);
+    for (const item of items) {
+      if (item !== "logs" && item !== "config" && item !== "plugins") {
+        const itemPath = join(installDir, item);
+        if (existsSync(itemPath)) {
+          rmSync(itemPath, { recursive: true, force: true });
+        }
+      }
+    }
+
+    // Copy new installation
+    const sourceDir = join(cloneDir, ".agent-shepherd");
+    const sourceItems = readdirSync(sourceDir);
+    for (const item of sourceItems) {
+      const srcPath = join(sourceDir, item);
+      const destPath = join(installDir, item);
+      cpSync(srcPath, destPath, { recursive: true });
+    }
+
+    // Restore config and plugins
+    if (existsSync(join(tempDir, "config"))) {
+      cpSync(join(tempDir, "config"), configDir, { recursive: true });
+    }
+    if (existsSync(join(tempDir, "plugins"))) {
+      cpSync(join(tempDir, "plugins"), pluginsDir, { recursive: true });
+    }
+
+    // Store version
+    writeFileSync(join(installDir, "VERSION"), targetVersion);
+
+    // Install dependencies
+    console.log("Installing dependencies...");
+    execSync("bun install", { cwd: installDir, stdio: "inherit" });
+
+    // Cleanup
+    rmSync(tempDir, { recursive: true, force: true });
+
+    console.log(`✅ Agent Shepherd updated to ${targetVersion}`);
+
+  } catch (error) {
+    console.error("❌ Update failed:", error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
@@ -998,6 +1113,14 @@ async function main(): Promise<void> {
 
     case "plugin-list":
       cmdPluginList();
+      break;
+
+    case "update":
+      await cmdUpdate(args[1]);
+      break;
+
+    case "version":
+      cmdVersion();
       break;
 
     default:

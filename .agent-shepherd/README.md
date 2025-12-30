@@ -34,9 +34,46 @@ This command will:
 - ✅ Validate your setup
 - ✅ Show next steps for using Agent Shepherd
 
-### Manual Installation
+### Installation Options
 
-If you prefer manual setup:
+Agent Shepherd supports two installation modes:
+
+#### Hybrid Mode (Recommended)
+- **Binary**: Shared installation in `~/.agent-shepherd/` (saves disk space)
+- **Config**: Per-project configuration in `./.agent-shepherd/config/`
+- **Best for**: Multiple projects, easy updates
+
+#### Local Mode
+- **Everything**: Self-contained in `./.agent-shepherd/`
+- **Best for**: Isolated projects, air-gapped environments
+
+### Quick Install
+
+#### macOS/Linux
+```bash
+# Download and run installer
+curl -fsSL https://raw.githubusercontent.com/USER/agent-shepherd/main/.agent-shepherd/install.sh | bash
+
+# Or install specific version
+curl -fsSL https://raw.githubusercontent.com/USER/agent-shepherd/main/.agent-shepherd/install.sh | bash -s v1.0.0
+```
+
+#### Windows (PowerShell)
+```powershell
+# Download and run installer
+irm https://raw.githubusercontent.com/USER/agent-shepherd/main/.agent-shepherd/install.ps1 | iex
+
+# Or install specific version
+irm https://raw.githubusercontent.com/USER/agent-shepherd/main/.agent-shepherd/install.ps1 | iex; Install-AgentShepherd v1.0.0
+```
+
+The installer will prompt you to choose:
+1. Installation mode (Hybrid/Local)
+2. Global linking (run `ashep` from anywhere)
+
+### Manual Setup
+
+If you prefer manual installation:
 
 #### Prerequisites
 
@@ -51,9 +88,18 @@ If you prefer manual setup:
 git clone <repository-url>
 cd agent-shepherd
 
-# Install dependencies and link globally
+# Install dependencies
 bun install
-bun link
+
+# Choose installation approach:
+
+# Option 1: Hybrid (recommended)
+mkdir -p ~/.agent-shepherd
+cp -r .agent-shepherd/* ~/.agent-shepherd/
+bun link  # Global linking
+
+# Option 2: Local (self-contained)
+# Use as-is for development
 
 # Initialize configuration (run from your project directory)
 cd /path/to/your/project
@@ -86,6 +132,15 @@ ashep validate-policy-chain
 
 # Show relationship tree
 ashep show-policy-tree
+
+# Check current version
+ashep version
+
+# Update to latest version (preserves config/plugins)
+ashep update
+
+# Update to specific version
+ashep update v1.2.0
 ```
 
 ## Architecture
@@ -295,6 +350,8 @@ For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.m
 - **`ashep sync-agents`** - Sync agent registry with OpenCode
 - **`ashep validate-policy-chain`** - Validate policy-capability-agent relationships
 - **`ashep show-policy-tree`** - Display relationship tree visualization
+- **`ashep version`** - Show installed version
+- **`ashep update [version]`** - Update to latest or specific version
 - **`ashep help`** - Show all available commands
 
 ### Plugin Commands
@@ -309,11 +366,24 @@ For detailed plugin documentation, see [docs/plugin-system.md](docs/plugin-syste
 
 ## Development
 
-### Building
+### Developer Setup
+
+Contributors should clone the full repository for development:
 
 ```bash
+# Clone the repository
+git clone <repository-url>
+cd agent-shepherd
+
+# Install dependencies
+bun install
+
+# Build and link for development
 bun run build
-bun link  # Make globally available for development
+bun link
+
+# Run from anywhere during development
+ashep --help
 ```
 
 ### Testing
