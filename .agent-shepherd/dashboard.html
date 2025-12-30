@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agent Shepherd - Flow Visualization</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js"></script>
+    <script src="dashboard-flow.js"></script>
     <style>
         body {
             margin: 0;
@@ -15,199 +16,23 @@
                 sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+        }
+        .react-flow {
             background: #f8fafc;
         }
-        .container {
-            padding: 20px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .controls {
-            background: white;
-            padding: 20px;
+        .react-flow__node {
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
         }
-        .workflow {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            align-items: center;
-            background: white;
-            padding: 20px;
+        .react-flow__node-default {
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .phase-card {
-            padding: 20px;
-            border: 2px solid #6b7280;
-            border-radius: 8px;
-            background: #f8fafc;
-            min-width: 250px;
-            max-width: 350px;
-            text-align: left;
-            position: relative;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .phase-number {
-            background: #6b7280;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 12px;
-            display: inline-block;
-            margin-bottom: 8px;
-        }
-        .arrow {
-            font-size: 20px;
-            color: #6b7280;
-            font-weight: bold;
-        }
-        select {
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-            margin-left: 10px;
-        }
-        .loading {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 50vh;
-            font-size: 18px;
+        .react-flow__edge-path {
+            stroke-width: 2;
         }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
-
-        function App() {
-            const [policies, setPolicies] = useState([]);
-            const [selectedPolicy, setSelectedPolicy] = useState('');
-            const [phases, setPhases] = useState([]);
-            const [loading, setLoading] = useState(true);
-
-            useEffect(() => {
-                loadInitialData();
-            }, []);
-
-            async function loadInitialData() {
-                try {
-                    const policiesRes = await fetch('/api/policies');
-                    const policiesData = await policiesRes.json();
-                    setPolicies(policiesData);
-
-                    const defaultPolicy = policiesData.find(p => p.isDefault);
-                    if (defaultPolicy) {
-                        setSelectedPolicy(defaultPolicy.id);
-                        await loadPhases(defaultPolicy.id);
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
-                } finally {
-                    setLoading(false);
-                }
-            }
-
-            async function loadPhases(policyId) {
-                try {
-                    const phasesRes = await fetch('/api/phases?policy=' + policyId);
-                    const phasesData = await phasesRes.json();
-                    setPhases(phasesData);
-                } catch (error) {
-                    console.error('Error loading phases:', error);
-                }
-            }
-
-            function handlePolicyChange(e) {
-                const policyId = e.target.value;
-                setSelectedPolicy(policyId);
-                setLoading(true);
-                loadPhases(policyId).finally(() => setLoading(false));
-            }
-
-            if (loading && policies.length === 0) {
-                return React.createElement('div', { className: 'loading' }, 'Loading Agent Shepherd...');
-            }
-
-            return React.createElement('div', { className: 'container' }, [
-                React.createElement('div', { key: 'header', className: 'controls' }, [
-                    React.createElement('h1', { key: 'title' }, 'Agent Shepherd Dashboard'),
-                    React.createElement('div', { key: 'selector' }, [
-                        React.createElement('label', { key: 'label' }, 'Policy: '),
-                        React.createElement('select', {
-                            key: 'select',
-                            value: selectedPolicy,
-                            onChange: handlePolicyChange
-                        }, policies.map(p =>
-                            React.createElement('option', { key: p.id, value: p.id },
-                                p.name + (p.isDefault ? ' (Default)' : '')
-                            )
-                        )),
-                        React.createElement('span', { key: 'count', style: { marginLeft: '20px' } },
-                            ' | Phases: ' + phases.length
-                        )
-                    ])
-                ]),
-                React.createElement('div', { key: 'workflow', className: 'workflow' },
-                    phases.length > 0 ? phases.map((phase, index) => [
-                        React.createElement('div', { key: phase.id, className: 'phase-card' }, [
-                            React.createElement('div', { key: 'num', className: 'phase-number' },
-                                'Phase ' + (index + 1)
-                            ),
-                            React.createElement('h3', { key: 'name', style: { margin: '0 0 8px 0', fontSize: '16px' } }, phase.name),
-                            React.createElement('div', { key: 'details', style: { fontSize: '13px', lineHeight: '1.4' } }, [
-                                React.createElement('div', {
-                                    key: 'desc',
-                                    style: { marginBottom: '8px', color: '#555' }
-                                }, phase.description || 'No description'),
-                                React.createElement('div', {
-                                    key: 'capabilities',
-                                    style: { marginBottom: '8px' }
-                                }, [
-                                    React.createElement('strong', { key: 'cap-label' }, 'Capabilities:'),
-                                    React.createElement('div', {
-                                        key: 'cap-list',
-                                        style: { marginTop: '4px', paddingLeft: '8px' }
-                                    }, (phase.capabilities && phase.capabilities.length > 0) ?
-                                        phase.capabilities.map(cap =>
-                                            React.createElement('span', {
-                                                key: cap,
-                                                style: {
-                                                    background: '#e3f2fd',
-                                                    padding: '2px 6px',
-                                                    borderRadius: '4px',
-                                                    margin: '2px 4px 2px 0',
-                                                    fontSize: '12px',
-                                                    display: 'inline-block'
-                                                }
-                                            }, cap)
-                                        ) : React.createElement('span', { style: { fontSize: '12px', color: '#999' } }, 'None')
-                                    )
-                                ]),
-                                React.createElement('div', {
-                                    key: 'timeout',
-                                    style: { color: '#666', fontSize: '12px' }
-                                }, 'Timeout multiplier: ' + (phase.timeout_multiplier || 1.0))
-                            ])
-                        ]),
-                        index < phases.length - 1 ? React.createElement('div', {
-                            key: 'arrow-' + index,
-                            className: 'arrow'
-                        }, '→') : null
-                    ]).flat().filter(Boolean) : [
-                        React.createElement('p', { key: 'empty' }, 'No phases found for selected policy.')
-                    ]
-                )
-            ]);
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
-    </script>
 </body>
 </html>
