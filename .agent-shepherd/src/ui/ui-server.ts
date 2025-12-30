@@ -21,6 +21,9 @@ export class UIServer {
   }
 
   private setupRoutes(): void {
+    // Serve static files from the UI directory
+    this.app.use(express.static(join(__dirname, '..', '..')));
+
     // API routes
     this.app.get('/api/health', (_req, res) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -89,18 +92,17 @@ export class UIServer {
       }
     });
 
+    // Serve static files from the UI directory
+    const uiDir = join(__dirname, '..', '..');
+    this.app.use(express.static(uiDir));
+
     // Serve React app
     this.app.get('/', (_req, res) => {
-      try {
-        const filePath = join(__dirname, '..', '..', 'dashboard.html');
-        console.log('Serving dashboard from:', filePath);
-        const content = readFileSync(filePath, 'utf8');
-        res.setHeader('Content-Type', 'text/html');
-        res.send(content);
-      } catch (error) {
-        console.error('Error reading dashboard file:', error);
-        res.status(404).send('Dashboard file not found');
-      }
+      const filePath = join(__dirname, '..', '..', 'dashboard.html');
+      console.log('Serving dashboard from:', filePath);
+      const content = readFileSync(filePath, 'utf8');
+      res.setHeader('Content-Type', 'text/html');
+      res.send(content);
     });
 
     // 404 handler

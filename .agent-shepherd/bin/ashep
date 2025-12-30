@@ -37860,6 +37860,7 @@ class UIServer {
     this.setupRoutes();
   }
   setupRoutes() {
+    this.app.use(import_express.default.static(join5(__dirname, "..", "..")));
     this.app.get("/api/health", (_req, res) => {
       res.json({ status: "ok", timestamp: new Date().toISOString() });
     });
@@ -37919,17 +37920,14 @@ class UIServer {
         return;
       }
     });
+    const uiDir = join5(__dirname, "..", "..");
+    this.app.use(import_express.default.static(uiDir));
     this.app.get("/", (_req, res) => {
-      try {
-        const filePath = join5(__dirname, "..", "..", "dashboard.html");
-        console.log("Serving dashboard from:", filePath);
-        const content = readFileSync6(filePath, "utf8");
-        res.setHeader("Content-Type", "text/html");
-        res.send(content);
-      } catch (error) {
-        console.error("Error reading dashboard file:", error);
-        res.status(404).send("Dashboard file not found");
-      }
+      const filePath = join5(__dirname, "..", "..", "dashboard.html");
+      console.log("Serving dashboard from:", filePath);
+      const content = readFileSync6(filePath, "utf8");
+      res.setHeader("Content-Type", "text/html");
+      res.send(content);
     });
     this.app.use((_req, res) => {
       res.status(404).json({ error: "Not found" });
