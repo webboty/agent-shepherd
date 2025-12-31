@@ -58,7 +58,20 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 
 ### Core Components
 
+#### External Systems
+
+**Beads** is a required issue tracking system for Agent Shepherd. All workflows depend on it.
+
+**Note**: For comprehensive Beads integration and landing plane workflow, see `.agent-shepherd/AGENTS_BEADS.md`.
+
+**OpenSpec** is a change proposal system (via `plugins/openspec/`) used for planning and approving significant changes to this project. When working on:
+- New features or breaking changes
+- Architecture shifts or major refactors
+- Performance or security improvements
+- Anything requiring specs or proposals
+
 ```
+**Note**: For detailed OpenSpec instructions, see `.agent-shepherd/AGENTS_OpenSpec.md`.
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Beads Issues  │    │ Agent Registry  │    │ OpenCode Agents │
 │   (Issue Pool)  │    │ (Capability DB) │    │   (Execution)   │
@@ -147,7 +160,7 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 │   └── agents.yaml           # Agent registry
 ├── plugins/
 │   ├── hello-world/          # Example plugin
-│   └── openspec/            # OpenSpec integration
+│   └── openspec/            # OpenSpec integration plugin
 ├── schemas/
 │   ├── config.schema.json
 │   ├── policies.schema.json
@@ -330,7 +343,9 @@ my-plugin/
 
 ## Beads Integration
 
-This project uses **bd** (beads) for issue tracking:
+This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+
+### Quick Reference
 
 ```bash
 bd ready              # Find available work
@@ -369,7 +384,7 @@ When working on specific features, open the relevant documentation for detailed 
 |----------|--------------|-------------|
 | `README.md` | First-time setup, quick start, overview of the project | Getting started guide with installation and basic usage |
 | `AGENTS.md` (this file) | Understanding project structure, coding standards, architecture | AI agent instructions and development guide |
-| `openspec/AGENTS.md` | Working on proposals, specs, planning changes | OpenSpec change proposal system and workflow |
+| `.agent-shepherd/AGENTS_OpenSpec.md` | Working on proposals, specs, planning changes | OpenSpec change proposal system and workflow |
 
 **Note**: Open the specific documentation when you need detailed information about that particular area. This file provides a high-level overview and quick reference.
 
@@ -422,7 +437,7 @@ See `README.md` for manual installation steps including:
 1. **Well-Commented Code**: Code should be well-commented (planned for future refactor). Currently minimal comments exist, but aim to add clear documentation for complex logic, decisions, and APIs
 2. **Type Safety**: Always use TypeScript types, avoid `any`
 3. **Error Messages**: Be specific and actionable
-4. **Logging**: Use the logging system from `src/core/logging.ts`
+4. **Logging**: Use the logging system from when agent-shepherd was involved in the work itself `src/core/logging.ts`
 5. **Configuration**: Always validate configs before using
 6. **Testing**: Write tests for new functionality
 7. **Documentation**: Update relevant docs when changing features
@@ -433,13 +448,14 @@ See `README.md` for manual installation steps including:
 
 - **Beads**: https://github.com/steveyegge/beads
 - **OpenCode**: AI agent execution platform
-- **OpenSpec**: Change proposal system (see `openspec/AGENTS.md`)
+- **OpenSpec**: Change proposal system (see `.agent-shepherd/AGENTS_OpenSpec.md`)
 
-## Session Completion
+### CRITICAL RULES:
 
-When ending a work session:
-1. Run `bun run lint` and `bun run type-check`
+
+### Agent Shepherd-Specific Steps:
+
+After completing the Beads Landing Plane workflow, also run:
+1. `bun run lint` and `bun run type-check`
 2. Ensure all tests pass
-3. Commit changes with descriptive messages
-4. Push to remote repository
-5. Update issue status in Beads if applicable
+3. Commit changes with descriptive messages (if not already done in workflow)
