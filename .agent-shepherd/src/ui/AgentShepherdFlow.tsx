@@ -484,44 +484,34 @@ const AgentShepherdFlow: React.FC = () => {
         </div>
       )}
 
-      <div style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        background: colorMode === 'dark' ? '#111827' : '#ffffff',
-        zIndex: -1
-      }}>
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={nodes.map(node => {
-              if (node.type === 'default') {
-                return {
-                  ...node,
-                  style: {
-                    ...node.style,
-                    backgroundColor: getNodeColor(node),
-                    color: 'white',
-                    border: 'none'
-                  }
-                };
-              }
-              return node;
-            })}
-            edges={edges}
-            onNodeClick={onNodeClick}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            fitView
-          >
-            <Background color={colorMode === 'dark' ? '#111827' : '#f8fafc'} />
-            <Controls />
-            <MiniMap />
-          </ReactFlow>
-        </ReactFlowProvider>
-      </div>
+      <ReactFlowProvider>
+        <ReactFlow
+          nodes={nodes.map(node => {
+            if (node.type === 'default') {
+              return {
+                ...node,
+                style: {
+                  ...node.style,
+                  backgroundColor: getNodeColor(node),
+                  color: 'white',
+                  border: 'none'
+                }
+              };
+            }
+            return node;
+          })}
+          edges={edges}
+          onNodeClick={onNodeClick}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={nodeTypes}
+          fitView
+        >
+          <Background color={colorMode === 'dark' ? '#0f172a' : '#f8fafc'} />
+          <Controls />
+          <MiniMap />
+        </ReactFlow>
+      </ReactFlowProvider>
     </div>
   );
 };
