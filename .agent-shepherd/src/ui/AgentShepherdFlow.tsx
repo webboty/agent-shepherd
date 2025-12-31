@@ -284,7 +284,9 @@ const AgentShepherdFlow: React.FC = () => {
         phaseEdges.push({
           id: `phase-edge-${i}`,
           source: `phase-${phases[i].id}`,
-          target: `phase-${phases[i + 1].id}`
+          target: `phase-${phases[i + 1].id}`,
+          animated: true,
+          style: { stroke: '#94a3b8' }
         });
       }
 
@@ -292,7 +294,9 @@ const AgentShepherdFlow: React.FC = () => {
       const runEdges: Edge[] = runs.map((run: Run) => ({
         id: `${run.id}-edge`,
         source: `phase-${run.phase}`,
-        target: run.id
+        target: run.id,
+        animated: true,
+        style: { stroke: '#94a3b8' }
       }));
 
       setNodes([...phaseNodes, ...runNodes]);
