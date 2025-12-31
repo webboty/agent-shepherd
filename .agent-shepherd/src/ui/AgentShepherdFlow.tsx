@@ -384,7 +384,11 @@ const AgentShepherdFlow: React.FC = () => {
   };
 
   return (
-      <div style={{ width: '100vw', height: '100vh' }}>
+    <div style={{ 
+      width: '100vw', 
+      height: '100vh',
+      background: colorMode === 'dark' ? '#0f172a' : '#ffffff'
+    }}>
       <div style={{
         position: 'absolute',
         top: 10,
