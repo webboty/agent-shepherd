@@ -37847,8 +37847,10 @@ var exports_ui_server = {};
 __export(exports_ui_server, {
   UIServer: () => UIServer
 });
-import { join as join5 } from "path";
-import { readFileSync as readFileSync6 } from "fs";
+import { join as join5, dirname as dirname2, resolve } from "path";
+import { readFileSync as readFileSync6, existsSync as existsSync5 } from "fs";
+import { spawn } from "child_process";
+import { fileURLToPath } from "url";
 
 class UIServer {
   app;
@@ -37859,8 +37861,40 @@ class UIServer {
     this.app = import_express.default();
     this.setupRoutes();
   }
+  async ensureUIBuilt() {
+    const distDir = join5(PROJECT_ROOT, "dist");
+    if (!existsSync5(join5(distDir, "AgentShepherdFlow.js"))) {
+      console.log("Building UI...");
+      return new Promise((resolve2, reject) => {
+        const build = spawn("bun", ["run", "build:ui"], {
+          cwd: PROJECT_ROOT,
+          stdio: "inherit"
+        });
+        build.on("close", (code) => {
+          if (code === 0) {
+            resolve2();
+          } else {
+            reject(new Error(`UI build failed with code ${code}`));
+          }
+        });
+        build.on("error", (err) => {
+          reject(err);
+        });
+      });
+    }
+  }
   setupRoutes() {
-    this.app.use(import_express.default.static(join5(__dirname, "..", "..")));
+    this.app.use((req, _res, next) => {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+      next();
+    });
+    const isDev = existsSync5(join5(PROJECT_ROOT, "package.json"));
+    if (isDev) {
+      this.ensureUIBuilt().catch((err) => {
+        console.error("Failed to build UI:", err);
+      });
+    }
+    this.app.use(import_express.default.static(PROJECT_ROOT));
     this.app.get("/api/health", (_req, res) => {
       res.json({ status: "ok", timestamp: new Date().toISOString() });
     });
@@ -37920,26 +37954,39 @@ class UIServer {
         return;
       }
     });
-    const uiDir = join5(__dirname, "..", "..");
-    this.app.use(import_express.default.static(uiDir));
     this.app.get("/", (_req, res) => {
-      const filePath = join5(__dirname, "..", "..", "dashboard.html");
-      console.log("Serving dashboard from:", filePath);
-      const content = readFileSync6(filePath, "utf8");
-      res.setHeader("Content-Type", "text/html");
-      res.send(content);
+      try {
+        const filePath = join5(UI_DIR, "index.html");
+        console.log("Serving dashboard from:", filePath);
+        if (!existsSync5(filePath)) {
+          console.error("index.html not found at:", filePath);
+          res.status(404).send("index.html not found");
+          return;
+        }
+        const content = readFileSync6(filePath, "utf8");
+        res.setHeader("Content-Type", "text/html");
+        res.send(content);
+      } catch (error) {
+        console.error("Error serving index.html:", error);
+        res.status(500).send("Error serving dashboard");
+      }
     });
     this.app.use((_req, res) => {
-      res.status(404).json({ error: "Not found" });
+      console.log("404 Not Found:", _req.url);
+      res.status(404).json({ error: "Not found", path: _req.url });
+    });
+    this.app.use((err, _req, res) => {
+      console.error("Server error:", err);
+      res.status(500).json({ error: "Internal Server Error", message: err.message });
     });
   }
   async start() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       this.server = this.app.listen(this.config.port, this.config.host, () => {
         console.log(`\uD83D\uDE80 Agent Shepherd UI started:`);
         console.log(`   URL: http://${this.config.host}:${this.config.port}`);
         console.log(`   API: http://${this.config.host}:${this.config.port}/api`);
-        resolve();
+        resolve2();
       });
       this.server.on("error", (error) => {
         reject(error);
@@ -37947,22 +37994,31 @@ class UIServer {
     });
   }
   stop() {
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       if (this.server) {
         this.server.close(() => {
           console.log("UI server stopped");
-          resolve();
+          resolve2();
         });
       } else {
-        resolve();
+        resolve2();
       }
     });
   }
 }
-var import_express, __dirname = "/Users/tonyhartmann/DevShare/JS/agent-shepherd/.agent-shepherd/src/ui";
+var import_express, __filename2, __dirname2, possibleRoots, PROJECT_ROOT, UI_DIR;
 var init_ui_server = __esm(() => {
   init_policy();
   import_express = __toESM(require_express2(), 1);
+  __filename2 = fileURLToPath(import.meta.url);
+  __dirname2 = dirname2(__filename2);
+  possibleRoots = [
+    resolve(__dirname2, "..", ".."),
+    resolve(process.cwd(), ".agent-shepherd"),
+    process.cwd()
+  ];
+  PROJECT_ROOT = possibleRoots.find((root) => existsSync5(join5(root, "src", "ui", "index.html"))) || possibleRoots[0];
+  UI_DIR = join5(PROJECT_ROOT, "src", "ui");
 });
 
 // src/core/policy-tree-visualizer.ts
@@ -39007,7 +39063,7 @@ function getMonitorEngine(config) {
 
 // src/cli/index.ts
 init_path_utils();
-import { existsSync as existsSync5, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2, readdirSync, readFileSync as readFileSync7, cpSync, rmSync } from "fs";
+import { existsSync as existsSync6, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2, readdirSync, readFileSync as readFileSync7, cpSync, rmSync } from "fs";
 import { join as join6 } from "path";
 import path from "path";
 import { execSync } from "child_process";
@@ -39038,14 +39094,14 @@ function loadPlugins() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
     const pluginsDir = join6(agentShepherdDir, "plugins");
-    if (!existsSync5(pluginsDir)) {
+    if (!existsSync6(pluginsDir)) {
       return;
     }
     const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     for (const pluginName of pluginDirs) {
       const pluginPath = join6(pluginsDir, pluginName);
       const manifestPath = join6(pluginPath, "manifest.json");
-      if (!existsSync5(manifestPath)) {
+      if (!existsSync6(manifestPath)) {
         console.warn(`Plugin ${pluginName}: manifest.json not found, skipping`);
         continue;
       }
@@ -39057,7 +39113,7 @@ function loadPlugins() {
           continue;
         }
         const indexPath = join6(pluginPath, "index.js");
-        if (!existsSync5(indexPath)) {
+        if (!existsSync6(indexPath)) {
           console.warn(`Plugin ${pluginName}: index.js not found, skipping`);
           continue;
         }
@@ -39168,16 +39224,16 @@ function cmdInit() {
   const configDir = join6(process.cwd(), ".agent-shepherd");
   const configSubDir = join6(configDir, "config");
   const pluginsDir = join6(configDir, "plugins");
-  if (!existsSync5(configSubDir)) {
+  if (!existsSync6(configSubDir)) {
     mkdirSync2(configSubDir, { recursive: true });
     console.log(`Created directory: ${configSubDir}`);
   }
-  if (!existsSync5(pluginsDir)) {
+  if (!existsSync6(pluginsDir)) {
     mkdirSync2(pluginsDir, { recursive: true });
     console.log(`Created directory: ${pluginsDir}`);
   }
   const policiesPath = join6(configSubDir, "policies.yaml");
-  if (!existsSync5(policiesPath)) {
+  if (!existsSync6(policiesPath)) {
     const defaultPolicies = `policies:
   default:
     name: default
@@ -39230,7 +39286,7 @@ default_policy: default
     console.log(`Skipped (exists): ${policiesPath}`);
   }
   const agentsPath = join6(configSubDir, "agents.yaml");
-  if (!existsSync5(agentsPath)) {
+  if (!existsSync6(agentsPath)) {
     const defaultAgents = `version: "1.0"
 agents:
   - id: default-coder
@@ -39277,7 +39333,7 @@ agents:
     console.log(`Skipped (exists): ${agentsPath}`);
   }
   const configPath = join6(configSubDir, "config.yaml");
-  if (!existsSync5(configPath)) {
+  if (!existsSync6(configPath)) {
     const defaultConfig = `version: "1.0"
 
 worker:
@@ -39493,27 +39549,27 @@ async function cmdPluginInstall(source) {
   try {
     const agentShepherdDir = findAgentShepherdDir();
     const pluginsDir = join6(agentShepherdDir, "plugins");
-    if (!existsSync5(pluginsDir)) {
+    if (!existsSync6(pluginsDir)) {
       mkdirSync2(pluginsDir, { recursive: true });
     }
     if (source.startsWith("http")) {
       console.log(`Cloning plugin from ${source}...`);
       const pluginName = source.split("/").pop()?.replace(".git", "") || "plugin";
       const pluginPath = join6(pluginsDir, pluginName);
-      if (existsSync5(pluginPath)) {
+      if (existsSync6(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
       execSync(`git clone "${source}" "${pluginPath}"`, { stdio: "inherit" });
     } else {
       const sourcePath = path.resolve(source);
-      if (!existsSync5(sourcePath)) {
+      if (!existsSync6(sourcePath)) {
         console.error(`Source path does not exist: ${sourcePath}`);
         process.exit(1);
       }
       const pluginName = path.basename(sourcePath);
       const pluginPath = join6(pluginsDir, pluginName);
-      if (existsSync5(pluginPath)) {
+      if (existsSync6(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
@@ -39534,12 +39590,12 @@ function cmdPluginActivate(name) {
     const agentShepherdDir = findAgentShepherdDir();
     const pluginsDir = join6(agentShepherdDir, "plugins");
     const pluginPath = join6(pluginsDir, name);
-    if (!existsSync5(pluginPath)) {
+    if (!existsSync6(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
     const manifestPath = join6(pluginPath, "manifest.json");
-    if (!existsSync5(manifestPath)) {
+    if (!existsSync6(manifestPath)) {
       console.error(`Plugin ${name} has no manifest.json`);
       process.exit(1);
     }
@@ -39558,7 +39614,7 @@ function cmdPluginDeactivate(name) {
     const agentShepherdDir = findAgentShepherdDir();
     const pluginsDir = join6(agentShepherdDir, "plugins");
     const pluginPath = join6(pluginsDir, name);
-    if (!existsSync5(pluginPath)) {
+    if (!existsSync6(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -39577,7 +39633,7 @@ function cmdPluginRemove(name) {
     const agentShepherdDir = findAgentShepherdDir();
     const pluginsDir = join6(agentShepherdDir, "plugins");
     const pluginPath = join6(pluginsDir, name);
-    if (!existsSync5(pluginPath)) {
+    if (!existsSync6(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -39671,12 +39727,12 @@ function getCurrentVersion() {
   try {
     const installDir = findInstallDir();
     const versionFile = join6(installDir, "VERSION");
-    if (existsSync5(versionFile)) {
+    if (existsSync6(versionFile)) {
       return readFileSync7(versionFile, "utf-8").trim();
     }
   } catch {}
   const packageJsonPath = join6(__dirname, "..", "package.json");
-  if (existsSync5(packageJsonPath)) {
+  if (existsSync6(packageJsonPath)) {
     const packageJson = JSON.parse(readFileSync7(packageJsonPath, "utf-8"));
     return packageJson.version || "unknown";
   }
@@ -39694,10 +39750,10 @@ async function cmdUpdate(version) {
     mkdirSync2(tempDir, { recursive: true });
     const configDir = join6(installDir, "config");
     const pluginsDir = join6(installDir, "plugins");
-    if (existsSync5(configDir)) {
+    if (existsSync6(configDir)) {
       cpSync(configDir, join6(tempDir, "config"), { recursive: true });
     }
-    if (existsSync5(pluginsDir)) {
+    if (existsSync6(pluginsDir)) {
       cpSync(pluginsDir, join6(tempDir, "plugins"), { recursive: true });
     }
     const repoUrl = "https://github.com/USER/agent-shepherd.git";
@@ -39711,7 +39767,7 @@ async function cmdUpdate(version) {
     for (const item of items) {
       if (item !== "logs" && item !== "config" && item !== "plugins") {
         const itemPath = join6(installDir, item);
-        if (existsSync5(itemPath)) {
+        if (existsSync6(itemPath)) {
           rmSync(itemPath, { recursive: true, force: true });
         }
       }
@@ -39723,10 +39779,10 @@ async function cmdUpdate(version) {
       const destPath = join6(installDir, item);
       cpSync(srcPath, destPath, { recursive: true });
     }
-    if (existsSync5(join6(tempDir, "config"))) {
+    if (existsSync6(join6(tempDir, "config"))) {
       cpSync(join6(tempDir, "config"), configDir, { recursive: true });
     }
-    if (existsSync5(join6(tempDir, "plugins"))) {
+    if (existsSync6(join6(tempDir, "plugins"))) {
       cpSync(join6(tempDir, "plugins"), pluginsDir, { recursive: true });
     }
     writeFileSync2(join6(installDir, "VERSION"), targetVersion);
@@ -39743,7 +39799,7 @@ function cmdPluginList() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
     const pluginsDir = join6(agentShepherdDir, "plugins");
-    if (!existsSync5(pluginsDir)) {
+    if (!existsSync6(pluginsDir)) {
       console.log("No plugins directory found");
       return;
     }
@@ -39758,7 +39814,7 @@ function cmdPluginList() {
       const manifestPath = join6(pluginPath, "manifest.json");
       let status = "\u274C Invalid";
       let description = "";
-      if (existsSync5(manifestPath)) {
+      if (existsSync6(manifestPath)) {
         try {
           const manifest = JSON.parse(readFileSync7(manifestPath, "utf-8"));
           status = "\u2705 Active";

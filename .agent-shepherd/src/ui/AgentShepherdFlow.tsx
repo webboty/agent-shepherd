@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import ReactFlow, { 
-  Node, 
-  Edge, 
-  Background, 
-  Controls, 
+import { createRoot } from 'react-dom/client';
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
   MiniMap,
-  ReactFlowProvider 
+  ReactFlowProvider
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -272,3 +273,16 @@ const AgentShepherdFlow: React.FC = () => {
 };
 
 export default AgentShepherdFlow;
+
+// Auto-mount when loaded in browser
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  const rootElement = document.getElementById('root');
+  if (rootElement) {
+    try {
+      const root = createRoot(rootElement);
+      root.render(<AgentShepherdFlow />);
+    } catch (err) {
+      console.error('Failed to mount React app:', err);
+    }
+  }
+}

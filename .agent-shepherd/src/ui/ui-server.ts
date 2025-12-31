@@ -1,8 +1,26 @@
 import express from 'express';
-import { join } from 'path';
-import { readFileSync } from 'fs';
+import { join, dirname, resolve } from 'path';
+import { readFileSync, existsSync } from 'fs';
 import { Server } from 'http';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
 import { getPolicyEngine } from '../core/policy';
+
+// Get directory where this module is located
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Try multiple possible project root locations
+const possibleRoots = [
+  resolve(__dirname, '..', '..'),           // From .agent-shepherd/src/ui/ to .agent-shepherd/
+  resolve(process.cwd(), '.agent-shepherd'),  // From project/ to .agent-shepherd/
+  process.cwd(),                           // Fallback to current directory
+];
+
+const PROJECT_ROOT = possibleRoots.find(root => existsSync(join(root, 'src', 'ui', 'index.html'))) || possibleRoots[0];
+
+// UI directory is src/ui relative to project root
+const UI_DIR = join(PROJECT_ROOT, 'src', 'ui');
 
 interface UIServerConfig {
   port: number;
@@ -20,9 +38,49 @@ export class UIServer {
     this.setupRoutes();
   }
 
+  private async ensureUIBuilt(): Promise<void> {
+    const distDir = join(PROJECT_ROOT, 'dist');
+
+    if (!existsSync(join(distDir, 'AgentShepherdFlow.js'))) {
+      console.log('Building UI...');
+      return new Promise((resolve, reject) => {
+        const build = spawn('bun', ['run', 'build:ui'], {
+          cwd: PROJECT_ROOT,
+          stdio: 'inherit'
+        });
+
+        build.on('close', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`UI build failed with code ${code}`));
+          }
+        });
+
+        build.on('error', (err) => {
+          reject(err);
+        });
+      });
+    }
+  }
+
   private setupRoutes(): void {
+    // Log all incoming requests for debugging
+    this.app.use((req, _res, next) => {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+      next();
+    });
+
+    // Only try to build if we're in development (running from source)
+    const isDev = existsSync(join(PROJECT_ROOT, 'package.json'));
+    if (isDev) {
+      this.ensureUIBuilt().catch((err) => {
+        console.error('Failed to build UI:', err);
+      });
+    }
+
     // Serve static files from the UI directory
-    this.app.use(express.static(join(__dirname, '..', '..')));
+    this.app.use(express.static(PROJECT_ROOT));
 
     // API routes
     this.app.get('/api/health', (_req, res) => {
@@ -92,22 +150,35 @@ export class UIServer {
       }
     });
 
-    // Serve static files from the UI directory
-    const uiDir = join(__dirname, '..', '..');
-    this.app.use(express.static(uiDir));
-
     // Serve React app
     this.app.get('/', (_req, res) => {
-      const filePath = join(__dirname, '..', '..', 'dashboard.html');
-      console.log('Serving dashboard from:', filePath);
-      const content = readFileSync(filePath, 'utf8');
-      res.setHeader('Content-Type', 'text/html');
-      res.send(content);
+      try {
+        const filePath = join(UI_DIR, 'index.html');
+        console.log('Serving dashboard from:', filePath);
+        if (!existsSync(filePath)) {
+          console.error('index.html not found at:', filePath);
+          res.status(404).send('index.html not found');
+          return;
+        }
+        const content = readFileSync(filePath, 'utf8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(content);
+      } catch (error) {
+        console.error('Error serving index.html:', error);
+        res.status(500).send('Error serving dashboard');
+      }
     });
 
     // 404 handler
     this.app.use((_req, res) => {
-      res.status(404).json({ error: 'Not found' });
+      console.log('404 Not Found:', _req.url);
+      res.status(404).json({ error: 'Not found', path: _req.url });
+    });
+
+    // Error handler (must be last)
+    this.app.use((err: Error, _req: any, res: any) => {
+      console.error('Server error:', err);
+      res.status(500).json({ error: 'Internal Server Error', message: err.message });
     });
   }
 
