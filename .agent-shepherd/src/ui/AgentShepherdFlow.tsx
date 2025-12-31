@@ -6,7 +6,10 @@ import ReactFlow, {
   Background,
   Controls,
   MiniMap,
-  ReactFlowProvider
+  ReactFlowProvider,
+  Handle,
+  Position,
+  NodeProps
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -22,14 +25,154 @@ interface Run {
   outcome?: string;
 }
 
-interface PhaseNode extends Node {
-  data: {
-    label: string;
-    phase: string;
-    status: string;
-    runCount: number;
-  };
+interface PhaseData {
+  id: string;
+  name: string;
+  description?: string;
+  capabilities?: string[];
+  status: string;
+  runCount: number;
 }
+
+interface PhaseNode extends Node {
+  data: PhaseData;
+}
+
+const PhaseNodeComponent: React.FC<NodeProps<PhaseData>> = ({ data }) => {
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'active': return '#3b82f6';
+      case 'idle': return '#6b7280';
+      default: return '#94a3b8';
+    }
+  };
+
+  const statusColor = getStatusColor(data.status);
+
+  return (
+    <div style={{
+      padding: '16px',
+      borderRadius: '12px',
+      minWidth: '280px',
+      maxWidth: '320px',
+      background: 'white',
+      border: '2px solid #e2e8f0',
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    }}>
+      <Handle type="target" position={Position.Top} style={{ background: statusColor }} />
+      
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '12px'
+      }}>
+        <h3 style={{
+          margin: 0,
+          fontSize: '16px',
+          fontWeight: '700',
+          color: '#1e293b'
+        }}>
+          {data.name}
+        </h3>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '12px',
+          color: '#64748b'
+        }}>
+          <span style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: statusColor
+          }} />
+          {data.status}
+        </div>
+      </div>
+
+      {data.description && (
+        <p style={{
+          margin: '0 0 12px 0',
+          fontSize: '13px',
+          color: '#64748b',
+          lineHeight: '1.5'
+        }}>
+          {data.description}
+        </p>
+      )}
+
+      {data.capabilities && data.capabilities.length > 0 && (
+        <div style={{
+          marginBottom: '12px'
+        }}>
+          <div style={{
+            fontSize: '11px',
+            fontWeight: '600',
+            color: '#94a3b8',
+            textTransform: 'uppercase',
+            marginBottom: '6px',
+            letterSpacing: '0.05em'
+          }}>
+            Capabilities
+          </div>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '6px'
+          }}>
+            {data.capabilities.map((capability, index) => (
+              <span key={index} style={{
+                padding: '4px 8px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: '500',
+                background: '#f1f5f9',
+                color: '#475569',
+                border: '1px solid #e2e8f0'
+              }}>
+                {capability}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingTop: '12px',
+        borderTop: '1px solid #e2e8f0'
+      }}>
+        <span style={{
+          fontSize: '11px',
+          color: '#94a3b8',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          fontWeight: '600'
+        }}>
+          Total Runs
+        </span>
+        <span style={{
+          fontSize: '13px',
+          fontWeight: '600',
+          color: '#1e293b',
+          background: '#f8fafc',
+          padding: '2px 8px',
+          borderRadius: '4px'
+        }}>
+          {data.runCount}
+        </span>
+      </div>
+
+      <Handle type="source" position={Position.Bottom} style={{ background: statusColor }} />
+    </div>
+  );
+};
 
 interface RunNode extends Node {
   data: {
@@ -44,6 +187,10 @@ interface Policy {
   description: string;
   isDefault: boolean;
 }
+
+const nodeTypes = {
+  phase: PhaseNodeComponent,
+};
 
 const AgentShepherdFlow: React.FC = () => {
   const [nodes, setNodes] = useState<(PhaseNode | RunNode)[]>([]);
@@ -67,11 +214,13 @@ const AgentShepherdFlow: React.FC = () => {
       // Create phase nodes
       const phaseNodes: PhaseNode[] = phases.map((phase: any, index: number) => ({
         id: `phase-${phase.id}`,
-        type: 'default',
-        position: { x: 100 + (index * 200), y: 100 },
+        type: 'phase',
+        position: { x: 100 + (index * 250), y: 100 },
         data: {
-          label: phase.name,
-          phase: phase.id,
+          id: phase.id,
+          name: phase.name,
+          description: phase.description,
+          capabilities: phase.capabilities,
           status: phase.status,
           runCount: runs.filter((r: Run) => r.phase === phase.id).length
         }
@@ -250,17 +399,23 @@ const AgentShepherdFlow: React.FC = () => {
 
       <ReactFlowProvider>
         <ReactFlow
-          nodes={nodes.map(node => ({
-            ...node,
-            style: {
-              ...node.style,
-              backgroundColor: getNodeColor(node),
-              color: 'white',
-              border: 'none'
+          nodes={nodes.map(node => {
+            if (node.type === 'default') {
+              return {
+                ...node,
+                style: {
+                  ...node.style,
+                  backgroundColor: getNodeColor(node),
+                  color: 'white',
+                  border: 'none'
+                }
+              };
             }
-          }))}
+            return node;
+          })}
           edges={edges}
           onNodeClick={onNodeClick}
+          nodeTypes={nodeTypes}
           fitView
         >
           <Background />
