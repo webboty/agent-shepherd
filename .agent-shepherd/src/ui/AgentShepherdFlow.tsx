@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactFlow, {
   Node,
@@ -9,7 +9,11 @@ import ReactFlow, {
   ReactFlowProvider,
   Handle,
   Position,
-  NodeProps
+  NodeProps,
+  applyNodeChanges,
+  applyEdgeChanges,
+  NodeChange,
+  EdgeChange
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -200,6 +204,16 @@ const AgentShepherdFlow: React.FC = () => {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [selectedPolicy, setSelectedPolicy] = useState<string>('');
 
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds as Node[])),
+    []
+  );
+
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    []
+  );
+
   // Load data from API
   const loadFlowData = async (policyId?: string): Promise<void> => {
     try {
@@ -215,7 +229,8 @@ const AgentShepherdFlow: React.FC = () => {
       const phaseNodes: PhaseNode[] = phases.map((phase: any, index: number) => ({
         id: `phase-${phase.id}`,
         type: 'phase',
-        position: { x: 100 + (index * 250), y: 100 },
+        position: { x: 50 + (index * 350), y: 100 },
+        draggable: true,
         data: {
           id: phase.id,
           name: phase.name,
@@ -226,16 +241,24 @@ const AgentShepherdFlow: React.FC = () => {
         }
       }));
 
-      // Create run nodes
-      const runNodes: RunNode[] = runs.map((run: Run, index: number) => ({
-        id: run.id,
-        type: 'default',
-        position: { x: 150 + (index * 200), y: 250 },
-        data: {
-          label: `${run.agentId} - ${run.phase}`,
-          run
-        }
-      }));
+      // Create run nodes positioned below their respective phases
+      const runNodes: RunNode[] = runs.map((run: Run) => {
+        const phaseIndex = phases.findIndex((p: any) => p.id === run.phase);
+        const phaseX = 50 + (phaseIndex * 350);
+        const runsInPhase = runs.filter((r: Run) => r.phase === run.phase);
+        const runIndexInPhase = runsInPhase.findIndex((r: Run) => r.id === run.id);
+        
+        return {
+          id: run.id,
+          type: 'default',
+          position: { x: phaseX + (runIndexInPhase % 3) * 110, y: 300 + Math.floor(runIndexInPhase / 3) * 80 },
+          draggable: true,
+          data: {
+            label: `${run.agentId}`,
+            run
+          }
+        };
+      });
 
       // Create edges between phases
       const phaseEdges: Edge[] = [];
@@ -415,6 +438,8 @@ const AgentShepherdFlow: React.FC = () => {
           })}
           edges={edges}
           onNodeClick={onNodeClick}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           nodeTypes={nodeTypes}
           fitView
         >
