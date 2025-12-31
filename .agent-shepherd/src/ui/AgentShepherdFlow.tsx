@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactFlow, {
   Node,
@@ -203,9 +203,21 @@ const AgentShepherdFlow: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [selectedPolicy, setSelectedPolicy] = useState<string>('');
+  const nodePositionsRef = useRef<Record<string, { x: number; y: number }>>({});
 
   const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds as Node[])),
+    (changes: NodeChange[]) => {
+      setNodes((nds) => {
+        const updatedNodes = applyNodeChanges(changes, nds as Node[]);
+        // Update positions ref when nodes change
+        updatedNodes.forEach(node => {
+          if (node.id) {
+            nodePositionsRef.current[node.id] = node.position;
+          }
+        });
+        return updatedNodes;
+      });
+    },
     []
   );
 
@@ -226,23 +238,29 @@ const AgentShepherdFlow: React.FC = () => {
       const phases = await phasesResponse.json();
 
       // Create phase nodes
-      const phaseNodes: PhaseNode[] = phases.map((phase: any, index: number) => ({
-        id: `phase-${phase.id}`,
-        type: 'phase',
-        position: { x: 50 + (index * 350), y: 100 },
-        draggable: true,
-        data: {
-          id: phase.id,
-          name: phase.name,
-          description: phase.description,
-          capabilities: phase.capabilities,
-          status: phase.status,
-          runCount: runs.filter((r: Run) => r.phase === phase.id).length
-        }
-      }));
+      const phaseNodes: PhaseNode[] = phases.map((phase: any, index: number) => {
+        const nodeId = `phase-${phase.id}`;
+        const savedPosition = nodePositionsRef.current[nodeId];
+        
+        return {
+          id: nodeId,
+          type: 'phase',
+          position: savedPosition || { x: 50 + (index * 350), y: 100 },
+          draggable: true,
+          data: {
+            id: phase.id,
+            name: phase.name,
+            description: phase.description,
+            capabilities: phase.capabilities,
+            status: phase.status,
+            runCount: runs.filter((r: Run) => r.phase === phase.id).length
+          }
+        };
+      });
 
       // Create run nodes positioned below their respective phases
       const runNodes: RunNode[] = runs.map((run: Run) => {
+        const savedPosition = nodePositionsRef.current[run.id];
         const phaseIndex = phases.findIndex((p: any) => p.id === run.phase);
         const phaseX = 50 + (phaseIndex * 350);
         const runsInPhase = runs.filter((r: Run) => r.phase === run.phase);
@@ -251,7 +269,7 @@ const AgentShepherdFlow: React.FC = () => {
         return {
           id: run.id,
           type: 'default',
-          position: { x: phaseX + (runIndexInPhase % 3) * 110, y: 300 + Math.floor(runIndexInPhase / 3) * 80 },
+          position: savedPosition || { x: phaseX + (runIndexInPhase % 3) * 110, y: 300 + Math.floor(runIndexInPhase / 3) * 80 },
           draggable: true,
           data: {
             label: `${run.agentId}`,
@@ -307,6 +325,9 @@ const AgentShepherdFlow: React.FC = () => {
 
   useEffect(() => {
     if (selectedPolicy) {
+      nodePositionsRef.current = {};
+      setNodes([]);
+      setEdges([]);
       loadFlowData(selectedPolicy);
     }
   }, [selectedPolicy]);
