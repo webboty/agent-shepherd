@@ -14,7 +14,7 @@ echo ""
 echo "   [L] Local (self-contained)"
 echo "       Everything: ./.agent-shepherd/"
 echo ""
-read -p "> " INSTALL_MODE
+read -p -t 5 "> " INSTALL_MODE" || true
 if [[ "$INSTALL_MODE" =~ ^[Ll]$ ]]; then
   INSTALL_DIR="$(pwd)/.agent-shepherd"
   echo "Installing locally to: $INSTALL_DIR"
@@ -31,7 +31,8 @@ echo ""
 echo "   [N] No global link"
 echo "       Run via: bunx ashep"
 echo ""
-read -p "> " LINK_MODE
+read -p -t 5 "> " LINK_MODE" || true
+
 # Clone to temp
 TEMP_DIR=$(mktemp -d)
 echo ""
@@ -56,8 +57,8 @@ if [ -d "$INSTALL_DIR" ]; then
   echo "       Removes all existing files and reinstalls clean"
   echo "       Creates fresh Agent Shepherd with latest CLI"
   echo ""
-  read -p "> " UPDATE_OR_FRESH"
-  
+  read -p -t 5 "> " UPDATE_OR_FRESH"
+
   # Set action message based on user choice
   if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
     UPDATE_ACTION="Updated"
@@ -68,19 +69,6 @@ else
   echo "Fresh installation..."
   echo ""
   UPDATE_ACTION="Freshly installed"
-fi
-  
-  if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
-    echo ""
-    echo "Updating to latest version..."
-    VERSION="latest"
-  else
-    echo "Proceeding with fresh installation..."
-    echo ""
-  fi
-else
-  echo "Fresh installation..."
-    echo ""
 fi
 
 # Backup existing config/plugins if upgrading (only on update, not fresh install)
@@ -109,6 +97,7 @@ fi
 # Copy new installation
 mkdir -p "$INSTALL_DIR"
 cp -r "$TEMP_DIR/.agent-shepherd/"* "$INSTALL_DIR/"
+
 # Restore backups
 if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
   if [ -d "$TEMP_DIR/config-backup" ]; then
@@ -130,12 +119,13 @@ if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
   fi
 else
   echo "Updating global CLI binary..."
-  # Copy just the CLI to global location
+  # Copy just CLI to global location
   mkdir -p "$INSTALL_DIR/src"
   cp "$TEMP_DIR/.agent-shepherd/src/cli/index.ts" "$INSTALL_DIR/src/cli/index.ts"
   # Link globally
   bun link --force
 fi
+
 # Cleanup
 rm -rf "$TEMP_DIR"
 echo ""
