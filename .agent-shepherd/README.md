@@ -95,6 +95,11 @@ The installer will prompt you to choose:
 
 ## After Installation
 
+**Your Complete Onboarding Journey:**
+**Install → Init → Quickstart → Add Issue → Start Worker ✨**
+
+---
+
 ### Step 1: Initialize (if using Hybrid mode)
 
 ```bash
