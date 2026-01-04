@@ -16,14 +16,74 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 - **Configuration Management**: YAML-based configuration with JSON schema validation
 - **Dual Storage**: Efficient logging with JSONL for source-of-truth and SQLite for fast queries
 
-## Quick Start
+## Installation
 
-### One-Command Onboarding (Recommended)
+Agent Shepherd supports two installation modes:
 
-Get started in under 5 minutes with everything set up automatically:
+**Hybrid Mode (Recommended)**
+- Binary globally in `~/.agent-shepherd/` (shared across projects)
+- Config per-project in `./.agent-shepherd/config/`
+- Best for: Multiple projects, easy updates
+
+**Local Mode**
+- Everything self-contained in `./.agent-shepherd/`
+- Best for: Isolated projects, air-gapped environments
+
+### Quick Install
+
+#### macOS/Linux
 
 ```bash
-# From your project directory
+# Download installer
+curl -fsSL https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.sh -o install.sh
+
+# Make executable
+chmod +x install.sh
+
+# Run installer (latest version)
+./install.sh
+
+# Or install specific version
+./install.sh v1.0.0
+
+# If chmod fails, run directly with bash:
+bash install.sh
+```
+
+#### Windows (PowerShell)
+
+```powershell
+# Download installer
+irm https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.ps1 -OutFile install.ps1
+
+# Run installer (latest version)
+.\install.ps1
+
+# Or install specific version
+.\install.ps1 v1.0.0
+```
+
+The installer will prompt you to choose:
+1. **Installation mode** (Hybrid/Local)
+2. **Global linking** (run `ashep` from anywhere or via `bunx ashep`)
+
+## After Installation
+
+### Step 1: Initialize (if using Hybrid mode)
+
+```bash
+# In your project directory
+ashep init
+```
+
+This creates the `.agent-shepherd/` directory with configuration files.
+
+**If you chose Local mode**: The `.agent-shepherd/` directory is already created - skip this step.
+
+### Step 2: Quickstart
+
+```bash
+# Set up dependencies and validate your setup
 ashep quickstart
 ```
 
@@ -34,82 +94,11 @@ This command will:
 - ✅ Validate your setup
 - ✅ Show next steps for using Agent Shepherd
 
-### Installation Options
-
-Agent Shepherd supports two installation modes:
-
-#### Hybrid Mode (Recommended)
-- **Binary**: Shared installation in `~/.agent-shepherd/` (saves disk space)
-- **Config**: Per-project configuration in `./.agent-shepherd/config/`
-- **Best for**: Multiple projects, easy updates
-
-#### Local Mode
-- **Everything**: Self-contained in `./.agent-shepherd/`
-- **Best for**: Isolated projects, air-gapped environments
-
-### Quick Install
-
-#### macOS/Linux
-
-**Option 1: Download then run (Recommended)**
-```bash
-# Download installer (latest version)
-curl -fsSL https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.sh -o install.sh
-
-# Or download specific version
-curl -fsSL https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.sh -o install.sh
-
-# Make executable (fixes permission denied)
-chmod +x install.sh
-
-# Run installer
-./install.sh
-
-# Or if chmod fails, run directly:
-bash install.sh
-
-# To install specific version, pass it as argument:
-./install.sh v1.0.0
-```
-
-**Option 2: One-line install**
-```bash
-# Download and run installer
-curl -fsSL https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.sh | bash
-
-# Or install specific version
-curl -fsSL https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.sh | bash -s v1.0.0
-```
-
-#### Windows (PowerShell)
-```powershell
-# Download and run installer
-irm https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.ps1 | iex
-
-# Or install specific version
-irm https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.ps1 | iex; Install-AgentShepherd v1.0.0
-```
-
-The installer will prompt you to choose:
-1. **Installation mode** (Hybrid/Local)
-   - **Hybrid**: Binary globally in `~/.agent-shepherd/`, config per-project (recommended)
-   - **Local**: Everything self-contained in `./.agent-shepherd/` (isolated projects)
-2. **Global linking** (run `ashep` from anywhere or via `bunx ashep`)
-
-### After Installation
-
-**If you chose Hybrid mode:**
-```bash
-# In your project directory, create local config
-ashep init
-```
-
-**If you chose Local mode:**
-The `.agent-shepherd/` directory is already created in your current directory.
+### Step 3: Ready to Go!
 
 Run `ashep --help` to see all available commands.
 
-### Manual Setup
+### Manual Setup (Advanced)
 
 If you prefer manual installation:
 
@@ -150,9 +139,6 @@ ashep install
 ### Basic Usage
 
 ```bash
-# One-command setup (recommended for first-time users)
-ashep quickstart
-
 # Start autonomous issue processing
 ashep worker
 
