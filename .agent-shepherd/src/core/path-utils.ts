@@ -1,79 +1,46 @@
 import { existsSync } from "fs";
 import { join, dirname } from "path";
-import { homedir } from "os";
 
-export function getGlobalInstallDir(): string {
-  return join(homedir(), ".agent-shepherd");
-}
-
-export function findLocalAgentShepherdDir(): string | null {
+/**
+ * Find the .agent-shepherd directory by walking up from the current working directory
+ * @returns The absolute path to the .agent-shepherd directory
+ * @throws Error if .agent-shepherd directory is not found
+ */
+export function findAgentShepherdDir(): string {
   let currentDir = process.cwd();
+
   while (true) {
     const agentShepherdDir = join(currentDir, ".agent-shepherd");
     if (existsSync(agentShepherdDir)) {
       return agentShepherdDir;
     }
+
     const parentDir = dirname(currentDir);
-    if (parentDir === currentDir) break;
+    if (parentDir === currentDir) {
+      // Reached root without finding .agent-shepherd
+      break;
+    }
     currentDir = parentDir;
   }
-  return null;
+
+  throw new Error(".agent-shepherd directory not found. Please run 'ashep init' or ensure you're in a project with Agent Shepherd initialized.");
 }
 
-export function findInstallDir(): string {
-  // Check for local full install (has src/)
-  const local = findLocalAgentShepherdDir();
-  if (local && existsSync(join(local, "src"))) {
-    return local;
-  }
-  // Fall back to global
-  const global = getGlobalInstallDir();
-  if (existsSync(global)) {
-    return global;
-  }
-  throw new Error("Agent Shepherd not installed. Run the installer or 'ashep init'");
-}
-
-export function findConfigDir(): string {
-  // Check for local config
-  const local = findLocalAgentShepherdDir();
-  if (local && existsSync(join(local, "config"))) {
-    return join(local, "config");
-  }
-  // Fall back to global config
-  const global = getGlobalInstallDir();
-  const globalConfig = join(global, "config");
-  if (existsSync(globalConfig)) {
-    return globalConfig;
-  }
-  throw new Error("No configuration found. Run 'ashep init' in your project.");
-}
-
-export function findPluginsDir(): string {
-  const local = findLocalAgentShepherdDir();
-  if (local && existsSync(join(local, "plugins"))) {
-    return join(local, "plugins");
-  }
-  const global = getGlobalInstallDir();
-  return join(global, "plugins");
-}
-
-// Legacy function - backward compatibility
-export function findAgentShepherdDir(): string {
-  const local = findLocalAgentShepherdDir();
-  if (local) return local;
-  const global = getGlobalInstallDir();
-  if (existsSync(global)) return global;
-  throw new Error(".agent-shepherd directory not found. Run the installer or 'ashep init'");
-}
-
-// Keep old functions for backward compatibility
+/**
+ * Get the config directory path
+ * @returns The absolute path to the config directory
+ */
 export function getConfigDir(): string {
-  return findConfigDir();
+  return join(findAgentShepherdDir(), "config");
 }
 
+/**
+ * Get the path to a config file
+ * @param filename The config filename (e.g., "config.yaml")
+ * @returns The absolute path to the config file
+ */
 export function getConfigPath(filename: string): string {
-  const newPath = join(findConfigDir(), filename);
+  const newPath = join(getConfigDir(), filename);
   if (existsSync(newPath)) {
     return newPath;
   }

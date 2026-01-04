@@ -37,114 +37,130 @@ interface RunNode extends Node {
   };
 }
 
-interface Policy {
-  id: string;
-  name: string;
-  description: string;
-  isDefault: boolean;
-}
-
 const AgentShepherdFlow: React.FC = () => {
   const [nodes, setNodes] = useState<(PhaseNode | RunNode)[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedRun, setSelectedRun] = useState<Run | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [policies, setPolicies] = useState<Policy[]>([]);
-  const [selectedPolicy, setSelectedPolicy] = useState<string>('');
 
-  // Load data from API
-  const loadFlowData = async (policyId?: string): Promise<void> => {
-    try {
-      const [runsResponse, phasesResponse] = await Promise.all([
-        fetch('/api/runs'),
-        fetch(`/api/phases${policyId ? `?policy=${policyId}` : ''}`)
-      ]);
-
-      const runs = await runsResponse.json();
-      const phases = await phasesResponse.json();
-
-      // Create phase nodes
-      const phaseNodes: PhaseNode[] = phases.map((phase: any, index: number) => ({
-        id: `phase-${phase.id}`,
-        type: 'default',
-        position: { x: 100 + (index * 200), y: 100 },
-        data: {
-          label: phase.name,
-          phase: phase.id,
-          status: phase.status,
-          runCount: runs.filter((r: Run) => r.phase === phase.id).length
-        }
-      }));
-
-      // Create run nodes
-      const runNodes: RunNode[] = runs.map((run: Run, index: number) => ({
-        id: run.id,
-        type: 'default',
-        position: { x: 150 + (index * 200), y: 250 },
-        data: {
-          label: `${run.agentId} - ${run.phase}`,
-          run
-        }
-      }));
-
-      // Create edges between phases
-      const phaseEdges: Edge[] = [];
-      for (let i = 0; i < phases.length - 1; i++) {
-        phaseEdges.push({
-          id: `phase-edge-${i}`,
-          source: `phase-${phases[i].id}`,
-          target: `phase-${phases[i + 1].id}`
-        });
+  // Generate mock data for MVP
+  const generateMockData = (): void => {
+    const mockRuns: Run[] = [
+      {
+        id: 'run-1',
+        issueId: 'agent-shepherd-001',
+        agentId: 'bmad-master',
+        phase: 'implementation',
+        status: 'completed',
+        startTime: '2025-12-20T10:00:00Z',
+        endTime: '2025-12-20T10:45:00Z',
+        sessionId: 'session-abc123',
+        outcome: 'Successfully implemented core modules'
+      },
+      {
+        id: 'run-2',
+        issueId: 'agent-shepherd-002',
+        agentId: 'code-reviewer',
+        phase: 'review',
+        status: 'running',
+        startTime: '2025-12-20T11:00:00Z',
+        sessionId: 'session-def456'
+      },
+      {
+        id: 'run-3',
+        issueId: 'agent-shepherd-003',
+        agentId: 'test-runner',
+        phase: 'testing',
+        status: 'pending',
+        startTime: ''
       }
+    ];
 
-      // Create edges from phases to runs
-      const runEdges: Edge[] = runs.map((run: Run) => ({
-        id: `${run.id}-edge`,
-        source: `phase-${run.phase}`,
-        target: run.id
-      }));
+    const phaseNodes: PhaseNode[] = [
+      {
+        id: 'phase-planning',
+        type: 'default',
+        position: { x: 100, y: 100 },
+        data: { 
+          label: 'Planning Phase', 
+          phase: 'planning', 
+          status: 'idle',
+          runCount: 0 
+        }
+      },
+      {
+        id: 'phase-implementation',
+        type: 'default',
+        position: { x: 300, y: 100 },
+        data: { 
+          label: 'Implementation Phase', 
+          phase: 'implementation', 
+          status: 'active',
+          runCount: 1 
+        }
+      },
+      {
+        id: 'phase-review',
+        type: 'default',
+        position: { x: 500, y: 100 },
+        data: { 
+          label: 'Review Phase', 
+          phase: 'review', 
+          status: 'active',
+          runCount: 1 
+        }
+      },
+      {
+        id: 'phase-testing',
+        type: 'default',
+        position: { x: 700, y: 100 },
+        data: { 
+          label: 'Testing Phase', 
+          phase: 'testing', 
+          status: 'idle',
+          runCount: 1 
+        }
+      }
+    ];
 
-      setNodes([...phaseNodes, ...runNodes]);
-      setEdges([...phaseEdges, ...runEdges]);
-    } catch (error) {
-      console.error('Error loading flow data:', error);
-    }
+    const runNodes: RunNode[] = mockRuns.map((run, index) => ({
+      id: run.id,
+      type: 'default',
+      position: { x: 200 + (index * 150), y: 250 },
+      data: { 
+        label: `${run.agentId} - ${run.phase}`,
+        run
+      }
+    }));
+
+    const flowEdges: Edge[] = [
+      { id: 'e1', source: 'phase-planning', target: 'phase-implementation' },
+      { id: 'e2', source: 'phase-implementation', target: 'phase-review' },
+      { id: 'e3', source: 'phase-review', target: 'phase-testing' },
+      { id: 'run-1-edge', source: 'phase-implementation', target: 'run-1' },
+      { id: 'run-2-edge', source: 'phase-review', target: 'run-2' },
+      { id: 'run-3-edge', source: 'phase-testing', target: 'run-3' }
+    ];
+
+    setNodes([...phaseNodes, ...runNodes]);
+    setEdges(flowEdges);
   };
 
-  // Load policies
-  const loadPolicies = async (): Promise<void> => {
-    try {
-      const response = await fetch('/api/policies');
-      const policiesData = await response.json();
-      setPolicies(policiesData);
-      const defaultPolicy = policiesData.find((p: Policy) => p.isDefault);
-      if (defaultPolicy) {
-        setSelectedPolicy(defaultPolicy.id);
-      }
-    } catch (error) {
-      console.error('Error loading policies:', error);
-    }
+  // Poll for updates (placeholder)
+  const pollForUpdates = async (): Promise<void> => {
+    // In real implementation, this would fetch from the backend
+    console.log('Polling for updates...');
   };
 
-
-
   useEffect(() => {
-    loadPolicies();
-  }, []);
-
-  useEffect(() => {
-    if (selectedPolicy) {
-      loadFlowData(selectedPolicy);
-    }
-  }, [selectedPolicy]);
-
-  useEffect(() => {
-    if (autoRefresh && selectedPolicy) {
-      const interval = setInterval(() => loadFlowData(selectedPolicy), 5000);
+    generateMockData();
+    
+    if (autoRefresh) {
+      const interval = setInterval(pollForUpdates, 5000);
       return () => clearInterval(interval);
     }
     return;
-  }, [autoRefresh, selectedPolicy]);
+  }, [autoRefresh]);
 
   const onNodeClick = (_event: React.MouseEvent, node: Node) => {
     if ('run' in node.data) {
@@ -178,32 +194,17 @@ const AgentShepherdFlow: React.FC = () => {
 
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <div style={{
-        position: 'absolute',
-        top: 10,
-        left: 10,
-        zIndex: 1000,
-        background: 'white',
-        padding: '10px',
+      <div style={{ 
+        position: 'absolute', 
+        top: 10, 
+        left: 10, 
+        zIndex: 1000, 
+        background: 'white', 
+        padding: '10px', 
         borderRadius: '8px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        minWidth: '250px'
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
       }}>
         <h3>Agent Shepherd Flow</h3>
-        <div style={{ marginBottom: '10px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>Policy:</label>
-          <select
-            value={selectedPolicy}
-            onChange={(e) => setSelectedPolicy(e.target.value)}
-            style={{ width: '100%', padding: '4px' }}
-          >
-            {policies.map(policy => (
-              <option key={policy.id} value={policy.id}>
-                {policy.name} {policy.isDefault ? '(Default)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
         <label>
           <input
             type="checkbox"

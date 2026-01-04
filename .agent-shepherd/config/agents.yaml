@@ -7,9 +7,6 @@ agents:
       - coding
       - refactoring
       - building
-      - testing
-      - review
-      - qa
     priority: 15
     active: true
     constraints:

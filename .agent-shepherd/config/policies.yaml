@@ -36,44 +36,10 @@ policies:
       max_attempts: 3
       backoff_strategy: exponential
       initial_delay_ms: 5000
-      max_delay_ms: 30000
+      max_delay_ms: 300000
     
     timeout_base_ms: 300000
     stall_threshold_ms: 60000
     require_hitl: false
-
-
-  test-1:
-    name: test-1
-    description: Default workflow policy
-    phases:
-      - name: implement
-        description: Implementation phase
-        capabilities:
-          - coding
-          - refactoring
-        timeout_multiplier: 2.0
-
-      - name: test
-        description: Testing phase
-        capabilities:
-          - testing
-          - qa
-        timeout_multiplier: 1.5
-
-      - name: review
-        description: Code review phase
-        capabilities:
-          - review
-          - documentation
-        timeout_multiplier: 1.0
-        require_approval: true
-
-    retry:
-      max_attempts: 3
-      backoff_strategy: exponential
-      initial_delay_ms: 5000
-      max_delay_ms: 300000
-
 
 default_policy: default
