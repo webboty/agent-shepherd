@@ -2,7 +2,7 @@ param(
     [string]$Version = "latest"
 )
 
-$REPO_URL = "https://github.com/USER/agent-shepherd.git"
+$REPO_URL = "https://github.com/webboty/agent-shepherd.git"
 
 Write-Host "Agent Shepherd Installer" -ForegroundColor Green
 Write-Host "========================" -ForegroundColor Green
@@ -44,7 +44,8 @@ $tempDir = New-TemporaryFile | %{ $_.DirectoryName + "\agent-shepherd-temp-" + [
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
 Write-Host ""
-Write-Host "Downloading Agent Shepherd$($Version ? " $Version" : "")..."
+$versionText = if ($Version -ne "latest") { " $Version" } else { "" }
+Write-Host "Downloading Agent Shepherd$versionText..."
 
 if ($Version -eq "latest") {
     & git clone --depth 1 "$REPO_URL" "$tempDir" 2>$null
@@ -52,41 +53,81 @@ if ($Version -eq "latest") {
     & git clone --depth 1 --branch "$Version" "$REPO_URL" "$tempDir" 2>$null
 }
 
+# Check if Agent Shepherd is already installed
+if (Test-Path $installDir) {
+    Write-Host ""
+    Write-Host "⚠️  Agent Shepherd is already installed in: $installDir" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "What would you like to do?"
+    Write-Host ""
+    Write-Host "   [U] Update to latest version (recommended)" -ForegroundColor Yellow
+    Write-Host "       Keeps your config and plugins intact"
+    Write-Host "       Updates CLI with latest changes"
+    Write-Host ""
+    Write-Host "   [F] Fresh installation" -ForegroundColor Yellow
+    Write-Host "       Removes all existing files and reinstalls clean"
+    Write-Host "       Creates fresh Agent Shepherd with latest CLI"
+    Write-Host ""
+
+    $updateOrFresh = Read-Host "> "
+
+    # Set action message based on user choice
+    if ($updateOrFresh -match "^[Uu]$") {
+        $updateAction = "Updated"
+    } else {
+        $updateAction = "Freshly installed"
+    }
+} else {
+    Write-Host "Fresh installation..."
+    Write-Host ""
+    $updateAction = "Freshly installed"
+    $updateOrFresh = "F"
+}
+
 # Backup existing config/plugins if upgrading
 $backupConfig = Join-Path $tempDir "config-backup"
 $backupPlugins = Join-Path $tempDir "plugins-backup"
 
-if (Test-Path (Join-Path $installDir "config")) {
-    Write-Host "Backing up existing config..."
-    Copy-Item (Join-Path $installDir "config") $backupConfig -Recurse -Force
+if ($updateOrFresh -match "^[Uu]$") {
+    if (Test-Path (Join-Path $installDir "config")) {
+        Write-Host "Backing up existing config..."
+        Copy-Item (Join-Path $installDir "config") $backupConfig -Recurse -Force
+    }
+
+    if (Test-Path (Join-Path $installDir "plugins")) {
+        Write-Host "Backing up existing plugins..."
+        Copy-Item (Join-Path $installDir "plugins") $backupPlugins -Recurse -Force
+    }
 }
 
-if (Test-Path (Join-Path $installDir "plugins")) {
-    Write-Host "Backing up existing plugins..."
-    Copy-Item (Join-Path $installDir "plugins") $backupPlugins -Recurse -Force
-}
-
-# Remove old installation (preserve config/plugins/logs)
+# Remove old installation
 if (Test-Path $installDir) {
-    Get-ChildItem $installDir | Where-Object {
-        $_.Name -notin @('config', 'plugins', 'logs')
-    } | Remove-Item -Recurse -Force
+    if ($updateOrFresh -match "^[Ff]$") {
+        # Fresh install: remove everything including config, plugins, logs
+        Get-ChildItem $installDir | Remove-Item -Recurse -Force
+    } else {
+        # Update: preserve config, plugins, logs
+        Get-ChildItem $installDir | Where-Object {
+            $_.Name -notin @('config', 'plugins', 'logs')
+        } | Remove-Item -Recurse -Force
+    }
 }
 
 # Copy new installation
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 Copy-Item (Join-Path $tempDir ".agent-shepherd\*") $installDir -Recurse -Force
 
-# Restore backups
-if (Test-Path $backupConfig) {
-    Copy-Item $backupConfig (Join-Path $installDir "config") -Recurse -Force
+# Restore backups (only on update)
+if ($updateOrFresh -match "^[Uu]$") {
+    if (Test-Path $backupConfig) {
+        Copy-Item $backupConfig (Join-Path $installDir "config") -Recurse -Force
+    }
+    if (Test-Path $backupPlugins) {
+        Copy-Item $backupPlugins (Join-Path $installDir "plugins") -Recurse -Force
+    }
+    # Store version
+    $Version | Out-File -FilePath (Join-Path $installDir "VERSION") -Encoding UTF8
 }
-if (Test-Path $backupPlugins) {
-    Copy-Item $backupPlugins (Join-Path $installDir "plugins") -Recurse -Force
-}
-
-# Store version
-$Version | Out-File -FilePath (Join-Path $installDir "VERSION") -Encoding UTF8
 
 # Install dependencies
 Write-Host "Installing dependencies..."
@@ -106,7 +147,7 @@ if ($linkMode -match "^[Gg]$") {
 Remove-Item $tempDir -Recurse -Force
 
 Write-Host ""
-Write-Host "✅ Agent Shepherd installed!" -ForegroundColor Green
+Write-Host "✅ Agent Shepherd $updateAction!" -ForegroundColor Green
 Write-Host ""
 if ($installMode -notmatch "^[Ll]$") {
     Write-Host "Run 'ashep init' in your project to create local config."
