@@ -832,12 +832,14 @@ async function cmdQuickstart(): Promise<void> {
     const valid = await cmdValidatePolicyChain(true);
     if (valid) {
       console.log("✅ Configuration validation passed");
-      console.log("🌱 Using simple policy - issue description is the plan!");
+      console.log("🌱 Using simple policy with autonomous multi-phase workflow!");
+      console.log("   Phases: Implement → Test → Validate (with automatic retry)");
+      console.log("   Same agent handles all phases - demonstrates autonomous orchestration");
     } else {
       console.log("⚠️  Configuration validation found issues - this is normal for first-time setup");
       console.log("   🌱 Simple policy is set as default and works with basic agents");
-      console.log("   The issue description IS the plan - no separate planning needed");
-      console.log("   You can switch to advanced policy when ready for exploration workflows");
+      console.log("   Multi-phase workflow: Implement → Test → Validate (automatic retry on failure)");
+      console.log("   You can switch to advanced default policy when ready for exploration workflows");
       console.log("   See: 'Configuration Customization (Advanced)' section below");
     }
 

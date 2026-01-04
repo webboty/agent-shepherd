@@ -124,10 +124,7 @@ See [docs/beads-crash-course.md](docs/beads-crash-course.md) for:
 - How to add issues
 - Issue types and priorities
 - Using Beads effectively
-
-**📚 Learn More About Beads:**
-- Official Beads Repository: https://github.com/steveyegge/beads
-- Beads Documentation: Check the repository docs for advanced usage
+- **Full Beads reference and learning guide**
 
 ### Step 4: Start Processing
 
@@ -145,11 +142,16 @@ Agent Shepherd comes with two pre-configured policies:
 
 **🌱 Simple Policy (Default - Beginner Friendly)**
 - Works out-of-the-box with basic OpenCode agents
-- **Single phase**: Implement (issue description IS the plan)
-- Best for: Issues with clear requirements already described
-- Use when: Task details are in the issue, or you planned with OpenSpec first
-- Uses: `coding` capability
-- **No separate planning needed** - agent implements what's in the issue
+- **Autonomous multi-phase workflow**: Implement → Test → Validate (with retry loop)
+- Demonstrates Agent Shepherd's power: autonomous retries, self-healing, monitoring
+- Best for: Issues with clear requirements that can be self-tested
+- **How it works**:
+  1. **Implement**: Agent builds feature based on issue description
+  2. **Test**: Agent runs and verifies what was built
+  3. **Validate**: Agent checks if result matches original requirements
+  4. **Retry loop**: If test fails, automatically fixes and retests
+- Uses: `coding`, `testing` capabilities (builder agent has both)
+- **Single agent handles all phases** - shows autonomous orchestration
  
 **🚀 Advanced Policy (Complex Projects)**
 - Requires agents with specialized capabilities
@@ -158,13 +160,14 @@ Agent Shepherd comes with two pre-configured policies:
 - Use when: Issue title is vague ("Fix bug", "Add feature") and needs discovery
 - Uses: `planning`, `architecture`, `testing`, `qa`, `review`, `documentation`
 - **Planning phase explores and creates detailed approach** before implementation
+- **Multiple agents may handle different phases**
  
 **💡 Pro Tip**: For complex projects, use **OpenSpec** to plan first, then sync to Beads:
 ```bash
 # Create detailed plan in OpenSpec
 openspec create "Implement user authentication"
  
-# Sync plan to Beads (issue becomes the plan)
+# Sync plan to Beads (issue becomes as plan)
 # Copy the plan from OpenSpec and add it as a Beads issue description
 bd create --title "Implement user authentication" --description "<paste OpenSpec plan here>"
  

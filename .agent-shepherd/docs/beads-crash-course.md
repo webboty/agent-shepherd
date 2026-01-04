@@ -98,7 +98,7 @@ bd list --status in-progress
 bd update <issue-id> --status in-progress
 
 # Add a comment/note
-bd update <issue-id> --note "Found the issue - it's a CSS z-index problem"
+bd update <issue-id> --note "Found that issue - it's a CSS z-index problem"
 
 # Change priority
 bd update <issue-id> --priority high
@@ -114,14 +114,14 @@ bd close <issue-id>
 ## Integration with Agent Shepherd
 
 After creating an issue:
-1. **Note the issue ID** (e.g., `bd-1` or `task-42`)
+1. **Note** issue ID (e.g., `bd-1` or `task-42`)
 2. **Start Agent Shepherd worker**: `ashep worker`
 3. **Agent Shepherd automatically picks up** your issue and processes it
 
 ## Tips
 
 - **Write clear descriptions**: More detail = better implementation
-- **Set realistic priorities**: Helps agent work on the right things first
+- **Set realistic priorities**: Helps agent work on right things first
 - **Use labels**: Makes it easier to find and filter issues later
 - **Break down large tasks**: Create multiple small issues instead of one giant one
 - **Reference dependencies**: Mention related issue IDs if tasks depend on each other
@@ -140,8 +140,8 @@ ashep work <issue-id>
 ashep ui
 ```
 
-## Learn More
+## Learn More About Beads
 
 - **Official Beads Repository**: https://github.com/steveyegge/beads
-- **Beads Documentation**: Check the repository for advanced commands and features
-- **Agent Shepherd Docs**: See README.md for full Agent Shepherd guide
+- **Beads Documentation**: Check the repository docs for advanced commands and features
+
