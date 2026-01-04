@@ -225,23 +225,23 @@ async function cmdWork(issueId: string): Promise<void> {
  */
 function cmdInit(): void {
   console.log("Initializing Agent Shepherd configuration...");
-
+  
   // For hybrid mode, always create local config in current directory
   const configDir = join(process.cwd(), ".agent-shepherd");
   const configSubDir = join(configDir, "config");
   const pluginsDir = join(configDir, "plugins");
-
+  
   // Create directories if they don't exist
   if (!existsSync(configSubDir)) {
     mkdirSync(configSubDir, { recursive: true });
-    console.log(`Created directory: ${configSubDir}`);
+    console.log(`✅ Created directory: ${configSubDir}`);
   }
-
+  
   if (!existsSync(pluginsDir)) {
     mkdirSync(pluginsDir, { recursive: true });
-    console.log(`Created directory: ${pluginsDir}`);
+    console.log(`✅ Created directory: ${pluginsDir}`);
   }
-
+  
   // Create default policies.yaml
   const policiesPath = join(configSubDir, "policies.yaml");
   if (!existsSync(policiesPath)) {
@@ -327,11 +327,11 @@ function cmdInit(): void {
   default_policy: simple
 `;
     writeFileSync(policiesPath, defaultPolicies);
-    console.log(`Created: ${policiesPath}`);
+    console.log(`✅ Created: ${policiesPath}`);
   } else {
     console.log(`Skipped (exists): ${policiesPath}`);
   }
-
+  
   // Create default agents.yaml
   const agentsPath = join(configSubDir, "agents.yaml");
   if (!existsSync(agentsPath)) {
@@ -374,38 +374,38 @@ agents:
     priority: 10
     constraints:
       performance_tier: balanced
-`;
-    writeFileSync(agentsPath, defaultAgents);
-    console.log(`Created: ${agentsPath}`);
-  } else {
-    console.log(`Skipped (exists): ${agentsPath}`);
-  }
-
+      `;
+      writeFileSync(agentsPath, defaultAgents);
+      console.log(`✅ Created: ${agentsPath}`);
+    } else {
+      console.log(`Skipped (exists): ${agentsPath}`);
+    }
+  
   // Create default config.yaml
   const configPath = join(configSubDir, "config.yaml");
   if (!existsSync(configPath)) {
     const defaultConfig = `version: "1.0"
-
+  
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
-
+  
 monitor:
   poll_interval_ms: 10000
   stall_threshold_ms: 60000
   timeout_multiplier: 1.0
-
+  
 ui:
   port: 3000
   host: localhost
-`;
+ `;
     writeFileSync(configPath, defaultConfig);
-    console.log(`Created: ${configPath}`);
+    console.log(`✅ Created: ${configPath}`);
   } else {
     console.log(`Skipped (exists): ${configPath}`);
   }
-
-  console.log("\nInitialization complete!");
+  
+  console.log("\n✅ Initialization complete!");
   console.log("Next step: Run 'ashep quickstart' to complete setup");
 }
 
