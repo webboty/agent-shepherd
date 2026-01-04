@@ -41,42 +41,102 @@ if [ "$VERSION" = "latest" ]; then
 else
   git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$TEMP_DIR" 2>/dev/null
 fi
-# Backup existing config/plugins if upgrading
-if [ -d "$INSTALL_DIR/config" ]; then
-  echo "Backing up existing config..."
-  cp -r "$INSTALL_DIR/config" "$TEMP_DIR/config-backup"
-fi
-if [ -d "$INSTALL_DIR/plugins" ]; then
-  echo "Backing up existing plugins..."
-  cp -r "$INSTALL_DIR/plugins" "$TEMP_DIR/plugins-backup"
-fi
-# Remove old installation (preserve config/plugins/logs)
+
+# Check if Agent Shepherd is already installed
 if [ -d "$INSTALL_DIR" ]; then
+  echo "⚠️  Agent Shepherd is already installed in: $INSTALL_DIR"
+  echo ""
+  echo "What would you like to do?"
+  echo ""
+  echo "   [U] Update to latest version (recommended)"
+  echo "       Preserves your config and plugins"
+  echo "   [F] Fresh installation"
+  echo "       Removes everything and reinstalls"
+  echo ""
+  read -p "> " UPDATE_OR_FRESH"
+  
+  # Set action message based on user choice
+  if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
+    UPDATE_ACTION="Updated"
+  else
+    UPDATE_ACTION="Freshly installed"
+  fi
+else
+  echo "Fresh installation..."
+  echo ""
+  UPDATE_ACTION="Freshly installed"
+fi
+  
+  if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
+    echo ""
+    echo "Updating to latest version..."
+    VERSION="latest"
+  else
+    echo "Proceeding with fresh installation..."
+    echo ""
+  fi
+else
+  echo "Fresh installation..."
+    echo ""
+fi
+
+# Backup existing config/plugins if upgrading (only on update, not fresh install)
+if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
+  if [ -d "$INSTALL_DIR/config" ]; then
+    echo "Backing up existing config..."
+    cp -r "$INSTALL_DIR/config" "$TEMP_DIR/config-backup"
+  fi
+  if [ -d "$INSTALL_DIR/plugins" ]; then
+    echo "Backing up existing plugins..."
+    cp -r "$INSTALL_DIR/plugins" "$TEMP_DIR/plugins-backup"
+  fi
+fi
+
+# Remove old installation (only on fresh install, or remove non-config/plugins/logs on update)
+if [[ "$UPDATE_OR_FRESH" =~ ^[Ff]$ ]]; then
+  find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
+    ! -name 'config' ! -name 'plugins' ! -name 'logs' \
+    -exec rm -rf {} +
+else
   find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
     ! -name 'config' ! -name 'plugins' ! -name 'logs' \
     -exec rm -rf {} +
 fi
+
 # Copy new installation
 mkdir -p "$INSTALL_DIR"
 cp -r "$TEMP_DIR/.agent-shepherd/"* "$INSTALL_DIR/"
 # Restore backups
-[ -d "$TEMP_DIR/config-backup" ] && cp -r "$TEMP_DIR/config-backup" "$INSTALL_DIR/config"
-[ -d "$TEMP_DIR/plugins-backup" ] && cp -r "$TEMP_DIR/plugins-backup" "$INSTALL_DIR/plugins"
-# Store version
-echo "$VERSION" > "$INSTALL_DIR/VERSION"
-# Install dependencies
-echo "Installing dependencies..."
-cd "$INSTALL_DIR"
-bun install
-# Link globally if requested
-if [[ "$LINK_MODE" =~ ^[Gg]$ ]]; then
-  echo "Linking ashep command globally..."
-  bun link
+if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
+  if [ -d "$TEMP_DIR/config-backup" ]; then
+    cp -r "$TEMP_DIR/config-backup" "$INSTALL_DIR/config"
+  fi
+  if [ -d "$TEMP_DIR/plugins-backup" ]; then
+    cp -r "$TEMP_DIR/plugins-backup" "$INSTALL_DIR/plugins"
+  fi
+  # Store version
+  echo "$VERSION" > "$INSTALL_DIR/VERSION"
+  # Install dependencies
+  echo "Installing dependencies..."
+  cd "$INSTALL_DIR"
+  bun install
+  # Link globally if requested
+  if [[ "$LINK_MODE" =~ ^[Gg]$ ]]; then
+    echo "Linking ashep command globally..."
+    bun link
+  fi
+else
+  echo "Updating global CLI binary..."
+  # Copy just the CLI to global location
+  mkdir -p "$INSTALL_DIR/src"
+  cp "$TEMP_DIR/.agent-shepherd/src/cli/index.ts" "$INSTALL_DIR/src/cli/index.ts"
+  # Link globally
+  bun link --force
 fi
 # Cleanup
 rm -rf "$TEMP_DIR"
 echo ""
-echo "✅ Agent Shepherd installed!"
+echo "✅ Agent Shepherd ${UPDATE_ACTION}!"
 echo ""
 if [[ ! "$INSTALL_MODE" =~ ^[Ll]$ ]]; then
   echo "Run 'ashep init' in your project to create local config."
