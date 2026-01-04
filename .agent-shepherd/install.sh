@@ -164,5 +164,9 @@ echo ""
 echo "✅ Agent Shepherd ${UPDATE_ACTION}!"
 echo ""
 if [[ ! "$INSTALL_MODE" =~ ^[Ll]$ ]]; then
-  echo "Run 'ashep init' in your project to create local config."
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  🎯 NEXT STEP"
+  echo ""
+  echo "  Run 'ashep init' in your project"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 fi

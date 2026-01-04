@@ -161,5 +161,9 @@ Write-Host ""
 Write-Host "✅ Agent Shepherd $updateAction!" -ForegroundColor Green
 Write-Host ""
 if ($installMode -notmatch "^[Ll]$") {
-    Write-Host "Run 'ashep init' in your project to create local config."
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    Write-Host "  🎯 NEXT STEP"
+    Write-Host ""
+    Write-Host "  Run 'ashep init' in your project"
+    Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
