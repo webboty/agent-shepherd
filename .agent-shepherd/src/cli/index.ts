@@ -231,10 +231,15 @@ function cmdInit(): void {
   const configSubDir = join(configDir, "config");
   const pluginsDir = join(configDir, "plugins");
   
+  // Check if config already exists
+  const configExists = existsSync(configSubDir);
+  
   // Create directories if they don't exist
-  if (!existsSync(configSubDir)) {
+  if (!configExists) {
     mkdirSync(configSubDir, { recursive: true });
     console.log(`✅ Created directory: ${configSubDir}`);
+  } else {
+    console.log(`ℹ️  Configuration directory already exists: ${configSubDir}`);
   }
   
   if (!existsSync(pluginsDir)) {
@@ -325,11 +330,11 @@ function cmdInit(): void {
     require_hitl: false
   
   default_policy: simple
-`;
+ `;
     writeFileSync(policiesPath, defaultPolicies);
     console.log(`✅ Created: ${policiesPath}`);
   } else {
-    console.log(`Skipped (exists): ${policiesPath}`);
+    console.log(`ℹ️  Skipped (exists): ${policiesPath}`);
   }
   
   // Create default agents.yaml
@@ -374,11 +379,11 @@ agents:
     priority: 10
     constraints:
       performance_tier: balanced
-      `;
+    `;
       writeFileSync(agentsPath, defaultAgents);
       console.log(`✅ Created: ${agentsPath}`);
     } else {
-      console.log(`Skipped (exists): ${agentsPath}`);
+      console.log(`ℹ️  Skipped (exists): ${agentsPath}`);
     }
   
   // Create default config.yaml
@@ -389,12 +394,12 @@ agents:
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
-  
+
 monitor:
   poll_interval_ms: 10000
   stall_threshold_ms: 60000
   timeout_multiplier: 1.0
-  
+
 ui:
   port: 3000
   host: localhost
@@ -402,7 +407,7 @@ ui:
     writeFileSync(configPath, defaultConfig);
     console.log(`✅ Created: ${configPath}`);
   } else {
-    console.log(`Skipped (exists): ${configPath}`);
+    console.log(`ℹ️  Skipped (exists): ${configPath}`);
   }
   
   console.log("\n✅ Initialization complete!");
