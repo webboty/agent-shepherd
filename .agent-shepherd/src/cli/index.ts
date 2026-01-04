@@ -246,6 +246,41 @@ function cmdInit(): void {
   const policiesPath = join(configSubDir, "policies.yaml");
   if (!existsSync(policiesPath)) {
     const defaultPolicies = `policies:
+  # Simple beginner workflow - works out-of-the-box with basic OpenCode agents
+  simple:
+    name: simple
+    description: Simple autonomous workflow with implement, test, and retry loop
+    phases:
+      - name: implement
+        description: Implement feature based on issue description
+        capabilities:
+          - coding
+        timeout_multiplier: 2.0
+      
+      - name: test
+        description: Test what was implemented (run and verify it works)
+        capabilities:
+          - coding
+          - testing
+        timeout_multiplier: 1.0
+      
+      - name: validate
+        description: Validate result matches to original issue requirements
+        capabilities:
+          - coding
+        timeout_multiplier: 0.5
+    
+    retry:
+      max_attempts: 2
+      backoff_strategy: exponential
+      initial_delay_ms: 5000
+      max_delay_ms: 30000
+    
+    timeout_base_ms: 300000
+    stall_threshold_ms: 60000
+    require_hitl: false
+
+  # Advanced workflow - requires agents with many specialized capabilities
   default:
     name: default
     description: Default workflow policy
@@ -283,13 +318,13 @@ function cmdInit(): void {
       max_attempts: 3
       backoff_strategy: exponential
       initial_delay_ms: 5000
-      max_delay_ms: 300000
+      max_delay_ms: 30000
     
     timeout_base_ms: 300000
     stall_threshold_ms: 60000
     require_hitl: false
-
-default_policy: default
+  
+  default_policy: simple
 `;
     writeFileSync(policiesPath, defaultPolicies);
     console.log(`Created: ${policiesPath}`);
@@ -371,7 +406,7 @@ ui:
   }
 
   console.log("\nInitialization complete!");
-  console.log("You can now run: ashep worker");
+  console.log("Next step: Run 'ashep quickstart' to complete setup");
 }
 
 /**
