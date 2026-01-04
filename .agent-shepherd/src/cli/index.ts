@@ -832,18 +832,19 @@ async function cmdQuickstart(): Promise<void> {
     const valid = await cmdValidatePolicyChain(true);
     if (valid) {
       console.log("✅ Configuration validation passed");
-      console.log("🌱 Using simple policy - works out-of-the-box with basic agents!");
+      console.log("🌱 Using simple policy - issue description is the plan!");
     } else {
       console.log("⚠️  Configuration validation found issues - this is normal for first-time setup");
       console.log("   🌱 Simple policy is set as default and works with basic agents");
-      console.log("   You can switch to the advanced default policy when ready");
+      console.log("   The issue description IS the plan - no separate planning needed");
+      console.log("   You can switch to advanced policy when ready for exploration workflows");
       console.log("   See: 'Configuration Customization (Advanced)' section below");
     }
 
     // Step 5: Show demo workflow instructions
     console.log("\n📝 Demo workflow ready!");
     console.log("   To try a demo:");
-    console.log("   1. Create an issue in Beads: bd create --title 'Demo: Create hello world'");
+    console.log("   1. Create a detailed issue: bd create --title 'Demo: Create hello world' --description '<detailed requirements here>'");
     console.log("   2. Process it: ashep work <issue-id>");
     console.log("   3. View progress: ashep ui");
 

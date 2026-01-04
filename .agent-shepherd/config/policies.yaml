@@ -2,16 +2,10 @@ policies:
   # Simple beginner workflow - works out-of-the-box with basic OpenCode agents
   simple:
     name: simple
-    description: Simple beginner workflow with planning and implementation
+    description: Simple workflow for issues with clear requirements in the issue description
     phases:
-      - name: plan
-        description: Plan the implementation
-        capabilities:
-          - planning
-        timeout_multiplier: 1.0
-      
       - name: implement
-        description: Implement the changes
+        description: Implement based on issue description (no separate planning needed)
         capabilities:
           - coding
         timeout_multiplier: 2.0

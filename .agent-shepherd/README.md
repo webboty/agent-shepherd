@@ -151,17 +151,33 @@ Agent Shepherd comes with two pre-configured policies:
 
 **🌱 Simple Policy (Default - Beginner Friendly)**
 - Works out-of-the-box with basic OpenCode agents
-- Phases: Plan → Implement
-- Best for: Getting started quickly, simple tasks
-- Uses common capabilities: `planning`, `coding`
-
-**🚀 Default Policy (Advanced)**
+- **Single phase**: Implement (issue description IS the plan)
+- Best for: Issues with clear requirements already described
+- Use when: Task details are in the issue, or you planned with OpenSpec first
+- Uses: `coding` capability
+- **No separate planning needed** - agent implements what's in the issue
+ 
+**🚀 Advanced Policy (Complex Projects)**
 - Requires agents with specialized capabilities
-- Phases: Plan → Implement → Test → Review
-- Best for: Production workflows, complex projects
-- Uses specialized capabilities: `architecture`, `testing`, `qa`, `review`, `documentation`
-
-**Note**: The simple policy is set as default for first-time users. Switch to the default policy when you're ready for advanced workflows.
+- **Phases**: Plan → Implement → Test → Review
+- Best for: High-level issues needing exploration, production workflows
+- Use when: Issue title is vague ("Fix bug", "Add feature") and needs discovery
+- Uses: `planning`, `architecture`, `testing`, `qa`, `review`, `documentation`
+- **Planning phase explores and creates detailed approach** before implementation
+ 
+**💡 Pro Tip**: For complex projects, use **OpenSpec** to plan first, then sync to Beads:
+```bash
+# Create detailed plan in OpenSpec
+openspec create "Implement user authentication"
+ 
+# Sync plan to Beads (issue becomes the plan)
+# Copy the plan from OpenSpec and add it as a Beads issue description
+bd create --title "Implement user authentication" --description "<paste OpenSpec plan here>"
+ 
+# Agent Shepherd then just implements what's in the issue
+```
+ 
+**Note**: The simple policy is set as default for first-time users. Switch to the advanced policy when you're ready for planning-heavy workflows.
 
 ---
 
