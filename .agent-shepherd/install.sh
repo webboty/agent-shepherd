@@ -80,4 +80,3 @@ echo "✅ Agent Shepherd installed!"
 echo ""
 if [[ ! "$INSTALL_MODE" =~ ^[Ll]$ ]]; then
   echo "Run 'ashep init' in your project to create local config."
-fi
