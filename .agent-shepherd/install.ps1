@@ -120,10 +120,16 @@ Copy-Item (Join-Path $tempDir ".agent-shepherd\*") $installDir -Recurse -Force
 # Restore backups (only on update)
 if ($updateOrFresh -match "^[Uu]$") {
     if (Test-Path $backupConfig) {
-        Copy-Item $backupConfig (Join-Path $installDir "config") -Recurse -Force
+        # Copy contents of backup, not the directory itself
+        Get-ChildItem $backupConfig | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path $installDir "config") -Recurse -Force
+        }
     }
     if (Test-Path $backupPlugins) {
-        Copy-Item $backupPlugins (Join-Path $installDir "plugins") -Recurse -Force
+        # Copy contents of backup, not the directory itself
+        Get-ChildItem $backupPlugins | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path $installDir "plugins") -Recurse -Force
+        }
     }
     # Store version
     $Version | Out-File -FilePath (Join-Path $installDir "VERSION") -Encoding UTF8
@@ -133,6 +139,11 @@ if ($updateOrFresh -match "^[Uu]$") {
 Write-Host "Installing dependencies..."
 Push-Location $installDir
 & bun install
+
+# Rebuild binary to ensure latest code is used
+Write-Host "Building CLI binary..."
+& bun run build
+
 Pop-Location
 
 # Link globally if requested

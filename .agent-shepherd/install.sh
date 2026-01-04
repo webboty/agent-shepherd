@@ -124,10 +124,10 @@ cp -r "$TEMP_DIR/.agent-shepherd/"* "$INSTALL_DIR/"
 if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
   # Update mode: restore backups
   if [ -d "$TEMP_DIR/config-backup" ]; then
-    cp -r "$TEMP_DIR/config-backup" "$INSTALL_DIR/config"
+    cp -r "$TEMP_DIR/config-backup/." "$INSTALL_DIR/config/"
   fi
   if [ -d "$TEMP_DIR/plugins-backup" ]; then
-    cp -r "$TEMP_DIR/plugins-backup" "$INSTALL_DIR/plugins"
+    cp -r "$TEMP_DIR/plugins-backup/." "$INSTALL_DIR/plugins/"
   fi
   # Store version
   echo "$VERSION" > "$INSTALL_DIR/VERSION"
@@ -135,6 +135,9 @@ if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
   echo "Installing dependencies..."
   cd "$INSTALL_DIR"
   bun install
+  # Rebuild binary to ensure latest code is used
+  echo "Building CLI binary..."
+  bun run build
   # Link globally if requested
   if [[ "$LINK_MODE" =~ ^[Gg]$ ]]; then
     echo "Linking ashep command globally..."
@@ -145,6 +148,9 @@ else
   echo "Installing dependencies..."
   cd "$INSTALL_DIR"
   bun install
+  # Rebuild binary to ensure latest code is used
+  echo "Building CLI binary..."
+  bun run build
   # Link globally if requested
   if [[ "$LINK_MODE" =~ ^[Gg]$ ]]; then
     echo "Linking ashep command globally..."
