@@ -98,38 +98,32 @@ This command will:
 
 ### Step 3: Add Your First Issue
 
-Agent Shepherd works with **Beads** (issue tracking). Before running the worker, add at least one issue:
+Agent Shepherd works with **Beads** (issue tracking). Before running the worker, add at least one issue.
 
-```bash
-# Beads interactive quickstart (recommended for beginners)
-bd quickstart
+**Best First Issue: Independent Hello World**
 
-# Or manually add an issue
-bd create --type bug --title "Fix login button" --priority high
-```
-
-**📘 Beads Crash Course: Adding Your First Issue**
-
-Option 1: Use Beads Quickstart (Beginner-Friendly)
-```bash
-bd quickstart
-```
-
-Option 2: Ask AI to Add an Issue
-```bash
-# Ask your AI coding agent to create an issue via Beads
-bd create --type task --title "Create animated hello world" --description "Create an HTML file with animated hello world text using CSS/JS"
-```
-
-**Example Issue to Test Agent Shepherd:**
-Create a simple task to verify everything works:
+A perfect first issue is completely self-contained - no knowledge of your codebase needed:
 ```bash
 bd create \
   --type task \
   --title "Create animated hello world" \
-  --description "Create index.html with animated 'Hello World' text. Use CSS animations and add a pulsing effect. Include JavaScript to make it interactive on click." \
+  --description "Create index.html with animated 'Hello World' text. Use CSS for smooth pulsing animation. Add JavaScript click handler to change text color randomly." \
   --labels quickstart,documentation
 ```
+
+This works perfectly because:
+- ✅ Completely self-contained (HTML/CSS/JS only)
+- ✅ Verifiable (open browser and see it work)
+- ✅ Requires no codebase knowledge
+- ✅ Matches simple policy (just implement what's described)
+
+**📘 Beads Crash Course: Adding Your First Issue**
+
+See [docs/beads-crash-course.md](docs/beads-crash-course.md) for:
+- Beads basic commands
+- How to add issues
+- Issue types and priorities
+- Using Beads effectively
 
 **📚 Learn More About Beads:**
 - Official Beads Repository: https://github.com/steveyegge/beads
