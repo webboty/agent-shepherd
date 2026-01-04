@@ -94,7 +94,7 @@ This command will:
 - ✅ Validate your setup
 - ✅ Show next steps for using Agent Shepherd
 
-**Note**: If you see validation warnings during quickstart, that's normal for first-time setup. You can customize policies and agents later.
+**Quickstart uses the simple policy** which works out-of-the-box with basic OpenCode agents. No configuration needed!
 
 ### Step 3: Add Your First Issue
 
@@ -146,6 +146,24 @@ ashep monitor
 ```
 
 ### Configuration Customization (Advanced)
+
+Agent Shepherd comes with two pre-configured policies:
+
+**🌱 Simple Policy (Default - Beginner Friendly)**
+- Works out-of-the-box with basic OpenCode agents
+- Phases: Plan → Implement
+- Best for: Getting started quickly, simple tasks
+- Uses common capabilities: `planning`, `coding`
+
+**🚀 Default Policy (Advanced)**
+- Requires agents with specialized capabilities
+- Phases: Plan → Implement → Test → Review
+- Best for: Production workflows, complex projects
+- Uses specialized capabilities: `architecture`, `testing`, `qa`, `review`, `documentation`
+
+**Note**: The simple policy is set as default for first-time users. Switch to the default policy when you're ready for advanced workflows.
+
+---
 
 After you have a working setup, customize Agent Shepherd to your needs:
 

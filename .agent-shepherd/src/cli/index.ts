@@ -832,9 +832,11 @@ async function cmdQuickstart(): Promise<void> {
     const valid = await cmdValidatePolicyChain(true);
     if (valid) {
       console.log("✅ Configuration validation passed");
+      console.log("🌱 Using simple policy - works out-of-the-box with basic agents!");
     } else {
       console.log("⚠️  Configuration validation found issues - this is normal for first-time setup");
-      console.log("   You can customize policies and agents later to match your needs");
+      console.log("   🌱 Simple policy is set as default and works with basic agents");
+      console.log("   You can switch to the advanced default policy when ready");
       console.log("   See: 'Configuration Customization (Advanced)' section below");
     }
 
