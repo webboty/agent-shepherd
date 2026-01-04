@@ -15,30 +15,25 @@ tools:
   laravel-boost: true
   context7: true
   serena: true
-permissions:
+permission:
   git: true
   bash:
-    "git push": "allow"
-    "git pull": "allow"
-    "git fetch": "allow"
-    "git merge": "allow"
-    "git rebase": "allow"
-    "git reset": "ask"
-    "git push --force": "deny"
-    "git push --force-with-lease": "deny"
-    "rm -rf *": "ask"
-    "sudo *": "deny"
-    "chmod *": "ask"
-    "curl *": "ask"
-    "wget *": "ask"
-    "docker *": "ask"
-    "kubectl *": "ask"
-  edit:
-    "**/*.env*": "deny"
-    "**/*.key": "deny"
-    "**/*.secret": "deny"
-    "node_modules/**": "deny"
-    ".git/**": "deny"
+    "git push": allow
+    "git pull": allow
+    "git fetch": allow
+    "git merge": allow
+    "git rebase": allow
+    "git reset": ask
+    "git push --force": deny
+    "git push --force-with-lease": deny
+    "rm -rf *": ask
+    "sudo *": deny
+    "chmod *": ask
+    "curl *": ask
+    "wget *": ask
+    "docker *": ask
+    "kubectl *": ask
+  edit: allow
 ---
 # GitHub Master Agent
 
