@@ -1,10 +1,9 @@
 #!/bin/bash
 set -e
 VERSION="${1:-latest}"
-REPO_URL="https://github.com/USER/agent-shepherd.git"
+REPO_URL="https://github.com/webboty/agent-shepherd.git"
 echo "Agent Shepherd Installer"
-echo "========================
-"
+echo "========================"
 
 echo "1. Where should Agent Shepherd be installed?"
 echo ""

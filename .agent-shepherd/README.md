@@ -52,19 +52,19 @@ Agent Shepherd supports two installation modes:
 #### macOS/Linux
 ```bash
 # Download and run installer
-curl -fsSL https://raw.githubusercontent.com/USER/agent-shepherd/main/.agent-shepherd/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/USER/agent-shepherd/master/.agent-shepherd/install.sh | bash
 
 # Or install specific version
-curl -fsSL https://raw.githubusercontent.com/USER/agent-shepherd/main/.agent-shepherd/install.sh | bash -s v1.0.0
+curl -fsSL https://raw.githubusercontent.com/USER/agent-shepherd/master/.agent-shepherd/install.sh | bash -s v1.0.0
 ```
 
 #### Windows (PowerShell)
 ```powershell
 # Download and run installer
-irm https://raw.githubusercontent.com/USER/agent-shepherd/main/.agent-shepherd/install.ps1 | iex
+irm https://raw.githubusercontent.com/USER/agent-shepherd/master/.agent-shepherd/install.ps1 | iex
 
 # Or install specific version
-irm https://raw.githubusercontent.com/USER/agent-shepherd/main/.agent-shepherd/install.ps1 | iex; Install-AgentShepherd v1.0.0
+irm https://raw.githubusercontent.com/USER/agent-shepherd/master/.agent-shepherd/install.ps1 | iex; Install-AgentShepherd v1.0.0
 ```
 
 The installer will prompt you to choose:
