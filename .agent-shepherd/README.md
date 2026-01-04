@@ -94,7 +94,9 @@ This command will:
 - ✅ Validate your setup
 - ✅ Show next steps for using Agent Shepherd
 
-**Quickstart uses the simple policy** which works out-of-the-box with basic OpenCode agents. No configuration needed!
+**Important**: Quickstart is REQUIRED after initialization - it completes the setup process. Don't skip to `ashep worker` directly, or your system won't be ready!
+
+**Quickstart uses simple policy** which works out-of-the-box with basic OpenCode agents. No configuration needed!
 
 ### Step 3: Add Your First Issue
 
