@@ -2,15 +2,6 @@
 set -e
 VERSION="${1:-latest}"
 REPO_URL="https://github.com/webboty/agent-shepherd.git"
-
-# Check if --auto flag was passed for automated testing
-AUTO_MODE=false
-for arg in "$@"; do
-  if [[ "$arg" = "--auto" ]]; then
-    AUTO_MODE=true
-  fi
-done
-
 echo "Agent Shepherd Installer"
 echo "========================"
 
@@ -23,7 +14,7 @@ echo ""
 echo "   [L] Local (self-contained)"
 echo "       Everything: ./.agent-shepherd/"
 echo ""
-read -p "> " INSTALL_MODE"
+read -p "> " INSTALL_MODE
 if [[ "$INSTALL_MODE" =~ ^[Ll]$ ]]; then
   INSTALL_DIR="$(pwd)/.agent-shepherd"
   echo "Installing locally to: $INSTALL_DIR"
@@ -40,8 +31,7 @@ echo ""
 echo "   [N] No global link"
 echo "       Run via: bunx ashep"
 echo ""
-read -p "> " LINK_MODE"
-
+read -p "> " LINK_MODE
 # Clone to temp
 TEMP_DIR=$(mktemp -d)
 echo ""
@@ -54,7 +44,6 @@ fi
 
 # Check if Agent Shepherd is already installed
 if [ -d "$INSTALL_DIR" ]; then
-  echo ""
   echo "⚠️  Agent Shepherd is already installed in: $INSTALL_DIR"
   echo ""
   echo "What would you like to do?"
@@ -67,7 +56,7 @@ if [ -d "$INSTALL_DIR" ]; then
   echo "       Removes all existing files and reinstalls clean"
   echo "       Creates fresh Agent Shepherd with latest CLI"
   echo ""
-  read -p -t 5 "> " UPDATE_OR_FRESH"
+  read -p -t 5 "> " UPDATE_OR_FRESH" || true
   
   # Set action message based on user choice
   if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
@@ -79,6 +68,19 @@ else
   echo "Fresh installation..."
   echo ""
   UPDATE_ACTION="Freshly installed"
+fi
+  
+  if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
+    echo ""
+    echo "Updating to latest version..."
+    VERSION="latest"
+  else
+    echo "Proceeding with fresh installation..."
+    echo ""
+  fi
+else
+  echo "Fresh installation..."
+    echo ""
 fi
 
 # Backup existing config/plugins if upgrading (only on update, not fresh install)
@@ -107,7 +109,6 @@ fi
 # Copy new installation
 mkdir -p "$INSTALL_DIR"
 cp -r "$TEMP_DIR/.agent-shepherd/"* "$INSTALL_DIR/"
-
 # Restore backups
 if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
   if [ -d "$TEMP_DIR/config-backup" ]; then
@@ -129,13 +130,12 @@ if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then
   fi
 else
   echo "Updating global CLI binary..."
-  # Copy just CLI to global location
+  # Copy just the CLI to global location
   mkdir -p "$INSTALL_DIR/src"
   cp "$TEMP_DIR/.agent-shepherd/src/cli/index.ts" "$INSTALL_DIR/src/cli/index.ts"
   # Link globally
   bun link --force
 fi
-
 # Cleanup
 rm -rf "$TEMP_DIR"
 echo ""
@@ -143,15 +143,4 @@ echo "✅ Agent Shepherd ${UPDATE_ACTION}!"
 echo ""
 if [[ ! "$INSTALL_MODE" =~ ^[Ll]$ ]]; then
   echo "Run 'ashep init' in your project to create local config."
-fi# Use -t 5s timeout only when --auto flag was explicitly passed
-if [ "$AUTO_MODE" = true ]; then
-  TIMEOUT="-t 5"
-else
-  TIMEOUT=""
-fi
-# Use -t 5s timeout only when --auto flag was explicitly passed
-if [ "$AUTO_MODE" = true ]; then
-  TIMEOUT="-t 5"
-else
-  TIMEOUT=""
 fi
