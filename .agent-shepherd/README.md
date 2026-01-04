@@ -53,7 +53,10 @@ Agent Shepherd supports two installation modes:
 
 **Option 1: Download then run (Recommended)**
 ```bash
-# Download installer
+# Download installer (latest version)
+curl -fsSL https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.sh -o install.sh
+
+# Or download specific version
 curl -fsSL https://raw.githubusercontent.com/webboty/agent-shepherd/master/.agent-shepherd/install.sh -o install.sh
 
 # Make executable (fixes permission denied)
@@ -64,6 +67,9 @@ chmod +x install.sh
 
 # Or if chmod fails, run directly:
 bash install.sh
+
+# To install specific version, pass it as argument:
+./install.sh v1.0.0
 ```
 
 **Option 2: One-line install**
