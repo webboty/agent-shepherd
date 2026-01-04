@@ -432,6 +432,51 @@ See `README.md` for manual installation steps including:
 - Development setup
 - Building from source
 
+### Testing the Installer
+
+When modifying the installer scripts, always test them before deploying:
+
+**Automated Testing:**
+Both installers support a `--auto` flag for automated testing:
+```bash
+# Bash installer with auto mode
+bash install.sh --auto
+
+# PowerShell installer with auto mode
+pwsh install.ps1 --auto
+```
+The `--auto` flag enables:
+- Automatic default selections for install prompts
+- 5-second timeout for interactive prompts (auto-accepts defaults)
+- Useful for CI/CD pipelines and automated testing
+
+**Test in Temporary Directory:**
+Always test the installer in a temporary directory before committing changes:
+```bash
+# Create temp directory
+mkdir -p /tmp/ashep-test
+cd /tmp/ashep-test
+
+# Copy and test installer
+cp /path/to/agent-shepherd/.agent-shepherd/install.sh .
+echo -e "L\nN" | bash install.sh --auto
+
+# Clean up after testing
+rm -rf /tmp/ashep-test
+```
+
+**Testing Checklist:**
+- [ ] Syntax validation (bash -n for shell, no syntax errors for PowerShell)
+- [ ] Fresh install (choice 'L' or 'F') works correctly
+- [ ] Update install (choice 'H' or 'U') works correctly
+- [ ] Local mode config created in `.agent-shepherd/`
+- [ ] Hybrid mode config created in project directory
+- [ ] Dependencies installed successfully
+- [ ] Binary rebuilt (bun run build executed)
+- [ ] No backup directories left in production (plugins-backup, config-backup)
+- [ ] Prompt messages are clear and prominent
+- [ ] Next step message stands out visually
+
 ## Important Notes
 
 1. **Well-Commented Code**: Code should be well-commented (planned for future refactor). Currently minimal comments exist, but aim to add clear documentation for complex logic, decisions, and APIs
