@@ -16,6 +16,32 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 - **Configuration Management**: YAML-based configuration with JSON schema validation
 - **Dual Storage**: Efficient logging with JSONL for source-of-truth and SQLite for fast queries
 
+## What to Expect
+
+This guide walks you through setting up Agent Shepherd in under 5 minutes:
+
+**You will:**
+- 📥 **Install** Agent Shepherd globally (Hybrid mode) or locally
+- ⚙️ **Initialize** project configuration (creates `.agent-shepherd/` directory)
+- 🚀 **Run quickstart** to sync agents, validate setup, and get ready
+- 📝 **Add your first issue** to Beads (we'll provide a perfect example)
+- ▶️ **Start worker** to process issues autonomously
+
+**You'll create:**
+- `.agent-shepherd/config/` directory with policy, agents, and config files
+- Your first Beads issue (self-contained "Hello World" task)
+- A complete working system ready for autonomous AI agent workflows
+
+**After completing this guide, you'll have:**
+- ✅ Agent Shepherd installed and ready
+- ✅ Simple multi-phase workflow (Implement → Test → Validate with auto-retry)
+- ✅ A test issue you can immediately process
+- ✅ Autonomous orchestration demonstrating Agent Shepherd's power
+
+**Time commitment**: ~5 minutes
+
+---
+
 ## Installation
 
 Agent Shepherd supports two installation modes:
