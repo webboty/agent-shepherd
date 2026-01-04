@@ -410,8 +410,13 @@ ui:
     console.log(`ℹ️  Skipped (exists): ${configPath}`);
   }
   
-  console.log("\n✅ Initialization complete!");
-  console.log("Next step: Run 'ashep quickstart' to complete setup");
+  console.log("\n✅ Initialization complete!\n");
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("  🎯 NEXT STEP");
+  console.log("");
+  console.log("  Run: ashep quickstart");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 }
 
 /**
