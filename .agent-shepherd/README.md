@@ -94,7 +94,94 @@ This command will:
 - ✅ Validate your setup
 - ✅ Show next steps for using Agent Shepherd
 
-### Step 3: Ready to Go!
+**Note**: If you see validation warnings during quickstart, that's normal for first-time setup. You can customize policies and agents later.
+
+### Step 3: Add Your First Issue
+
+Agent Shepherd works with **Beads** (issue tracking). Before running the worker, add at least one issue:
+
+```bash
+# Beads interactive quickstart (recommended for beginners)
+bd quickstart
+
+# Or manually add an issue
+bd create --type bug --title "Fix login button" --priority high
+```
+
+**📘 Beads Crash Course: Adding Your First Issue**
+
+Option 1: Use Beads Quickstart (Beginner-Friendly)
+```bash
+bd quickstart
+```
+
+Option 2: Ask AI to Add an Issue
+```bash
+# Ask your AI coding agent to create an issue via Beads
+bd create --type task --title "Create animated hello world" --description "Create an HTML file with animated hello world text using CSS/JS"
+```
+
+**Example Issue to Test Agent Shepherd:**
+Create a simple task to verify everything works:
+```bash
+bd create \
+  --type task \
+  --title "Create animated hello world" \
+  --description "Create index.html with animated 'Hello World' text. Use CSS animations and add a pulsing effect. Include JavaScript to make it interactive on click." \
+  --labels quickstart,documentation
+```
+
+**📚 Learn More About Beads:**
+- Official Beads Repository: https://github.com/steveyegge/beads
+- Beads Documentation: Check the repository docs for advanced usage
+
+### Step 4: Start Processing
+
+```bash
+# Start autonomous issue processing
+ashep worker
+
+# In another terminal, start monitoring
+ashep monitor
+```
+
+### Configuration Customization (Advanced)
+
+After you have a working setup, customize Agent Shepherd to your needs:
+
+**What to Configure:**
+- **Policies** (`.agent-shepherd/config/policies.yaml`): Define workflow phases, capabilities, and retry strategies
+- **Agents** (`.agent-shepherd/config/agents.yaml`): Usually auto-synced from OpenCode, but can be manually adjusted
+- **Config** (`.agent-shepherd/config/config.yaml`): Worker, monitor, and UI settings
+
+**How to Customize:**
+
+1. **Review Your Agents' Capabilities:**
+```bash
+ashep sync-agents
+cat .agent-shepherd/config/agents.yaml
+```
+
+2. **Match Policies to Available Capabilities:**
+Edit `.agent-shepherd/config/policies.yaml` to use capabilities that your agents provide.
+
+3. **Validate Your Changes:**
+```bash
+ashep validate-policy-chain
+```
+
+**Why Customize?**
+- **Team Needs**: Adjust workflows to match your development process
+- **Cost Optimization**: Use faster models for simple tasks
+- **Quality Control**: Add review and testing phases for critical changes
+- **Resource Management**: Control concurrent runs and polling intervals
+
+**📘 Configuration Guides:**
+- [Policy Configuration](docs/policies-config.md) - Workflow definitions and agent selection
+- [Agent Configuration](docs/agents-config.md) - Agent registry and capabilities
+- [Main Configuration](docs/config-config.md) - System settings and tuning
+
+### Ready to Go!
 
 Run `ashep --help` to see all available commands.
 

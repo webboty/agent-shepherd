@@ -476,25 +476,25 @@ async function cmdUI(port?: number, host?: string): Promise<void> {
 /**
  * Validate policy chain command - validate policy-capability-agent relationships
  */
-async function cmdValidatePolicyChain(): Promise<void> {
+async function cmdValidatePolicyChain(soft: boolean = false): Promise<boolean> {
   console.log("🔍 Validating policy-capability-agent chain...");
-
+  
   try {
     // First validate basic configuration
     const { validateStartup } = await import("../core/config-validator.ts");
     await validateStartup();
-
+    
     // Then validate policy chain
     const { policyCapabilityValidator } = await import("../core/policy-capability-validator.ts");
     const result = await policyCapabilityValidator.validateChain();
-
+    
     console.log(`\n${result.summary}\n`);
-
+    
     if (!result.valid) {
       // Group errors by type
       const errors = result.errors.filter(e => e.severity === 'error');
       const warnings = result.errors.filter(e => e.severity === 'warning');
-
+      
       if (errors.length > 0) {
         console.log("❌ Errors:");
         for (const error of errors) {
@@ -508,7 +508,7 @@ async function cmdValidatePolicyChain(): Promise<void> {
         }
         console.log();
       }
-
+      
       if (warnings.length > 0) {
         console.log("⚠️ Warnings:");
         for (const warning of warnings) {
@@ -522,7 +522,7 @@ async function cmdValidatePolicyChain(): Promise<void> {
         }
         console.log();
       }
-
+      
       // Show dead ends
       const deadEnds = policyCapabilityValidator.findDeadEnds();
       if (deadEnds.length > 0) {
@@ -533,14 +533,22 @@ async function cmdValidatePolicyChain(): Promise<void> {
         }
         console.log();
       }
-
-      process.exit(1);
+      
+      // Only exit if not in soft mode
+      if (!soft) {
+        process.exit(1);
+      }
+      return false;
     } else {
       console.log("✅ All policy-capability-agent chains are valid");
+      return true;
     }
   } catch (error) {
     console.error("❌ Validation failed:", error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    if (!soft) {
+      process.exit(1);
+    }
+    return false;
   }
 }
 
@@ -819,14 +827,21 @@ async function cmdQuickstart(): Promise<void> {
       console.log("   You can sync agents later with: ashep sync-agents");
     }
 
-    // Step 4: Validate configuration
+    // Step 4: Validate configuration (soft mode for first-time setup)
     console.log("\n🔍 Validating configuration...");
-    await cmdValidatePolicyChain();
+    const valid = await cmdValidatePolicyChain(true);
+    if (valid) {
+      console.log("✅ Configuration validation passed");
+    } else {
+      console.log("⚠️  Configuration validation found issues - this is normal for first-time setup");
+      console.log("   You can customize policies and agents later to match your needs");
+      console.log("   See: 'Configuration Customization (Advanced)' section below");
+    }
 
     // Step 5: Show demo workflow instructions
     console.log("\n📝 Demo workflow ready!");
     console.log("   To try a demo:");
-    console.log("   1. Create an issue in Beads: bd create 'Demo: Implement greeting function'");
+    console.log("   1. Create an issue in Beads: bd create --title 'Demo: Create hello world'");
     console.log("   2. Process it: ashep work <issue-id>");
     console.log("   3. View progress: ashep ui");
 
