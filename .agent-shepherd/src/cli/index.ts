@@ -971,10 +971,13 @@ async function cmdQuickstart(): Promise<void> {
     console.log("📝 Demo Workflow");
     console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("   To try a demo:");
-    console.log("   1. Create an issue with detailed requirements");
-    console.log("      bd create --title 'Implement user authentication' \\");
-    console.log("         --description 'Add login form with email/password, validation, and session management'");
-    console.log("   2. Process the issue: ashep work <issue-id>");
+    console.log("   1. Create an issue with the animated hello world example:");
+    console.log("      bd create \\");
+    console.log("         --type task \\");
+    console.log("         --title 'Create animated hello world' \\");
+    console.log("         --description 'Create index.html with animated \\\"Hello World\\\" text. Use CSS for smooth pulsing animation. Add JavaScript click handler to change text color randomly.' \\");
+    console.log("         --labels quickstart,documentation");
+    console.log("   2. Process issue: ashep work <issue-id>");
     console.log("   3. View progress: ashep ui");
 
     console.log(); // Add spacing before next steps section
