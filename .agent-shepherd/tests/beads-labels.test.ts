@@ -8,7 +8,7 @@ import {
   getIssue,
   getReadyIssues,
   type BeadsIssue,
-} from "../.agent-shepherd/src/core/beads";
+} from "../src/core/beads";
 
 describe("Beads Label Functions", () => {
   const mockIssueId = "agent-shepherd-uj0";

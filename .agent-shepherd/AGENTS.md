@@ -450,6 +450,7 @@ The `--auto` flag enables:
 - 5-second timeout for interactive prompts (auto-accepts defaults)
 - Useful for CI/CD pipelines and automated testing
 
+# Super Important
 **Test in Temporary Directory:**
 Always test the installer in a temporary directory before committing changes:
 ```bash
