@@ -266,6 +266,30 @@ function cmdInit(): void {
   } catch {
     // Silently skip if install dir can't be found
   }
+
+  // Copy default plugins from installation to project if not exists
+  try {
+    const installDir = findInstallDir();
+    const pluginsSource = join(installDir, "plugins");
+
+    if (existsSync(pluginsSource)) {
+      const pluginDirs = readdirSync(pluginsSource, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name);
+
+      for (const pluginName of pluginDirs) {
+        const sourcePath = join(pluginsSource, pluginName);
+        const destPath = join(pluginsDir, pluginName);
+
+        if (!existsSync(destPath)) {
+          cpSync(sourcePath, destPath, { recursive: true });
+          console.log(`✅ Copied plugin: ${pluginName}`);
+        }
+      }
+    }
+  } catch {
+    // Silently skip if install dir can't be found
+  }
   
   // Create default policies.yaml
   const policiesPath = join(configSubDir, "policies.yaml");
@@ -977,6 +1001,7 @@ function getCurrentVersion(): string {
       return packageJson.version || "unknown";
     }
   } catch {
+    // Silently skip version detection if files can't be read
   }
 
   return "unknown";
