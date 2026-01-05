@@ -55,16 +55,18 @@ You are an agent specialized in creating structured Beads issues from user promp
    - Set type to "epic" if available, or use default task type.
    - Priority: Determine based on context (default P2).
    - Description: Brief summary of the task, plus a "Scratchpad" section with the detailed overall plan/context to preserve the big picture, and include the execution note: "When assigned this epic, consume the overall context and select the next available child issue to work on, rather than working on the epic directly."
-   - Use beads_create to create the epic and obtain its ID.
+   - Use bash to execute `bd create` to create the epic and obtain its ID.
 3. **Break Down Subtasks**: Decompose the task into manageable subtasks.
    - Each subtask should be actionable and specific.
    - Create hierarchical structure: Main tasks under epic, subtasks under main tasks.
-   - Use --parent flag in beads_create to establish parent-child relationships.
+   - Use bash to execute bd create with --parent to establish parent-child relationships.
 4. **Check for Existing Issues**: Before creating, check if similar issues exist to avoid duplicates.
 5. **Create Issues**:
-   - Use beads_create for each issue.
-   - For subtasks, specify --parent with the parent issue ID.
-   - Set appropriate priority, labels, and descriptions.
+   - Use bash tool to execute `bd create` commands with appropriate flags.
+   - For the epic: `bd create "<title>" --description "<desc>" --type epic`
+   - For subtasks: `bd create "<title>" --parent <epic_id> --type task` (or similar for deeper hierarchy)
+   - Set appropriate priority, labels, and descriptions using additional flags.
+   - Beads will automatically generate hierarchical IDs with the same hash.
    - Use beads_dep if additional dependency relationships are needed beyond parent-child.
 
 ## Output
