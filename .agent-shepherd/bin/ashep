@@ -14334,9 +14334,9 @@ class ConfigurationValidator {
     }
   }
   async validateAllConfigs(configDir) {
-    const { getConfigDir: getConfigDir2, findAgentShepherdDir: findAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+    const { getConfigDir: getConfigDir2, findInstallDir: findInstallDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
     const baseDir = configDir || getConfigDir2();
-    const agentShepherdDir = findAgentShepherdDir2();
+    const installDir = findInstallDir2();
     const results = [];
     const validationTasks = [
       {
@@ -14357,7 +14357,11 @@ class ConfigurationValidator {
     ];
     for (const task of validationTasks) {
       const configPath = join3(baseDir, task.config);
-      const schemaPath = join3(agentShepherdDir, task.schema);
+      const localAgentShepherdDir = (await Promise.resolve().then(() => (init_path_utils(), exports_path_utils))).findAgentShepherdDir();
+      let schemaPath = join3(localAgentShepherdDir, task.schema);
+      if (!existsSync3(schemaPath)) {
+        schemaPath = join3(installDir, task.schema);
+      }
       if (!existsSync3(configPath)) {
         results.push({
           valid: false,
@@ -39224,17 +39228,66 @@ function cmdInit() {
   const configDir = join6(process.cwd(), ".agent-shepherd");
   const configSubDir = join6(configDir, "config");
   const pluginsDir = join6(configDir, "plugins");
-  if (!existsSync6(configSubDir)) {
+  const configExists = existsSync6(configSubDir);
+  if (!configExists) {
     mkdirSync2(configSubDir, { recursive: true });
-    console.log(`Created directory: ${configSubDir}`);
+    console.log(`\u2705 Created directory: ${configSubDir}`);
+  } else {
+    console.log(`\u2139\uFE0F  Configuration directory already exists: ${configSubDir}`);
   }
   if (!existsSync6(pluginsDir)) {
     mkdirSync2(pluginsDir, { recursive: true });
-    console.log(`Created directory: ${pluginsDir}`);
+    console.log(`\u2705 Created directory: ${pluginsDir}`);
   }
+  try {
+    const installDir = findInstallDir();
+    const schemasSource = join6(installDir, "schemas");
+    const schemasDest = join6(configDir, "schemas");
+    if (existsSync6(schemasSource) && !existsSync6(schemasDest)) {
+      cpSync(schemasSource, schemasDest, { recursive: true });
+      console.log(`\u2705 Created directory: ${schemasDest}`);
+    } else if (!existsSync6(schemasSource)) {
+      console.log(`\u26A0\uFE0F  Warning: Schemas directory not found in installation`);
+    }
+  } catch {}
   const policiesPath = join6(configSubDir, "policies.yaml");
   if (!existsSync6(policiesPath)) {
     const defaultPolicies = `policies:
+  # Simple beginner workflow - works out-of-the-box with basic OpenCode agents
+  simple:
+    name: simple
+    description: Simple autonomous workflow with implement, test, and retry loop
+    phases:
+      - name: implement
+        description: Implement feature based on issue description
+        capabilities:
+          - coding
+        timeout_multiplier: 2.0
+      
+      - name: test
+        description: Test what was implemented (run and verify it works)
+        capabilities:
+          - coding
+          - testing
+        timeout_multiplier: 1.0
+      
+      - name: validate
+        description: Validate result matches to original issue requirements
+        capabilities:
+          - coding
+        timeout_multiplier: 0.5
+    
+    retry:
+      max_attempts: 2
+      backoff_strategy: exponential
+      initial_delay_ms: 5000
+      max_delay_ms: 30000
+    
+    timeout_base_ms: 300000
+    stall_threshold_ms: 60000
+    require_hitl: false
+
+  # Advanced workflow - requires agents with many specialized capabilities
   default:
     name: default
     description: Default workflow policy
@@ -39272,18 +39325,18 @@ function cmdInit() {
       max_attempts: 3
       backoff_strategy: exponential
       initial_delay_ms: 5000
-      max_delay_ms: 300000
+      max_delay_ms: 30000
     
     timeout_base_ms: 300000
     stall_threshold_ms: 60000
     require_hitl: false
 
-default_policy: default
+default_policy: simple
 `;
     writeFileSync2(policiesPath, defaultPolicies);
-    console.log(`Created: ${policiesPath}`);
+    console.log(`\u2705 Created: ${policiesPath}`);
   } else {
-    console.log(`Skipped (exists): ${policiesPath}`);
+    console.log(`\u2139\uFE0F  Skipped (exists): ${policiesPath}`);
   }
   const agentsPath = join6(configSubDir, "agents.yaml");
   if (!existsSync6(agentsPath)) {
@@ -39326,16 +39379,16 @@ agents:
     priority: 10
     constraints:
       performance_tier: balanced
-`;
+    `;
     writeFileSync2(agentsPath, defaultAgents);
-    console.log(`Created: ${agentsPath}`);
+    console.log(`\u2705 Created: ${agentsPath}`);
   } else {
-    console.log(`Skipped (exists): ${agentsPath}`);
+    console.log(`\u2139\uFE0F  Skipped (exists): ${agentsPath}`);
   }
   const configPath = join6(configSubDir, "config.yaml");
   if (!existsSync6(configPath)) {
     const defaultConfig = `version: "1.0"
-
+  
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
@@ -39348,15 +39401,21 @@ monitor:
 ui:
   port: 3000
   host: localhost
-`;
+ `;
     writeFileSync2(configPath, defaultConfig);
-    console.log(`Created: ${configPath}`);
+    console.log(`\u2705 Created: ${configPath}`);
   } else {
-    console.log(`Skipped (exists): ${configPath}`);
+    console.log(`\u2139\uFE0F  Skipped (exists): ${configPath}`);
   }
   console.log(`
-Initialization complete!`);
-  console.log("You can now run: ashep worker");
+\u2705 Initialization complete!
+`);
+  console.log("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
+  console.log("  \uD83C\uDFAF NEXT STEP");
+  console.log("");
+  console.log("  Run: ashep quickstart");
+  console.log(`\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+`);
 }
 async function cmdInstall() {
   console.log(`Checking dependencies...
@@ -39428,7 +39487,7 @@ Stopping UI server...`);
     process.exit(1);
   }
 }
-async function cmdValidatePolicyChain() {
+async function cmdValidatePolicyChain(soft = false) {
   console.log("\uD83D\uDD0D Validating policy-capability-agent chain...");
   try {
     const { validateStartup: validateStartup2 } = await Promise.resolve().then(() => (init_config_validator(), exports_config_validator));
@@ -39476,13 +39535,20 @@ ${result.summary}
         }
         console.log();
       }
-      process.exit(1);
+      if (!soft) {
+        process.exit(1);
+      }
+      return false;
     } else {
       console.log("\u2705 All policy-capability-agent chains are valid");
+      return true;
     }
   } catch (error) {
     console.error("\u274C Validation failed:", error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    if (!soft) {
+      process.exit(1);
+    }
+    return false;
   }
 }
 async function cmdShowPolicyTree(format) {
@@ -39694,11 +39760,23 @@ async function cmdQuickstart() {
     }
     console.log(`
 \uD83D\uDD0D Validating configuration...`);
-    await cmdValidatePolicyChain();
+    const valid = await cmdValidatePolicyChain(true);
+    if (valid) {
+      console.log("\u2705 Configuration validation passed");
+      console.log("\uD83C\uDF31 Using simple policy with autonomous multi-phase workflow!");
+      console.log("   Phases: Implement \u2192 Test \u2192 Validate (with automatic retry)");
+      console.log("   Same agent handles all phases - demonstrates autonomous orchestration");
+    } else {
+      console.log("\u26A0\uFE0F  Configuration validation found issues - this is normal for first-time setup");
+      console.log("   \uD83C\uDF31 Simple policy is set as default and works with basic agents");
+      console.log("   Multi-phase workflow: Implement \u2192 Test \u2192 Validate (automatic retry on failure)");
+      console.log("   You can switch to advanced default policy when ready for exploration workflows");
+      console.log("   See: 'Configuration Customization (Advanced)' section below");
+    }
     console.log(`
 \uD83D\uDCDD Demo workflow ready!`);
     console.log("   To try a demo:");
-    console.log("   1. Create an issue in Beads: bd create 'Demo: Implement greeting function'");
+    console.log("   1. Create a detailed issue: bd create --title 'Demo: Create hello world' --description '<detailed requirements here>'");
     console.log("   2. Process it: ashep work <issue-id>");
     console.log("   3. View progress: ashep ui");
     console.log(`
