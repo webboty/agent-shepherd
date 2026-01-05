@@ -7,9 +7,6 @@ agents:
       - coding
       - refactoring
       - building
-      - testing
-      - review
-      - qa
     priority: 15
     active: true
     constraints:
@@ -96,6 +93,17 @@ agents:
   - id: openspec-planner
     name: Openspec-planner Agent
     description: Agent for openspec-planner tasks
+    capabilities:
+      - general
+    priority: 10
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: primary
+  - id: github-master
+    name: Github-master Agent
+    description: Agent for github-master tasks
     capabilities:
       - general
     priority: 10

@@ -65,9 +65,9 @@ export class ConfigurationValidator {
    * Validate all configuration files
    */
   async validateAllConfigs(configDir?: string): Promise<ValidationResult[]> {
-    const { getConfigDir, findAgentShepherdDir } = await import('./path-utils');
+    const { getConfigDir, findInstallDir } = await import('./path-utils');
     const baseDir = configDir || getConfigDir();
-    const agentShepherdDir = findAgentShepherdDir();
+    const installDir = findInstallDir();
     const results: ValidationResult[] = [];
 
     // Define validation tasks
@@ -91,7 +91,12 @@ export class ConfigurationValidator {
 
     for (const task of validationTasks) {
       const configPath = join(baseDir, task.config);
-      const schemaPath = join(agentShepherdDir, task.schema);
+      // Try to find schema in multiple locations (local first, then installation dir)
+      const localAgentShepherdDir = (await import('./path-utils')).findAgentShepherdDir();
+      let schemaPath = join(localAgentShepherdDir, task.schema);
+      if (!existsSync(schemaPath)) {
+        schemaPath = join(installDir, task.schema);
+      }
 
       if (!existsSync(configPath)) {
         results.push({

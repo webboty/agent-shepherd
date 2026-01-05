@@ -118,7 +118,7 @@ fi
 
 # Copy new installation
 mkdir -p "$INSTALL_DIR"
-cp -r "$TEMP_DIR/.agent-shepherd/"* "$INSTALL_DIR/"
+rsync -av --exclude='node_modules' "$TEMP_DIR/.agent-shepherd/" "$INSTALL_DIR/" || cp -a "$TEMP_DIR/.agent-shepherd"/. "$INSTALL_DIR/"
 
 # Restore backups and install
 if [[ "$UPDATE_OR_FRESH" =~ ^[Uu]$ ]]; then

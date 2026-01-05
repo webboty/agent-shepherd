@@ -230,10 +230,10 @@ function cmdInit(): void {
   const configDir = join(process.cwd(), ".agent-shepherd");
   const configSubDir = join(configDir, "config");
   const pluginsDir = join(configDir, "plugins");
-  
+
   // Check if config already exists
   const configExists = existsSync(configSubDir);
-  
+
   // Create directories if they don't exist
   if (!configExists) {
     mkdirSync(configSubDir, { recursive: true });
@@ -241,10 +241,26 @@ function cmdInit(): void {
   } else {
     console.log(`ℹ️  Configuration directory already exists: ${configSubDir}`);
   }
-  
+
   if (!existsSync(pluginsDir)) {
     mkdirSync(pluginsDir, { recursive: true });
     console.log(`✅ Created directory: ${pluginsDir}`);
+  }
+
+  // Copy schemas from installation to project if not exists
+  try {
+    const installDir = findInstallDir();
+    const schemasSource = join(installDir, "schemas");
+    const schemasDest = join(configDir, "schemas");
+
+    if (existsSync(schemasSource) && !existsSync(schemasDest)) {
+      cpSync(schemasSource, schemasDest, { recursive: true });
+      console.log(`✅ Created directory: ${schemasDest}`);
+    } else if (!existsSync(schemasSource)) {
+      console.log(`⚠️  Warning: Schemas directory not found in installation`);
+    }
+  } catch {
+    // Silently skip if install dir can't be found
   }
   
   // Create default policies.yaml
@@ -328,9 +344,9 @@ function cmdInit(): void {
     timeout_base_ms: 300000
     stall_threshold_ms: 60000
     require_hitl: false
-  
-  default_policy: simple
- `;
+
+default_policy: simple
+`;
     writeFileSync(policiesPath, defaultPolicies);
     console.log(`✅ Created: ${policiesPath}`);
   } else {
