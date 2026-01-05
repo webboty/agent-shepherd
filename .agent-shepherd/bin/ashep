@@ -7248,17 +7248,67 @@ var init_policy = __esm(() => {
   import_yaml = __toESM(require_dist(), 1);
 });
 
+// src/core/config.ts
+var exports_config = {};
+__export(exports_config, {
+  loadConfig: () => loadConfig
+});
+import { readFileSync as readFileSync2, existsSync as existsSync2 } from "fs";
+import { join as join2 } from "path";
+function loadConfig(configDir) {
+  const configPath = configDir ? join2(configDir, ".agent-shepherd", "config.yaml") : getConfigPath("config.yaml");
+  if (!existsSync2(configPath)) {
+    throw new Error(`Configuration file not found: ${configPath}`);
+  }
+  try {
+    const content = readFileSync2(configPath, "utf-8");
+    const config = import_yaml2.parse(content);
+    return {
+      version: config.version || "1.0",
+      worker: {
+        poll_interval_ms: 30000,
+        max_concurrent_runs: 3,
+        ...config.worker
+      },
+      monitor: {
+        poll_interval_ms: 1e4,
+        stall_threshold_ms: 60000,
+        timeout_multiplier: 1,
+        ...config.monitor
+      },
+      ui: {
+        port: 3000,
+        host: "localhost",
+        ...config.ui
+      },
+      fallback: config.fallback ? {
+        enabled: config.fallback.enabled ?? false,
+        default_agent: config.fallback.default_agent,
+        mappings: config.fallback.mappings
+      } : undefined
+    };
+  } catch (error) {
+    throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+var import_yaml2;
+var init_config = __esm(() => {
+  init_path_utils();
+  import_yaml2 = __toESM(require_dist(), 1);
+});
+
 // src/core/agent-registry.ts
 var exports_agent_registry = {};
 __export(exports_agent_registry, {
   getAgentRegistry: () => getAgentRegistry,
   AgentRegistry: () => AgentRegistry
 });
-import { readFileSync as readFileSync2, writeFileSync } from "fs";
+import { readFileSync as readFileSync3, writeFileSync } from "fs";
 
 class AgentRegistry {
   agents;
   configPath;
+  config = loadConfig();
   constructor(configPath) {
     this.agents = new Map;
     this.configPath = configPath || getConfigPath("agents.yaml");
@@ -7268,8 +7318,8 @@ class AgentRegistry {
   }
   loadAgents(filePath) {
     try {
-      const content = readFileSync2(filePath, "utf-8");
-      const config = import_yaml2.parse(content);
+      const content = readFileSync3(filePath, "utf-8");
+      const config = import_yaml3.parse(content);
       if (!config.agents) {
         throw new Error("Invalid agents file: missing 'agents' key");
       }
@@ -7287,7 +7337,7 @@ class AgentRegistry {
       version: "1.0",
       agents: Array.from(this.agents.values())
     };
-    const yaml = import_yaml2.stringify(config);
+    const yaml = import_yaml3.stringify(config);
     writeFileSync(this.configPath, yaml, "utf-8");
   }
   validateAgent(agent) {
@@ -7571,6 +7621,66 @@ class AgentRegistry {
   removeAgent(agentId) {
     this.agents.delete(agentId);
   }
+  selectAgentWithFallback(capability, policy, phase) {
+    const agents = this.getAllAgents().filter((agent) => agent.active !== false);
+    const agentsWithCapability = agents.filter((agent) => agent.capabilities.includes(capability));
+    if (agentsWithCapability.length > 0) {
+      return {
+        agent: agentsWithCapability[0],
+        usedFallback: false
+      };
+    }
+    const fallbackAgent = this.getFallbackAgent(capability, policy, phase);
+    if (fallbackAgent) {
+      console.log(`\u2139\uFE0F Using fallback agent '${fallbackAgent.name}' for capability '${capability}'`);
+      return {
+        agent: fallbackAgent,
+        usedFallback: true
+      };
+    }
+    return {
+      agent: null,
+      usedFallback: false
+    };
+  }
+  getFallbackAgent(capability, policy, phase) {
+    const config = this.config;
+    if (!config.fallback?.enabled) {
+      return null;
+    }
+    if (phase?.fallback_agent) {
+      const agent = this.getAgent(phase.fallback_agent);
+      if (agent && agent.active !== false) {
+        return agent;
+      }
+    }
+    if (phase?.fallback_enabled === false) {
+      return null;
+    }
+    if (policy?.fallback_mappings?.[capability]) {
+      const agent = this.getAgent(policy.fallback_mappings[capability]);
+      if (agent && agent.active !== false) {
+        return agent;
+      }
+    }
+    if (policy?.fallback_enabled === false) {
+      return null;
+    }
+    if (config.fallback?.mappings?.[capability]) {
+      const agent = this.getAgent(config.fallback.mappings[capability]);
+      if (agent && agent.active !== false) {
+        return agent;
+      }
+    }
+    const fallbackAgentId = policy?.fallback_agent || config.fallback?.default_agent;
+    if (fallbackAgentId) {
+      const agent = this.getAgent(fallbackAgentId);
+      if (agent && agent.active !== false) {
+        return agent;
+      }
+    }
+    return null;
+  }
 }
 function getAgentRegistry(configPath) {
   if (!defaultAgentRegistry) {
@@ -7578,10 +7688,361 @@ function getAgentRegistry(configPath) {
   }
   return defaultAgentRegistry;
 }
-var import_yaml2, defaultAgentRegistry = null;
+var import_yaml3, defaultAgentRegistry = null;
 var init_agent_registry = __esm(() => {
   init_path_utils();
-  import_yaml2 = __toESM(require_dist(), 1);
+  init_config();
+  import_yaml3 = __toESM(require_dist(), 1);
+});
+
+// src/core/policy-capability-validator.ts
+var exports_policy_capability_validator = {};
+__export(exports_policy_capability_validator, {
+  policyCapabilityValidator: () => policyCapabilityValidator,
+  PolicyCapabilityValidator: () => PolicyCapabilityValidator
+});
+
+class PolicyCapabilityValidator {
+  policyEngine = getPolicyEngine();
+  agentRegistry = getAgentRegistry();
+  config = loadConfig();
+  async validateChain() {
+    const errors = [];
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy) {
+        errors.push({
+          type: "policy",
+          severity: "error",
+          message: `Policy '${policyName}' not found`,
+          location: `policies.yaml: ${policyName}`
+        });
+        continue;
+      }
+      for (const phase of policy.phases) {
+        const phaseErrors = this.validatePhaseCapabilities(policyName, phase);
+        errors.push(...phaseErrors);
+      }
+    }
+    const valid = errors.filter((e) => e.severity === "error").length === 0;
+    const summary = this.generateValidationSummary(errors);
+    return {
+      valid,
+      errors,
+      summary
+    };
+  }
+  validateFallbackAgent(agentId, policyName, phaseName) {
+    const errors = [];
+    const fallbackAgent = this.agentRegistry.getAgent(agentId);
+    if (!fallbackAgent) {
+      errors.push({
+        type: "agent",
+        severity: "error",
+        message: `Fallback agent '${agentId}' does not exist in agent registry`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: "Specify a valid fallback agent ID"
+      });
+    } else if (fallbackAgent.active === false) {
+      errors.push({
+        type: "agent",
+        severity: "error",
+        message: `Fallback agent '${fallbackAgent.name}' is inactive`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: "Activate fallback agent or specify a different one"
+      });
+    }
+    return errors;
+  }
+  getFallbackAgent(capability, policy, phase) {
+    const config = this.config;
+    if (!config.fallback?.enabled) {
+      return null;
+    }
+    if (phase?.fallback_agent) {
+      const agent = this.agentRegistry.getAgent(phase.fallback_agent);
+      if (agent && agent.active !== false) {
+        return { id: agent.id, name: agent.name };
+      }
+    }
+    if (phase?.fallback_enabled === false) {
+      return null;
+    }
+    if (policy?.fallback_mappings?.[capability]) {
+      const agent = this.agentRegistry.getAgent(policy.fallback_mappings[capability]);
+      if (agent && agent.active !== false) {
+        return { id: agent.id, name: agent.name };
+      }
+    }
+    if (policy?.fallback_enabled === false) {
+      return null;
+    }
+    if (config.fallback?.mappings?.[capability]) {
+      const agent = this.agentRegistry.getAgent(config.fallback.mappings[capability]);
+      if (agent && agent.active !== false) {
+        return { id: agent.id, name: agent.name };
+      }
+    }
+    const fallbackAgentId = policy?.fallback_agent || config.fallback?.default_agent;
+    if (fallbackAgentId) {
+      const agent = this.agentRegistry.getAgent(fallbackAgentId);
+      if (agent && agent.active !== false) {
+        return { id: agent.id, name: agent.name };
+      }
+    }
+    return null;
+  }
+  getFallbackCapabilities() {
+    const fallbackUsages = [];
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy)
+        continue;
+      for (const phase of policy.phases) {
+        if (!phase.capabilities)
+          continue;
+        for (const capability of phase.capabilities) {
+          const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
+          const activeAgents = agentsWithCapability.filter((a) => a.active !== false);
+          if (activeAgents.length === 0) {
+            const fallbackAgent = this.getFallbackAgent(capability, policy, phase);
+            if (fallbackAgent) {
+              fallbackUsages.push({
+                capability,
+                policyName,
+                phaseName: phase.name,
+                fallbackAgent: fallbackAgent.name
+              });
+            }
+          }
+        }
+      }
+    }
+    return fallbackUsages;
+  }
+  validatePhaseCapabilities(policyName, phase) {
+    const errors = [];
+    if (!phase.capabilities || phase.capabilities.length === 0) {
+      errors.push({
+        type: "policy",
+        severity: "warning",
+        message: `Phase '${phase.name}' in policy '${policyName}' has no capabilities defined`,
+        location: `policies.yaml: ${policyName}.${phase.name}`,
+        suggestion: "Add capabilities array or specify specific agent"
+      });
+      return errors;
+    }
+    for (const capability of phase.capabilities) {
+      const capabilityErrors = this.validateCapability(capability, policyName, phase.name);
+      errors.push(...capabilityErrors);
+    }
+    return errors;
+  }
+  validateCapability(capability, policyName, phaseName) {
+    const errors = [];
+    const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
+    const activeAgentsWithCapability = agentsWithCapability.filter((agent) => agent.active !== false);
+    if (agentsWithCapability.length === 0) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      const phase = policy?.phases.find((p) => p.name === phaseName);
+      const fallbackAgent = this.getFallbackAgent(capability, policy, phase);
+      if (!fallbackAgent) {
+        errors.push({
+          type: "capability",
+          severity: "error",
+          message: `Capability '${capability}' is not provided by any agent`,
+          location: `policies.yaml: ${policyName}.${phaseName}`,
+          suggestion: "Add this capability to an agent, configure fallback, or remove from policy"
+        });
+      } else {
+        const fallbackErrors = this.validateFallbackAgent(fallbackAgent.id, policyName, phaseName);
+        if (fallbackErrors.length > 0) {
+          errors.push(...fallbackErrors);
+        }
+      }
+    } else if (activeAgentsWithCapability.length === 0) {
+      errors.push({
+        type: "capability",
+        severity: "error",
+        message: `Capability '${capability}' is only provided by inactive agents`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: "Activate agents with this capability or add active agents"
+      });
+    } else if (activeAgentsWithCapability.length === 1) {
+      errors.push({
+        type: "capability",
+        severity: "warning",
+        message: `Capability '${capability}' has only one active agent (${activeAgentsWithCapability[0].name})`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: "Consider adding backup agents for redundancy"
+      });
+    }
+    return errors;
+  }
+  getPolicyCapabilityMappings() {
+    const mappings = [];
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy)
+        continue;
+      for (const phase of policy.phases) {
+        if (!phase.capabilities || phase.capabilities.length === 0)
+          continue;
+        const availableAgents = phase.capabilities.flatMap((capability) => this.agentRegistry.getAgentsByCapability(capability).map((agent) => ({
+          agentId: agent.id,
+          name: agent.name,
+          capabilities: agent.capabilities,
+          active: agent.active !== false,
+          priority: agent.priority || 0
+        })));
+        mappings.push({
+          policyName,
+          phaseName: phase.name,
+          capabilities: phase.capabilities,
+          availableAgents: [...new Map(availableAgents.map((a) => [a.agentId, a])).values()]
+        });
+      }
+    }
+    return mappings;
+  }
+  findDeadEnds() {
+    const deadEnds = [];
+    const mappings = this.getPolicyCapabilityMappings();
+    const allCapabilities = new Set;
+    mappings.forEach((mapping) => {
+      mapping.capabilities.forEach((cap) => allCapabilities.add(cap));
+    });
+    for (const capability of allCapabilities) {
+      const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
+      const activeAgents = agentsWithCapability.filter((agent) => agent.active !== false);
+      if (activeAgents.length === 0) {
+        const affectedPhases = mappings.filter((m) => m.capabilities.includes(capability)).map((m) => ({ policy: m.policyName, phase: m.phaseName }));
+        deadEnds.push({
+          type: "capability",
+          name: capability,
+          description: agentsWithCapability.length > 0 ? `${agentsWithCapability.length} inactive agent(s) provide this capability` : "No agents provide this capability",
+          affectedPhases
+        });
+      }
+    }
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy)
+        continue;
+      const hasValidPath = policy.phases.every((phase) => {
+        if (!phase.capabilities || phase.capabilities.length === 0)
+          return false;
+        return phase.capabilities.every((capability) => {
+          const activeAgents = this.agentRegistry.getAgentsByCapability(capability).filter((agent) => agent.active !== false);
+          return activeAgents.length > 0;
+        });
+      });
+      if (!hasValidPath) {
+        deadEnds.push({
+          type: "policy",
+          name: policyName,
+          description: "Policy has phases with capabilities that have no active agents",
+          affectedPolicies: [policyName]
+        });
+      }
+    }
+    return deadEnds;
+  }
+  generateTreeVisualization() {
+    const mappings = this.getPolicyCapabilityMappings();
+    const lines = [];
+    lines.push("Policy-Capability-Agent Chain Tree");
+    lines.push("===================================");
+    lines.push("");
+    const policies = new Map;
+    mappings.forEach((mapping) => {
+      if (!policies.has(mapping.policyName)) {
+        policies.set(mapping.policyName, []);
+      }
+      policies.get(mapping.policyName).push(mapping);
+    });
+    for (const [policyName, policyMappings] of policies) {
+      lines.push(`\uD83D\uDCCB ${policyName}`);
+      for (const mapping of policyMappings) {
+        lines.push(`  \u251C\u2500\u2500 \uD83D\uDD04 ${mapping.phaseName}`);
+        for (const capability of mapping.capabilities) {
+          const activeAgents = mapping.availableAgents.filter((a) => a.active);
+          const inactiveAgents = mapping.availableAgents.filter((a) => !a.active);
+          const status = activeAgents.length > 0 ? "\u2705" : "\u274C";
+          lines.push(`  \u2502   \u251C\u2500\u2500 ${status} ${capability}`);
+          if (activeAgents.length > 0) {
+            activeAgents.forEach((agent) => {
+              lines.push(`  \u2502   \u2502   \u251C\u2500\u2500 \uD83E\uDD16 ${agent.name} (active, priority: ${agent.priority})`);
+            });
+          }
+          if (inactiveAgents.length > 0) {
+            inactiveAgents.forEach((agent) => {
+              lines.push(`  \u2502   \u2502   \u251C\u2500\u2500 \u26AA ${agent.name} (inactive, priority: ${agent.priority})`);
+            });
+          }
+          if (activeAgents.length === 0 && inactiveAgents.length === 0) {
+            lines.push(`  \u2502   \u2502   \u2514\u2500\u2500 \uD83D\uDEAB No agents available`);
+          }
+        }
+      }
+      lines.push("");
+    }
+    const deadEnds = this.findDeadEnds();
+    if (deadEnds.length > 0) {
+      lines.push("\uD83D\uDEAB Dead Ends (Issues requiring attention)");
+      lines.push("========================================");
+      lines.push("");
+      for (const deadEnd of deadEnds) {
+        const icon = deadEnd.type === "capability" ? "\uD83C\uDFAF" : "\uD83D\uDCCB";
+        lines.push(`${icon} ${deadEnd.name} (${deadEnd.type})`);
+        lines.push(`  ${deadEnd.description}`);
+        if (deadEnd.affectedPhases) {
+          deadEnd.affectedPhases.forEach((phase) => {
+            lines.push(`  \u251C\u2500\u2500 Affected: ${phase.policy}.${phase.phase}`);
+          });
+        }
+        lines.push("");
+      }
+    }
+    return lines.join(`
+`);
+  }
+  generateValidationSummary(errors) {
+    const errorCount = errors.filter((e) => e.severity === "error").length;
+    const warningCount = errors.filter((e) => e.severity === "warning").length;
+    if (errorCount === 0 && warningCount === 0) {
+      const fallbackUsages = this.getFallbackCapabilities();
+      if (fallbackUsages.length > 0) {
+        let message = `\u2139\uFE0F  Policy chain validation: Using fallback for capabilities
+`;
+        for (const usage of fallbackUsages) {
+          message += `   \u2022 policies.yaml: ${usage.policyName}.${usage.phaseName}: Capability '${usage.capability}' handled by fallback agent '${usage.fallbackAgent}'
+`;
+        }
+        return message.trim();
+      }
+      return "\u2705 All policy-capability-agent chains are valid";
+    }
+    const parts = [];
+    if (errorCount > 0) {
+      parts.push(`${errorCount} error${errorCount > 1 ? "s" : ""}`);
+    }
+    if (warningCount > 0) {
+      parts.push(`${warningCount} warning${warningCount > 1 ? "s" : ""}`);
+    }
+    return `\u274C Validation failed: ${parts.join(", ")} found`;
+  }
+}
+var policyCapabilityValidator;
+var init_policy_capability_validator = __esm(() => {
+  init_policy();
+  init_agent_registry();
+  init_config();
+  policyCapabilityValidator = new PolicyCapabilityValidator;
 });
 
 // ../node_modules/ajv/dist/compile/codegen/code.js
@@ -14047,245 +14508,6 @@ var require_dist2 = __commonJS((exports, module) => {
   exports.default = formatsPlugin;
 });
 
-// src/core/policy-capability-validator.ts
-var exports_policy_capability_validator = {};
-__export(exports_policy_capability_validator, {
-  policyCapabilityValidator: () => policyCapabilityValidator,
-  PolicyCapabilityValidator: () => PolicyCapabilityValidator
-});
-
-class PolicyCapabilityValidator {
-  policyEngine = getPolicyEngine();
-  agentRegistry = getAgentRegistry();
-  async validateChain() {
-    const errors = [];
-    const policyNames = this.policyEngine.getPolicyNames();
-    for (const policyName of policyNames) {
-      const policy = this.policyEngine.getPolicy(policyName);
-      if (!policy) {
-        errors.push({
-          type: "policy",
-          severity: "error",
-          message: `Policy '${policyName}' not found`,
-          location: `policies.yaml: ${policyName}`
-        });
-        continue;
-      }
-      for (const phase of policy.phases) {
-        const phaseErrors = this.validatePhaseCapabilities(policyName, phase);
-        errors.push(...phaseErrors);
-      }
-    }
-    const valid = errors.filter((e) => e.severity === "error").length === 0;
-    const summary = this.generateValidationSummary(errors);
-    return {
-      valid,
-      errors,
-      summary
-    };
-  }
-  validatePhaseCapabilities(policyName, phase) {
-    const errors = [];
-    if (!phase.capabilities || phase.capabilities.length === 0) {
-      errors.push({
-        type: "policy",
-        severity: "warning",
-        message: `Phase '${phase.name}' in policy '${policyName}' has no capabilities defined`,
-        location: `policies.yaml: ${policyName}.${phase.name}`,
-        suggestion: "Add capabilities array or specify specific agent"
-      });
-      return errors;
-    }
-    for (const capability of phase.capabilities) {
-      const capabilityErrors = this.validateCapability(capability, policyName, phase.name);
-      errors.push(...capabilityErrors);
-    }
-    return errors;
-  }
-  validateCapability(capability, policyName, phaseName) {
-    const errors = [];
-    const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
-    const activeAgentsWithCapability = agentsWithCapability.filter((agent) => agent.active !== false);
-    if (agentsWithCapability.length === 0) {
-      errors.push({
-        type: "capability",
-        severity: "error",
-        message: `Capability '${capability}' is not provided by any agent`,
-        location: `policies.yaml: ${policyName}.${phaseName}`,
-        suggestion: "Add this capability to an agent or remove from policy"
-      });
-    } else if (activeAgentsWithCapability.length === 0) {
-      errors.push({
-        type: "capability",
-        severity: "error",
-        message: `Capability '${capability}' is only provided by inactive agents`,
-        location: `policies.yaml: ${policyName}.${phaseName}`,
-        suggestion: "Activate agents with this capability or add active agents"
-      });
-    } else if (activeAgentsWithCapability.length === 1) {
-      errors.push({
-        type: "capability",
-        severity: "warning",
-        message: `Capability '${capability}' has only one active agent (${activeAgentsWithCapability[0].name})`,
-        location: `policies.yaml: ${policyName}.${phaseName}`,
-        suggestion: "Consider adding backup agents for redundancy"
-      });
-    }
-    return errors;
-  }
-  getPolicyCapabilityMappings() {
-    const mappings = [];
-    const policyNames = this.policyEngine.getPolicyNames();
-    for (const policyName of policyNames) {
-      const policy = this.policyEngine.getPolicy(policyName);
-      if (!policy)
-        continue;
-      for (const phase of policy.phases) {
-        if (!phase.capabilities || phase.capabilities.length === 0)
-          continue;
-        const availableAgents = phase.capabilities.flatMap((capability) => this.agentRegistry.getAgentsByCapability(capability).map((agent) => ({
-          agentId: agent.id,
-          name: agent.name,
-          capabilities: agent.capabilities,
-          active: agent.active !== false,
-          priority: agent.priority || 0
-        })));
-        mappings.push({
-          policyName,
-          phaseName: phase.name,
-          capabilities: phase.capabilities,
-          availableAgents: [...new Map(availableAgents.map((a) => [a.agentId, a])).values()]
-        });
-      }
-    }
-    return mappings;
-  }
-  findDeadEnds() {
-    const deadEnds = [];
-    const mappings = this.getPolicyCapabilityMappings();
-    const allCapabilities = new Set;
-    mappings.forEach((mapping) => {
-      mapping.capabilities.forEach((cap) => allCapabilities.add(cap));
-    });
-    for (const capability of allCapabilities) {
-      const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
-      const activeAgents = agentsWithCapability.filter((agent) => agent.active !== false);
-      if (activeAgents.length === 0) {
-        const affectedPhases = mappings.filter((m) => m.capabilities.includes(capability)).map((m) => ({ policy: m.policyName, phase: m.phaseName }));
-        deadEnds.push({
-          type: "capability",
-          name: capability,
-          description: agentsWithCapability.length > 0 ? `${agentsWithCapability.length} inactive agent(s) provide this capability` : "No agents provide this capability",
-          affectedPhases
-        });
-      }
-    }
-    const policyNames = this.policyEngine.getPolicyNames();
-    for (const policyName of policyNames) {
-      const policy = this.policyEngine.getPolicy(policyName);
-      if (!policy)
-        continue;
-      const hasValidPath = policy.phases.every((phase) => {
-        if (!phase.capabilities || phase.capabilities.length === 0)
-          return false;
-        return phase.capabilities.every((capability) => {
-          const activeAgents = this.agentRegistry.getAgentsByCapability(capability).filter((agent) => agent.active !== false);
-          return activeAgents.length > 0;
-        });
-      });
-      if (!hasValidPath) {
-        deadEnds.push({
-          type: "policy",
-          name: policyName,
-          description: "Policy has phases with capabilities that have no active agents",
-          affectedPolicies: [policyName]
-        });
-      }
-    }
-    return deadEnds;
-  }
-  generateTreeVisualization() {
-    const mappings = this.getPolicyCapabilityMappings();
-    const lines = [];
-    lines.push("Policy-Capability-Agent Chain Tree");
-    lines.push("===================================");
-    lines.push("");
-    const policies = new Map;
-    mappings.forEach((mapping) => {
-      if (!policies.has(mapping.policyName)) {
-        policies.set(mapping.policyName, []);
-      }
-      policies.get(mapping.policyName).push(mapping);
-    });
-    for (const [policyName, policyMappings] of policies) {
-      lines.push(`\uD83D\uDCCB ${policyName}`);
-      for (const mapping of policyMappings) {
-        lines.push(`  \u251C\u2500\u2500 \uD83D\uDD04 ${mapping.phaseName}`);
-        for (const capability of mapping.capabilities) {
-          const activeAgents = mapping.availableAgents.filter((a) => a.active);
-          const inactiveAgents = mapping.availableAgents.filter((a) => !a.active);
-          const status = activeAgents.length > 0 ? "\u2705" : "\u274C";
-          lines.push(`  \u2502   \u251C\u2500\u2500 ${status} ${capability}`);
-          if (activeAgents.length > 0) {
-            activeAgents.forEach((agent) => {
-              lines.push(`  \u2502   \u2502   \u251C\u2500\u2500 \uD83E\uDD16 ${agent.name} (active, priority: ${agent.priority})`);
-            });
-          }
-          if (inactiveAgents.length > 0) {
-            inactiveAgents.forEach((agent) => {
-              lines.push(`  \u2502   \u2502   \u251C\u2500\u2500 \u26AA ${agent.name} (inactive, priority: ${agent.priority})`);
-            });
-          }
-          if (activeAgents.length === 0 && inactiveAgents.length === 0) {
-            lines.push(`  \u2502   \u2502   \u2514\u2500\u2500 \uD83D\uDEAB No agents available`);
-          }
-        }
-      }
-      lines.push("");
-    }
-    const deadEnds = this.findDeadEnds();
-    if (deadEnds.length > 0) {
-      lines.push("\uD83D\uDEAB Dead Ends (Issues requiring attention)");
-      lines.push("========================================");
-      lines.push("");
-      for (const deadEnd of deadEnds) {
-        const icon = deadEnd.type === "capability" ? "\uD83C\uDFAF" : "\uD83D\uDCCB";
-        lines.push(`${icon} ${deadEnd.name} (${deadEnd.type})`);
-        lines.push(`  ${deadEnd.description}`);
-        if (deadEnd.affectedPhases) {
-          deadEnd.affectedPhases.forEach((phase) => {
-            lines.push(`  \u251C\u2500\u2500 Affected: ${phase.policy}.${phase.phase}`);
-          });
-        }
-        lines.push("");
-      }
-    }
-    return lines.join(`
-`);
-  }
-  generateValidationSummary(errors) {
-    const errorCount = errors.filter((e) => e.severity === "error").length;
-    const warningCount = errors.filter((e) => e.severity === "warning").length;
-    if (errorCount === 0 && warningCount === 0) {
-      return "\u2705 All policy-capability-agent chains are valid";
-    }
-    const parts = [];
-    if (errorCount > 0) {
-      parts.push(`${errorCount} error${errorCount > 1 ? "s" : ""}`);
-    }
-    if (warningCount > 0) {
-      parts.push(`${warningCount} warning${warningCount > 1 ? "s" : ""}`);
-    }
-    return `\u274C Validation failed: ${parts.join(", ")} found`;
-  }
-}
-var policyCapabilityValidator;
-var init_policy_capability_validator = __esm(() => {
-  init_policy();
-  init_agent_registry();
-  policyCapabilityValidator = new PolicyCapabilityValidator;
-});
-
 // src/core/config-validator.ts
 var exports_config_validator = {};
 __export(exports_config_validator, {
@@ -14293,8 +14515,8 @@ __export(exports_config_validator, {
   configValidator: () => configValidator,
   ConfigurationValidator: () => ConfigurationValidator
 });
-import { readFileSync as readFileSync4, existsSync as existsSync3 } from "fs";
-import { join as join3 } from "path";
+import { readFileSync as readFileSync5, existsSync as existsSync4 } from "fs";
+import { join as join4 } from "path";
 
 class ConfigurationValidator {
   ajv;
@@ -14308,9 +14530,9 @@ class ConfigurationValidator {
   }
   async validateConfig(configPath, schemaPath) {
     try {
-      const configContent = readFileSync4(configPath, "utf-8");
+      const configContent = readFileSync5(configPath, "utf-8");
       const config = JSON.parse(configContent);
-      const schemaContent = readFileSync4(schemaPath, "utf-8");
+      const schemaContent = readFileSync5(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const validate = this.ajv.compile(schema);
       const valid = validate(config);
@@ -14356,13 +14578,13 @@ class ConfigurationValidator {
       }
     ];
     for (const task of validationTasks) {
-      const configPath = join3(baseDir, task.config);
+      const configPath = join4(baseDir, task.config);
       const localAgentShepherdDir = (await Promise.resolve().then(() => (init_path_utils(), exports_path_utils))).findAgentShepherdDir();
-      let schemaPath = join3(localAgentShepherdDir, task.schema);
-      if (!existsSync3(schemaPath)) {
-        schemaPath = join3(installDir, task.schema);
+      let schemaPath = join4(localAgentShepherdDir, task.schema);
+      if (!existsSync4(schemaPath)) {
+        schemaPath = join4(installDir, task.schema);
       }
-      if (!existsSync3(configPath)) {
+      if (!existsSync4(configPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -14376,7 +14598,7 @@ class ConfigurationValidator {
         });
         continue;
       }
-      if (!existsSync3(schemaPath)) {
+      if (!existsSync4(schemaPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -14423,10 +14645,10 @@ class ConfigurationValidator {
   }
   async validateYAMLConfig(yamlPath, schemaPath) {
     try {
-      const yamlContent = readFileSync4(yamlPath, "utf-8");
+      const yamlContent = readFileSync5(yamlPath, "utf-8");
       const { parse } = await Promise.resolve().then(() => __toESM(require_dist(), 1));
       const config = parse(yamlContent);
-      const schemaContent = readFileSync4(schemaPath, "utf-8");
+      const schemaContent = readFileSync5(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const validate = this.ajv.compile(schema);
       const valid = validate(config);
@@ -14499,50 +14721,6 @@ var init_config_validator = __esm(() => {
   import_ajv = __toESM(require_ajv(), 1);
   import_ajv_formats = __toESM(require_dist2(), 1);
   configValidator = new ConfigurationValidator;
-});
-
-// src/core/config.ts
-var exports_config = {};
-__export(exports_config, {
-  loadConfig: () => loadConfig
-});
-import { readFileSync as readFileSync5, existsSync as existsSync4 } from "fs";
-import { join as join4 } from "path";
-function loadConfig(configDir) {
-  const configPath = configDir ? join4(configDir, ".agent-shepherd", "config.yaml") : getConfigPath("config.yaml");
-  if (!existsSync4(configPath)) {
-    throw new Error(`Configuration file not found: ${configPath}`);
-  }
-  try {
-    const content = readFileSync5(configPath, "utf-8");
-    const config = import_yaml3.parse(content);
-    return {
-      version: config.version || "1.0",
-      worker: {
-        poll_interval_ms: 30000,
-        max_concurrent_runs: 3,
-        ...config.worker
-      },
-      monitor: {
-        poll_interval_ms: 1e4,
-        stall_threshold_ms: 60000,
-        timeout_multiplier: 1,
-        ...config.monitor
-      },
-      ui: {
-        port: 3000,
-        host: "localhost",
-        ...config.ui
-      }
-    };
-  } catch (error) {
-    throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-var import_yaml3;
-var init_config = __esm(() => {
-  init_path_utils();
-  import_yaml3 = __toESM(require_dist(), 1);
 });
 
 // ../node_modules/ms/index.js
@@ -38082,12 +38260,32 @@ class PolicyTreeVisualizer {
               capabilityNode.children.push(agentNode);
             }
             if (agentsWithCapability.length === 0) {
-              capabilityNode.children.push({
-                id: `no-agents-${capability}`,
-                name: "No agents available",
-                type: "agent",
-                status: "error"
-              });
+              const fallbackInfo = this.getFallbackAgentForCapability(capability, policyName, phase.name);
+              if (fallbackInfo) {
+                capabilityNode.metadata = {
+                  fallbackAgent: fallbackInfo.agentName,
+                  fallbackLevel: fallbackInfo.level
+                };
+                capabilityNode.status = "valid";
+                const fallbackAgentNode = {
+                  id: `fallback-agent-${fallbackInfo.agentId}`,
+                  name: fallbackInfo.agentName,
+                  type: "agent",
+                  status: "valid",
+                  metadata: {
+                    fallback: true,
+                    fallbackLevel: fallbackInfo.level
+                  }
+                };
+                capabilityNode.children.push(fallbackAgentNode);
+              } else {
+                capabilityNode.children.push({
+                  id: `no-agents-${capability}`,
+                  name: "No agents available",
+                  type: "agent",
+                  status: "error"
+                });
+              }
             }
             phaseNode.children.push(capabilityNode);
           }
@@ -38144,6 +38342,19 @@ class PolicyTreeVisualizer {
   generateJsonTree() {
     const tree = this.generateTree();
     return JSON.stringify(tree, null, 2);
+  }
+  getFallbackAgentForCapability(capability, policyName, phaseName) {
+    const fallbackUsages = policyCapabilityValidator.getFallbackCapabilities();
+    for (const usage of fallbackUsages) {
+      if (usage.capability === capability && usage.policyName === policyName && usage.phaseName === phaseName) {
+        return {
+          agentId: usage.fallbackAgent,
+          agentName: usage.fallbackAgent,
+          level: "global"
+        };
+      }
+    }
+    return null;
   }
   generateSummary() {
     const tree = this.generateTree();
@@ -38260,6 +38471,7 @@ var policyTreeVisualizer;
 var init_policy_tree_visualizer = __esm(() => {
   init_policy();
   init_agent_registry();
+  init_policy_capability_validator();
   policyTreeVisualizer = new PolicyTreeVisualizer;
 });
 
@@ -38428,21 +38640,21 @@ init_agent_registry();
 
 // src/core/logging.ts
 import { Database } from "bun:sqlite";
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readFileSync as readFileSync3 } from "fs";
-import { join as join2 } from "path";
+import { appendFileSync, existsSync as existsSync3, mkdirSync, readFileSync as readFileSync4 } from "fs";
+import { join as join3 } from "path";
 
 class Logger {
   db;
   jsonlPath;
   decisionsPath;
   constructor(dataDir) {
-    const dir = dataDir || join2(process.cwd(), ".agent-shepherd");
-    if (!existsSync2(dir)) {
+    const dir = dataDir || join3(process.cwd(), ".agent-shepherd");
+    if (!existsSync3(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    this.jsonlPath = join2(dir, "runs.jsonl");
-    this.decisionsPath = join2(dir, "decisions.jsonl");
-    const dbPath = join2(dir, "runs.db");
+    this.jsonlPath = join3(dir, "runs.jsonl");
+    this.decisionsPath = join3(dir, "decisions.jsonl");
+    const dbPath = join3(dir, "runs.db");
     this.db = new Database(dbPath);
     this.initializeSchema();
     this.syncFromJSONL();
@@ -38490,10 +38702,10 @@ class Logger {
     `);
   }
   syncFromJSONL() {
-    if (!existsSync2(this.jsonlPath)) {
+    if (!existsSync3(this.jsonlPath)) {
       return;
     }
-    const content = readFileSync3(this.jsonlPath, "utf-8");
+    const content = readFileSync4(this.jsonlPath, "utf-8");
     const lines = content.trim().split(`
 `);
     for (const line of lines) {
@@ -38506,8 +38718,8 @@ class Logger {
         console.error("Failed to parse JSONL line:", error);
       }
     }
-    if (existsSync2(this.decisionsPath)) {
-      const decisionsContent = readFileSync3(this.decisionsPath, "utf-8");
+    if (existsSync3(this.decisionsPath)) {
+      const decisionsContent = readFileSync4(this.decisionsPath, "utf-8");
       const decisionLines = decisionsContent.trim().split(`
 `);
       for (const line of decisionLines) {
@@ -39067,6 +39279,7 @@ function getMonitorEngine(config) {
 
 // src/cli/index.ts
 init_path_utils();
+init_policy_capability_validator();
 import { existsSync as existsSync6, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2, readdirSync, readFileSync as readFileSync7, cpSync, rmSync } from "fs";
 import { join as join6 } from "path";
 import path from "path";
@@ -39388,7 +39601,7 @@ agents:
   const configPath = join6(configSubDir, "config.yaml");
   if (!existsSync6(configPath)) {
     const defaultConfig = `version: "1.0"
-  
+
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
@@ -39401,7 +39614,19 @@ monitor:
 ui:
   port: 3000
   host: localhost
- `;
+
+# Fallback Agent System
+# When a policy requires a capability that no agent has,
+# the system will fall back to the specified agent.
+# This allows quickstart to work with default agents.
+fallback:
+  enabled: true
+  default_agent: build
+  # Optional: Add mappings for better agent matching
+  # mappings:
+  #   review: summary
+  #   architecture: plan
+`;
     writeFileSync2(configPath, defaultConfig);
     console.log(`\u2705 Created: ${configPath}`);
   } else {
@@ -39772,6 +39997,18 @@ async function cmdQuickstart() {
       console.log("   Multi-phase workflow: Implement \u2192 Test \u2192 Validate (automatic retry on failure)");
       console.log("   You can switch to advanced default policy when ready for exploration workflows");
       console.log("   See: 'Configuration Customization (Advanced)' section below");
+      const fallbackUsages = policyCapabilityValidator.getFallbackCapabilities();
+      if (fallbackUsages.length > 0) {
+        console.log(`
+\u2139\uFE0F  Fallback Agent System`);
+        console.log("   Your configuration includes a fallback agent system that allows");
+        console.log("   capabilities without specialized agents to be handled by general agents.");
+        console.log("   This is normal for first-time setup. The following capabilities are using fallback:");
+        for (const usage of fallbackUsages) {
+          console.log(`   \u2022 ${usage.capability} \u2192 ${usage.fallbackAgent}`);
+        }
+        console.log("   You can customize fallback behavior in .agent-shepherd/config/config.yaml");
+      }
     }
     console.log(`
 \uD83D\uDCDD Demo workflow ready!`);

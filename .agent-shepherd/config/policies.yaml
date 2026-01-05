@@ -110,5 +110,5 @@ policies:
       initial_delay_ms: 5000
       max_delay_ms: 300000
 
-  
-  default_policy: simple
+
+default_policy: simple
