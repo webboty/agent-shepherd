@@ -1,6 +1,6 @@
 # Main Configuration Reference
 
-The `config.yaml` file contains the core system settings for Agent Shepherd, controlling worker behavior, monitoring, and UI configuration.
+The `config.yaml` file contains core system settings for Agent Shepherd, controlling worker behavior, monitoring, and UI configuration.
 
 ## File Location
 
@@ -15,12 +15,15 @@ version: "1.0"
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
+
 monitor:
   poll_interval_ms: 10000
   stall_threshold_ms: 60000
+  timeout_multiplier: 1.0
+
 ui:
   port: 3000
-  host: "localhost"
+  host: localhost
 ```
 
 ## Field Reference
@@ -48,7 +51,7 @@ ui:
 **Values**: 5000-300000 (5 seconds to 5 minutes)  
 **Examples**:
 - `5000`: Real-time processing (high resource usage)
-- `30000`: Balanced for most workflows
+- `30000`: Standard monitoring (recommended)
 - `120000`: Batch processing (low resource usage)
 
 #### `max_concurrent_runs` (number)
@@ -132,68 +135,73 @@ ui:
 - `"127.0.0.1"`: Explicit local binding
 - `"0.0.0.0"`: All network interfaces (less secure)
 
-## Performance Tuning Guide
+## Fallback Agent Configuration
 
-### Development Environment
+The fallback system allows Agent Shepherd to use a default agent when a policy requires a capability that no agent has. This is useful for:
+- Getting started immediately with default agents
+- Testing workflows before adding specialized agents
+- Working with a limited agent pool
+
+### Basic Configuration
+
+Add to `.agent-shepherd/config/config.yaml`:
+
 ```yaml
-worker:
-  poll_interval_ms: 5000      # Fast response
-  max_concurrent_runs: 2      # Conservative parallelism
-monitor:
-  poll_interval_ms: 2000      # Intensive monitoring
-  stall_threshold_ms: 30000   # Quick failure detection
-ui:
-  port: 3000
-  host: "localhost"
+fallback:
+  enabled: true
+  default_agent: build
 ```
 
-### Production Environment
+### Cascading Hierarchy
+
+The fallback system works on three levels:
+
+1. **Global Level** (`config.yaml`): System-wide default
+2. **Policy Level** (`policies.yaml`): Policy-specific override
+3. **Phase Level** (`policies.yaml`): Phase-specific override
+
+Each level can override the levels above it.
+
+### Advanced Configuration
+
+Use capability-specific mappings for better agent matching:
+
 ```yaml
-worker:
-  poll_interval_ms: 60000     # Balanced polling
-  max_concurrent_runs: 5      # Higher throughput
-monitor:
-  poll_interval_ms: 30000     # Standard monitoring
-  stall_threshold_ms: 300000  # Generous timeout
-ui:
-  port: 8080
-  host: "0.0.0.0"
+fallback:
+  enabled: true
+  default_agent: build
+  mappings:
+    review: summary
+    architecture: plan
+    documentation: summary
+    testing: general
 ```
 
-### High-Throughput Environment
-```yaml
-worker:
-  poll_interval_ms: 10000     # Responsive
-  max_concurrent_runs: 10     # Maximum parallelism
-monitor:
-  poll_interval_ms: 5000      # Frequent checks
-  stall_threshold_ms: 120000  # Reasonable timeout
-ui:
-  port: 3000
-  host: "localhost"
-```
+### Field Reference
 
-## Resource Impact
+| Field | Location | Type | Description |
+|--------|----------|-----------|
+| `fallback.enabled` | config.yaml | boolean | Master switch for fallback system. If false, no fallback anywhere. |
+| `fallback.default_agent` | config.yaml | string | Default fallback agent ID for all capabilities. |
+| `fallback.mappings` | config.yaml | object | Optional capability-specific fallback agent mappings. |
+| `fallback_enabled` | policies.yaml (policy) | boolean | Whether fallback is enabled for this policy. Inherits from global if not set. |
+| `fallback_agent` | policies.yaml (policy) | string | Fallback agent ID for this policy. Inherits from global if not set. |
+| `fallback_mappings` | policies.yaml (policy) | object | Capability-specific fallback mappings for this policy. |
+| `fallback_agent` | policies.yaml (phase) | string | Fallback agent ID override for this phase. |
+| `fallback_enabled` | policies.yaml (phase) | boolean | Whether fallback is enabled for this phase. Overrides policy and global settings. |
 
-| Setting | Low Impact | Medium Impact | High Impact |
-|---------|------------|---------------|-------------|
-| `poll_interval_ms` | 60000+ | 10000-60000 | <10000 |
-| `max_concurrent_runs` | 1-2 | 3-5 | 6+ |
-| `stall_threshold_ms` | 300000+ | 60000-300000 | <60000 |
+### How Fallback Works
 
-## Troubleshooting
+When a policy requires a capability:
 
-### Worker Not Processing Issues
-- Check `poll_interval_ms` - may be too high
-- Verify `max_concurrent_runs` - may be at limit
-- Check system resources (CPU, memory, API limits)
+1. Agent Shepherd checks for agents with that capability
+2. If agents are found, the best one is selected (by priority)
+3. If no agents are found, Agent Shepherd checks fallback hierarchy:
+   - Phase level: Uses `phase.fallback_agent` if set
+   - Policy level: Uses `policy.fallback_mappings[capability]` if set
+   - Global level: Uses `config.fallback.mappings[capability]` if set
+   - Default: Uses `policy.fallback_agent` or `config.fallback.default_agent`
+4. Checks if fallback agent exists and is active
+5. Logs which fallback agent is being used
 
-### Monitor Missing Failed Runs
-- Check `poll_interval_ms` - may be too high
-- Verify `stall_threshold_ms` - may be too generous
-- Review logs for monitoring errors
-
-### UI Not Accessible
-- Check `port` - may conflict with other services
-- Verify `host` - "localhost" restricts network access
-- Check firewall rules for the specified port
+### Troubleshooting

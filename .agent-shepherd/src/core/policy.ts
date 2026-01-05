@@ -15,6 +15,8 @@ export interface PhaseConfig {
   model?: string;  // Model override in format "provider/model"
   timeout_multiplier?: number;
   require_approval?: boolean;
+  fallback_agent?: string;
+  fallback_enabled?: boolean;
 }
 
 export interface RetryConfig {
@@ -32,6 +34,9 @@ export interface PolicyConfig {
   timeout_base_ms?: number;
   stall_threshold_ms?: number;
   require_hitl?: boolean;
+  fallback_enabled?: boolean;
+  fallback_agent?: string;
+  fallback_mappings?: Record<string, string>;
 }
 
 export interface PoliciesFile {

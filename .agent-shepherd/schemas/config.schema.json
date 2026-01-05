@@ -79,6 +79,28 @@
         }
       },
       "additionalProperties": false
+    },
+    "fallback": {
+      "type": "object",
+      "description": "Fallback agent system configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Master switch for fallback system. If false, no fallback anywhere."
+        },
+        "default_agent": {
+          "type": "string",
+          "description": "Default fallback agent ID for all capabilities"
+        },
+        "mappings": {
+          "type": "object",
+          "description": "Optional capability-specific fallback agent mappings",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -97,6 +119,14 @@
       "ui": {
         "port": 3000,
         "host": "localhost"
+      },
+      "fallback": {
+        "enabled": true,
+        "default_agent": "build",
+        "mappings": {
+          "review": "summary",
+          "architecture": "plan"
+        }
       }
     }
   ]

@@ -13,6 +13,7 @@ import { join } from "path";
 import path from "path";
 import { execSync } from "child_process";
 import { homedir, platform } from "os";
+import { policyCapabilityValidator } from "../core/policy-capability-validator";
 
 const COMMANDS: Record<string, string> = {
   worker: "Start the autonomous worker loop",
@@ -406,7 +407,7 @@ agents:
   const configPath = join(configSubDir, "config.yaml");
   if (!existsSync(configPath)) {
     const defaultConfig = `version: "1.0"
-  
+
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
@@ -419,7 +420,19 @@ monitor:
 ui:
   port: 3000
   host: localhost
- `;
+
+# Fallback Agent System
+# When a policy requires a capability that no agent has,
+# the system will fall back to the specified agent.
+# This allows quickstart to work with default agents.
+fallback:
+  enabled: true
+  default_agent: build
+  # Optional: Add mappings for better agent matching
+  # mappings:
+  #   review: summary
+  #   architecture: plan
+`;
     writeFileSync(configPath, defaultConfig);
     console.log(`✅ Created: ${configPath}`);
   } else {
@@ -902,6 +915,19 @@ async function cmdQuickstart(): Promise<void> {
       console.log("   Multi-phase workflow: Implement → Test → Validate (automatic retry on failure)");
       console.log("   You can switch to advanced default policy when ready for exploration workflows");
       console.log("   See: 'Configuration Customization (Advanced)' section below");
+
+      // Show fallback information
+      const fallbackUsages = policyCapabilityValidator.getFallbackCapabilities();
+      if (fallbackUsages.length > 0) {
+        console.log("\nℹ️  Fallback Agent System");
+        console.log("   Your configuration includes a fallback agent system that allows");
+        console.log("   capabilities without specialized agents to be handled by general agents.");
+        console.log("   This is normal for first-time setup. The following capabilities are using fallback:");
+        for (const usage of fallbackUsages) {
+          console.log(`   • ${usage.capability} → ${usage.fallbackAgent}`);
+        }
+        console.log("   You can customize fallback behavior in .agent-shepherd/config/config.yaml");
+      }
     }
 
     // Step 5: Show demo workflow instructions

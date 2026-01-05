@@ -8,6 +8,12 @@ export interface UIConfig {
   host: string;
 }
 
+export interface FallbackConfig {
+  enabled: boolean;
+  default_agent?: string;
+  mappings?: Record<string, string>;
+}
+
 export interface AgentShepherdConfig {
   version: string;
   worker?: {
@@ -20,6 +26,7 @@ export interface AgentShepherdConfig {
     timeout_multiplier?: number;
   };
   ui?: UIConfig;
+  fallback?: FallbackConfig;
 }
 
 /**
@@ -56,7 +63,12 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
         port: 3000,
         host: "localhost",
         ...config.ui
-      }
+      },
+      fallback: config.fallback ? {
+        enabled: config.fallback.enabled ?? false,
+        default_agent: config.fallback.default_agent,
+        mappings: config.fallback.mappings
+      } : undefined
     };
   } catch (error) {
     throw new Error(

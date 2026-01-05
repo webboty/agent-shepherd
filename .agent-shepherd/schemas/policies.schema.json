@@ -66,6 +66,21 @@
           "type": "boolean",
           "default": false,
           "description": "Whether human-in-the-loop approval is required"
+        },
+        "fallback_enabled": {
+          "type": "boolean",
+          "description": "Whether fallback is enabled for this policy. Inherits from global if not set."
+        },
+        "fallback_agent": {
+          "type": "string",
+          "description": "Fallback agent ID for this policy. Inherits from global if not set."
+        },
+        "fallback_mappings": {
+          "type": "object",
+          "description": "Capability-specific fallback mappings for this policy",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false
@@ -101,6 +116,14 @@
           "type": "boolean",
           "default": false,
           "description": "Whether this phase requires explicit approval"
+        },
+        "fallback_agent": {
+          "type": "string",
+          "description": "Fallback agent ID override for this phase"
+        },
+        "fallback_enabled": {
+          "type": "boolean",
+          "description": "Whether fallback is enabled for this phase. Overrides policy and global settings."
         }
       },
       "additionalProperties": false
@@ -169,7 +192,8 @@
               "name": "review",
               "description": "Code review phase",
               "capabilities": ["review", "documentation"],
-              "require_approval": true
+              "require_approval": true,
+              "fallback_agent": "summary"
             }
           ],
           "retry": {
@@ -180,7 +204,13 @@
           },
           "timeout_base_ms": 300000,
           "stall_threshold_ms": 60000,
-          "require_hitl": false
+          "require_hitl": false,
+          "fallback_enabled": true,
+          "fallback_agent": "build",
+          "fallback_mappings": {
+            "review": "summary",
+            "architecture": "plan"
+          }
         }
       },
       "default_policy": "default"

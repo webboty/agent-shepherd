@@ -5,6 +5,7 @@
 
 import { getPolicyEngine } from "./policy";
 import { getAgentRegistry } from "./agent-registry";
+import { loadConfig } from "./config";
 
 export interface ValidationError {
   type: 'policy' | 'capability' | 'agent' | 'chain';
@@ -44,6 +45,7 @@ export interface DeadEndInfo {
 export class PolicyCapabilityValidator {
   private policyEngine = getPolicyEngine();
   private agentRegistry = getAgentRegistry();
+  private config = loadConfig();
 
   /**
    * Validate the complete policy -> capability -> agent chain
@@ -81,6 +83,129 @@ export class PolicyCapabilityValidator {
       errors,
       summary
     };
+  }
+
+  /**
+   * Validate fallback agent configuration
+   */
+  private validateFallbackAgent(
+    agentId: string,
+    policyName: string,
+    phaseName: string
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+
+    const fallbackAgent = this.agentRegistry.getAgent(agentId);
+
+    if (!fallbackAgent) {
+      errors.push({
+        type: 'agent',
+        severity: 'error',
+        message: `Fallback agent '${agentId}' does not exist in agent registry`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: 'Specify a valid fallback agent ID'
+      });
+    } else if (fallbackAgent.active === false) {
+      errors.push({
+        type: 'agent',
+        severity: 'error',
+        message: `Fallback agent '${fallbackAgent.name}' is inactive`,
+        location: `policies.yaml: ${policyName}.${phaseName}`,
+        suggestion: 'Activate fallback agent or specify a different one'
+      });
+    }
+
+    return errors;
+  }
+
+  /**
+   * Get fallback agent for a capability following cascading hierarchy
+   */
+  private getFallbackAgent(
+    capability: string,
+    policy: any,
+    phase: any
+  ): { id: string; name: string } | null {
+    const config = this.config;
+
+    if (!config.fallback?.enabled) {
+      return null;
+    }
+
+    if (phase?.fallback_agent) {
+      const agent = this.agentRegistry.getAgent(phase.fallback_agent);
+      if (agent && agent.active !== false) {
+        return { id: agent.id, name: agent.name };
+      }
+    }
+
+    if (phase?.fallback_enabled === false) {
+      return null;
+    }
+
+    if (policy?.fallback_mappings?.[capability]) {
+      const agent = this.agentRegistry.getAgent(policy.fallback_mappings[capability]);
+      if (agent && agent.active !== false) {
+        return { id: agent.id, name: agent.name };
+      }
+    }
+
+    if (policy?.fallback_enabled === false) {
+      return null;
+    }
+
+    if (config.fallback?.mappings?.[capability]) {
+      const agent = this.agentRegistry.getAgent(config.fallback.mappings[capability]);
+      if (agent && agent.active !== false) {
+        return { id: agent.id, name: agent.name };
+      }
+    }
+
+    const fallbackAgentId = policy?.fallback_agent || config.fallback?.default_agent;
+    if (fallbackAgentId) {
+      const agent = this.agentRegistry.getAgent(fallbackAgentId);
+      if (agent && agent.active !== false) {
+        return { id: agent.id, name: agent.name };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get capabilities using fallback
+   */
+  getFallbackCapabilities(): Array<{ capability: string; policyName: string; phaseName: string; fallbackAgent: string }> {
+    const fallbackUsages: Array<{ capability: string; policyName: string; phaseName: string; fallbackAgent: string }> = [];
+
+    const policyNames = this.policyEngine.getPolicyNames();
+    for (const policyName of policyNames) {
+      const policy = this.policyEngine.getPolicy(policyName);
+      if (!policy) continue;
+
+      for (const phase of policy.phases) {
+        if (!phase.capabilities) continue;
+
+        for (const capability of phase.capabilities) {
+          const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
+          const activeAgents = agentsWithCapability.filter(a => a.active !== false);
+
+          if (activeAgents.length === 0) {
+            const fallbackAgent = this.getFallbackAgent(capability, policy, phase);
+            if (fallbackAgent) {
+              fallbackUsages.push({
+                capability,
+                policyName,
+                phaseName: phase.name,
+                fallbackAgent: fallbackAgent.name
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return fallbackUsages;
   }
 
   /**
@@ -122,18 +247,29 @@ export class PolicyCapabilityValidator {
   ): ValidationError[] {
     const errors: ValidationError[] = [];
 
-    // Check if any agents have this capability
     const agentsWithCapability = this.agentRegistry.getAgentsByCapability(capability);
     const activeAgentsWithCapability = agentsWithCapability.filter(agent => agent.active !== false);
 
     if (agentsWithCapability.length === 0) {
-      errors.push({
-        type: 'capability',
-        severity: 'error',
-        message: `Capability '${capability}' is not provided by any agent`,
-        location: `policies.yaml: ${policyName}.${phaseName}`,
-        suggestion: 'Add this capability to an agent or remove from policy'
-      });
+      const policy = this.policyEngine.getPolicy(policyName);
+      const phase = policy?.phases.find(p => p.name === phaseName);
+
+      const fallbackAgent = this.getFallbackAgent(capability, policy, phase);
+
+      if (!fallbackAgent) {
+        errors.push({
+          type: 'capability',
+          severity: 'error',
+          message: `Capability '${capability}' is not provided by any agent`,
+          location: `policies.yaml: ${policyName}.${phaseName}`,
+          suggestion: 'Add this capability to an agent, configure fallback, or remove from policy'
+        });
+      } else {
+        const fallbackErrors = this.validateFallbackAgent(fallbackAgent.id, policyName, phaseName);
+        if (fallbackErrors.length > 0) {
+          errors.push(...fallbackErrors);
+        }
+      }
     } else if (activeAgentsWithCapability.length === 0) {
       errors.push({
         type: 'capability',
@@ -338,6 +474,14 @@ export class PolicyCapabilityValidator {
     const warningCount = errors.filter(e => e.severity === 'warning').length;
 
     if (errorCount === 0 && warningCount === 0) {
+      const fallbackUsages = this.getFallbackCapabilities();
+      if (fallbackUsages.length > 0) {
+        let message = 'ℹ️  Policy chain validation: Using fallback for capabilities\n';
+        for (const usage of fallbackUsages) {
+          message += `   • policies.yaml: ${usage.policyName}.${usage.phaseName}: Capability '${usage.capability}' handled by fallback agent '${usage.fallbackAgent}'\n`;
+        }
+        return message.trim();
+      }
       return '✅ All policy-capability-agent chains are valid';
     }
 

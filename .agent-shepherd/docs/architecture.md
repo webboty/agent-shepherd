@@ -58,6 +58,30 @@ Agent Shepherd is a sophisticated orchestration system designed to coordinate AI
 1. **Issue Discovery**: Worker Engine polls Beads for ready issues
 2. **Policy Resolution**: Policy Engine determines appropriate workflow
 3. **Agent Selection**: Agent Registry finds best agent for current phase
+   - **Fallback Agent Selection**: When no agent has a capability, uses cascading fallback hierarchy (global → policy → phase) to select appropriate fallback agent
+
+### Capability-Based Matching with Fallback
+
+Agents are selected based on:
+- Required capabilities for current phase
+- Agent priority scores
+- Performance tier constraints
+- **Fallback hierarchy** (if no agents have capability):
+  1. **Global Level** (`config.yaml`): System-wide default
+  2. **Policy Level** (`policies.yaml`): Policy-specific override
+  3. **Phase Level** (`policies.yaml`): Phase-specific override
+
+Selection logic:
+1. Try to find agents with required capability
+2. If agents found, select highest priority (active agent preferred)
+3. If no agents found, check fallback hierarchy:
+   - Phase level: Use `phase.fallback_agent` if set
+   - Policy level: Use `policy.fallback_mappings[capability]` if set
+   - Global level: Use `config.fallback.mappings[capability]` if set
+   - Default: Use `policy.fallback_agent` or `config.fallback.default_agent`
+
+4. Verify selected fallback agent is active
+5. Log which fallback agent is being used
 4. **Session Creation**: OpenCode client launches agent session
 5. **Progress Monitoring**: Monitor Engine watches execution and detects stalls
 6. **Outcome Recording**: Logging system captures results and updates issue status

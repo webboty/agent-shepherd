@@ -6,6 +6,7 @@
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml";
 import { readFileSync, writeFileSync } from "fs";
 import { getConfigPath } from "./path-utils";
+import { loadConfig } from "./config";
 
 export interface AgentConfig {
   id: string;
@@ -45,6 +46,7 @@ export interface AgentSelectionCriteria {
 export class AgentRegistry {
   private agents: Map<string, AgentConfig>;
   private configPath: string;
+  private config = loadConfig();
 
   constructor(configPath?: string) {
     this.agents = new Map();
@@ -532,10 +534,101 @@ export class AgentRegistry {
   }
 
   /**
-   * Remove an agent from the registry
+   * Remove an agent from registry
    */
   private removeAgent(agentId: string): void {
     this.agents.delete(agentId);
+  }
+
+  /**
+   * Select agent with fallback support
+   */
+  selectAgentWithFallback(
+    capability: string,
+    policy: any,
+    phase: any
+  ): { agent: AgentConfig | null; usedFallback: boolean } {
+    const agents = this.getAllAgents().filter(agent => agent.active !== false);
+
+    const agentsWithCapability = agents.filter(agent =>
+      agent.capabilities.includes(capability)
+    );
+
+    if (agentsWithCapability.length > 0) {
+      return {
+        agent: agentsWithCapability[0],
+        usedFallback: false
+      };
+    }
+
+    const fallbackAgent = this.getFallbackAgent(capability, policy, phase);
+
+    if (fallbackAgent) {
+      console.log(`ℹ️ Using fallback agent '${fallbackAgent.name}' for capability '${capability}'`);
+      return {
+        agent: fallbackAgent,
+        usedFallback: true
+      };
+    }
+
+    return {
+      agent: null,
+      usedFallback: false
+    };
+  }
+
+  /**
+   * Get fallback agent for a capability following cascading hierarchy
+   */
+  private getFallbackAgent(
+    capability: string,
+    policy: any,
+    phase: any
+  ): AgentConfig | null {
+    const config = this.config;
+
+    if (!config.fallback?.enabled) {
+      return null;
+    }
+
+    if (phase?.fallback_agent) {
+      const agent = this.getAgent(phase.fallback_agent);
+      if (agent && agent.active !== false) {
+        return agent;
+      }
+    }
+
+    if (phase?.fallback_enabled === false) {
+      return null;
+    }
+
+    if (policy?.fallback_mappings?.[capability]) {
+      const agent = this.getAgent(policy.fallback_mappings[capability]);
+      if (agent && agent.active !== false) {
+        return agent;
+      }
+    }
+
+    if (policy?.fallback_enabled === false) {
+      return null;
+    }
+
+    if (config.fallback?.mappings?.[capability]) {
+      const agent = this.getAgent(config.fallback.mappings[capability]);
+      if (agent && agent.active !== false) {
+        return agent;
+      }
+    }
+
+    const fallbackAgentId = policy?.fallback_agent || config.fallback?.default_agent;
+    if (fallbackAgentId) {
+      const agent = this.getAgent(fallbackAgentId);
+      if (agent && agent.active !== false) {
+        return agent;
+      }
+    }
+
+    return null;
   }
 }
 

@@ -206,8 +206,55 @@ bd create --title "Implement user authentication" --description "<paste OpenSpec
  
 # Agent Shepherd then just implements what's in the issue
 ```
- 
-**Note**: The simple policy is set as default for first-time users. Switch to the advanced policy when you're ready for planning-heavy workflows.
+
+**Note**: The simple policy is set as default for first-time users. Switch to advanced policy when you're ready for planning-heavy workflows.
+
+## Fallback Agent System
+
+When a policy requires a capability that no agent has, the fallback system allows you to specify a default agent to handle the task anyway. This is especially useful for getting started quickly with default agents.
+
+### When to Use Fallback
+
+- **First-time setup**: Get started immediately with default agents
+- **Testing workflows**: Test workflows before adding specialized agents
+- **Limited agent pool**: Use available agents for all capability requirements
+
+### Basic Configuration
+
+Add to `.agent-shepherd/config/config.yaml`:
+
+```yaml
+fallback:
+  enabled: true
+  default_agent: build
+```
+
+### Cascading Hierarchy
+
+The fallback system works on three levels:
+
+1. **Global Level** (config.yaml): System-wide default
+2. **Policy Level** (policies.yaml): Policy-specific override
+3. **Phase Level** (policies.yaml): Phase-specific override
+
+Each level can override the levels above it.
+
+### Advanced Configuration
+
+Use capability-specific mappings for better agent matching:
+
+```yaml
+fallback:
+  enabled: true
+  default_agent: build
+  mappings:
+    review: summary
+    architecture: plan
+    documentation: summary
+    testing: general
+```
+
+See [Configuration Customization (Advanced)](#configuration-customization-advanced) for more details on configuring fallback at different levels.
 
 ---
 

@@ -34,43 +34,66 @@ The tree shows:
 - **Single Points of Failure**: Warns about capabilities with only one agent
 - **Health Summary**: Overview statistics and issue counts
 
-## Structure
+## Fallback Agent Configuration
+
+The fallback system allows policies to specify alternative agents for capabilities that don't have dedicated agents. This enables:
+
+- **Getting started quickly** with default agents before adding specialized ones
+- **Testing workflows** with limited agent pool before expanding
+- **Flexible configuration** to match capabilities with available agents
+
+### Policy-Level Fallback Fields
+
+Add to policy definitions in `policies.yaml`:
 
 ```yaml
-version: "1.0"
-policies:
-  - id: "default-workflow"
-    name: "Default Development Workflow"
-    description: "Standard workflow for code changes"
-    trigger:
-      type: "issue"
-      patterns: ["feature", "bug", "enhancement"]
-    phases:
-      - name: "analysis"
-        description: "Analyze the issue and plan approach"
-        capabilities: ["analysis", "planning"]
-        agent: "plan"
-        model: "anthropic/claude-3-5-haiku-20241022"
-        max_iterations: 3
-        success_criteria: ["clear plan documented"]
-      - name: "implementation"
-        description: "Implement the planned changes"
-        capabilities: ["coding", "refactoring"]
-        agent: "build"
-        model: "anthropic/claude-3-5-sonnet-20241022"
-        depends_on: ["analysis"]
-        max_iterations: 5
-        success_criteria: ["code compiles", "tests pass"]
-      - name: "review"
-        description: "Review and validate changes"
-        capabilities: ["review", "testing"]
-        agent: "code-reviewer"
-        depends_on: ["implementation"]
-        max_iterations: 2
-        success_criteria: ["review complete", "no critical issues"]
+my-policy:
+  fallback_enabled: true       # Enable fallback for this policy (inherits from global)
+  fallback_agent: summary     # Use summary agent as default for this policy
+  fallback_mappings:         # Capability-specific mappings
+    testing: general       # Testing uses general agent
+    architecture: plan     # Architecture uses planning agent
+    documentation: summary   # Documentation uses summary agent
 ```
 
-## Field Reference
+### Phase-Level Fallback Fields
+
+Add to phase definitions:
+
+```yaml
+my-policy:
+  phases:
+    - name: test
+      fallback_enabled: false    # Disable fallback for this phase (must have real testing agent)
+    - name: review
+      fallback_agent: summary   # Use summary agent for reviews instead of default
+```
+
+### Disabling Fallback
+
+Set `fallback_enabled: false` at any level to disable fallback:
+
+```yaml
+# Global disable
+fallback:
+  enabled: false
+
+# Policy disable
+policies:
+  my-policy:
+    fallback_enabled: false
+
+# Phase disable
+policies:
+  my-policy:
+    phases:
+      - name: test
+        fallback_enabled: false
+```
+
+See [Main Configuration](../config-config.md#fallback-agent-configuration) for global settings.
+
+## Structure
 
 ### `version` (string)
 **Required**: Yes  

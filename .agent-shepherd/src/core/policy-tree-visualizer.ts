@@ -5,6 +5,7 @@
 
 import { getPolicyEngine } from "./policy";
 import { getAgentRegistry } from "./agent-registry";
+import { policyCapabilityValidator } from "./policy-capability-validator";
 
 export interface TreeNode {
   id: string;
@@ -17,6 +18,9 @@ export interface TreeNode {
     priority?: number;
     active?: boolean;
     affectedBy?: string[];
+    fallbackAgent?: string;
+    fallbackLevel?: 'global' | 'policy' | 'phase';
+    fallback?: boolean;
   };
 }
 
@@ -55,7 +59,7 @@ export class PolicyTreeVisualizer {
           children: []
         };
 
-        // Add capabilities
+         // Add capabilities
         if (phase.capabilities && phase.capabilities.length > 0) {
           for (const capability of phase.capabilities) {
             const capabilityNode: TreeNode = {
@@ -83,14 +87,35 @@ export class PolicyTreeVisualizer {
               capabilityNode.children!.push(agentNode);
             }
 
-            // If no agents, add a placeholder
+            // If no agents, check for fallback
             if (agentsWithCapability.length === 0) {
-              capabilityNode.children!.push({
-                id: `no-agents-${capability}`,
-                name: 'No agents available',
-                type: 'agent',
-                status: 'error'
-              });
+              const fallbackInfo = this.getFallbackAgentForCapability(capability, policyName, phase.name);
+              if (fallbackInfo) {
+                capabilityNode.metadata = {
+                  fallbackAgent: fallbackInfo.agentName,
+                  fallbackLevel: fallbackInfo.level
+                };
+                capabilityNode.status = 'valid';
+
+                const fallbackAgentNode: TreeNode = {
+                  id: `fallback-agent-${fallbackInfo.agentId}`,
+                  name: fallbackInfo.agentName,
+                  type: 'agent',
+                  status: 'valid',
+                  metadata: {
+                    fallback: true,
+                    fallbackLevel: fallbackInfo.level
+                  }
+                };
+                capabilityNode.children!.push(fallbackAgentNode);
+              } else {
+                capabilityNode.children!.push({
+                  id: `no-agents-${capability}`,
+                  name: 'No agents available',
+                  type: 'agent',
+                  status: 'error'
+                });
+              }
             }
 
             phaseNode.children!.push(capabilityNode);
@@ -173,19 +198,44 @@ export class PolicyTreeVisualizer {
   }
 
   /**
+   * Get fallback agent for a capability
+   */
+  private getFallbackAgentForCapability(
+    capability: string,
+    policyName: string,
+    phaseName: string
+  ): { agentId: string; agentName: string; level: 'global' | 'policy' | 'phase' } | null {
+    const fallbackUsages = policyCapabilityValidator.getFallbackCapabilities();
+
+    for (const usage of fallbackUsages) {
+      if (usage.capability === capability &&
+          usage.policyName === policyName &&
+          usage.phaseName === phaseName) {
+        return {
+          agentId: usage.fallbackAgent,
+          agentName: usage.fallbackAgent,
+          level: 'global'
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Generate summary statistics
    */
-  generateSummary(): {
-    totalPolicies: number;
-    totalPhases: number;
-    totalCapabilities: number;
-    totalAgents: number;
-    validPolicies: number;
-    policiesWithWarnings: number;
-    policiesWithErrors: number;
-    deadEndCapabilities: string[];
-    inactiveAgents: string[];
-  } {
+   generateSummary(): {
+     totalPolicies: number;
+     totalPhases: number;
+     totalCapabilities: number;
+     totalAgents: number;
+     validPolicies: number;
+     policiesWithWarnings: number;
+     policiesWithErrors: number;
+     deadEndCapabilities: string[];
+     inactiveAgents: string[];
+   } {
     const tree = this.generateTree();
 
     let totalPolicies = 0;
