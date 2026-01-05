@@ -485,15 +485,16 @@ export class PolicyCapabilityValidator {
       return '✅ All policy-capability-agent chains are valid';
     }
 
-    const parts = [];
     if (errorCount > 0) {
+      const parts = [];
       parts.push(`${errorCount} error${errorCount > 1 ? 's' : ''}`);
-    }
-    if (warningCount > 0) {
-      parts.push(`${warningCount} warning${warningCount > 1 ? 's' : ''}`);
+      if (warningCount > 0) {
+        parts.push(`${warningCount} warning${warningCount > 1 ? 's' : ''}`);
+      }
+      return `❌ Validation failed: ${parts.join(', ')} found`;
     }
 
-    return `❌ Validation failed: ${parts.join(', ')} found`;
+    return `⚠️  Validation passed with ${warningCount} warning${warningCount > 1 ? 's' : ''}`;
   }
 }
 

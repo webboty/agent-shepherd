@@ -579,11 +579,11 @@ async function cmdUI(port?: number, host?: string): Promise<void> {
  */
 async function cmdValidatePolicyChain(soft: boolean = false): Promise<boolean> {
   console.log("🔍 Validating policy-capability-agent chain...");
-  
+
   try {
     // First validate basic configuration
     const { validateStartup } = await import("../core/config-validator.ts");
-    await validateStartup();
+    await validateStartup(undefined, soft);
     
     // Then validate policy chain
     const { policyCapabilityValidator } = await import("../core/policy-capability-validator.ts");
@@ -928,50 +928,67 @@ async function cmdQuickstart(): Promise<void> {
       console.log("   You can sync agents later with: ashep sync-agents");
     }
 
+    console.log(); // Add spacing before validation section
+
     // Step 4: Validate configuration (soft mode for first-time setup)
-    console.log("\n🔍 Validating configuration...");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("🔍 Validating Configuration");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
     const valid = await cmdValidatePolicyChain(true);
+
+    console.log(); // Add spacing
+
+    // Show fallback information (independent of validation status)
+    const fallbackUsages = policyCapabilityValidator.getFallbackCapabilities();
+    if (fallbackUsages.length > 0) {
+      console.log("ℹ️  Fallback Agent System");
+      console.log("   Your configuration includes a fallback agent system that allows");
+      console.log("   capabilities without specialized agents to be handled by general agents.");
+      console.log("   This is normal for first-time setup. The following capabilities use fallback:");
+      for (const usage of fallbackUsages) {
+        console.log(`   • ${usage.capability} → ${usage.fallbackAgent}`);
+      }
+      console.log("   You can customize fallback behavior in .agent-shepherd/config/config.yaml");
+      console.log();
+    }
+
     if (valid) {
-      console.log("✅ Configuration validation passed");
-      console.log("🌱 Using simple policy with autonomous multi-phase workflow!");
+      console.log("✅ Summary");
+      console.log("   🌱 Using simple policy with autonomous multi-phase workflow!");
       console.log("   Phases: Implement → Test → Validate (with automatic retry)");
       console.log("   Same agent handles all phases - demonstrates autonomous orchestration");
     } else {
-      console.log("⚠️  Configuration validation found issues - this is normal for first-time setup");
+      console.log("⚠️  Summary");
       console.log("   🌱 Simple policy is set as default and works with basic agents");
       console.log("   Multi-phase workflow: Implement → Test → Validate (automatic retry on failure)");
-      console.log("   You can switch to advanced default policy when ready for exploration workflows");
-      console.log("   See: 'Configuration Customization (Advanced)' section below");
-
-      // Show fallback information
-      const fallbackUsages = policyCapabilityValidator.getFallbackCapabilities();
-      if (fallbackUsages.length > 0) {
-        console.log("\nℹ️  Fallback Agent System");
-        console.log("   Your configuration includes a fallback agent system that allows");
-        console.log("   capabilities without specialized agents to be handled by general agents.");
-        console.log("   This is normal for first-time setup. The following capabilities are using fallback:");
-        for (const usage of fallbackUsages) {
-          console.log(`   • ${usage.capability} → ${usage.fallbackAgent}`);
-        }
-        console.log("   You can customize fallback behavior in .agent-shepherd/config/config.yaml");
-      }
     }
 
+    console.log(); // Add spacing before demo section
+
     // Step 5: Show demo workflow instructions
-    console.log("\n📝 Demo workflow ready!");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("📝 Demo Workflow");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     console.log("   To try a demo:");
-    console.log("   1. Create a detailed issue: bd create --title 'Demo: Create hello world' --description '<detailed requirements here>'");
-    console.log("   2. Process it: ashep work <issue-id>");
+    console.log("   1. Create an issue with detailed requirements");
+    console.log("      bd create --title 'Implement user authentication' \\");
+    console.log("         --description 'Add login form with email/password, validation, and session management'");
+    console.log("   2. Process the issue: ashep work <issue-id>");
     console.log("   3. View progress: ashep ui");
 
+    console.log(); // Add spacing before next steps section
+
     // Step 6: Show next steps
-    console.log("\n🎉 Quickstart complete!");
-    console.log("\nNext steps:");
-    console.log("• Start the worker: ashep worker");
-    console.log("• Start monitoring: ashep monitor");
-    console.log("• View UI: ashep ui");
-    console.log("• Process issues: ashep work <issue-id>");
-    console.log("\nFor more help: ashep help");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("🎉 Quickstart Complete");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    console.log("\nNext Commands:");
+    console.log("• ashep worker              - Start autonomous worker loop");
+    console.log("• ashep monitor            - Start supervision loop");
+    console.log("• ashep ui                 - Open flow visualization");
+    console.log("• ashep work <issue-id>    - Process specific issue");
+    console.log("\n📖 For more help: ashep help");
 
   } catch (error) {
     console.error("\n❌ Quickstart failed:", error instanceof Error ? error.message : String(error));

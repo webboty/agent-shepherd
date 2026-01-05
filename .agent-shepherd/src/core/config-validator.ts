@@ -143,18 +143,18 @@ export class ConfigurationValidator {
   /**
    * Validate configuration at startup
    */
-  async validateAtStartup(configDir?: string): Promise<void> {
+  async validateAtStartup(configDir?: string, soft: boolean = false): Promise<void> {
     console.log('🔍 Validating configuration files...');
-    
+
     const results = await this.validateAllConfigs(configDir);
     let hasErrors = false;
 
     for (const result of results) {
       console.log(result.summary);
-      
+
       if (!result.valid) {
         hasErrors = true;
-        
+
         // Print detailed errors
         for (const error of result.errors) {
           const path = error.instancePath || error.schemaPath;
@@ -164,9 +164,13 @@ export class ConfigurationValidator {
     }
 
     if (hasErrors) {
-      console.log('\n❌ Configuration validation failed');
-      console.log('Please fix the errors above before proceeding');
-      process.exit(1);
+      if (!soft) {
+        console.log('\n❌ Configuration validation failed');
+        console.log('Please fix errors above before proceeding');
+        process.exit(1);
+      } else {
+        console.log('⚠️  Configuration validation found errors (continuing in soft mode)');
+      }
     } else {
       console.log('✅ All configuration files are valid');
     }
@@ -276,6 +280,6 @@ export const configValidator = new ConfigurationValidator();
 /**
  * Quick validation utility for startup
  */
-export async function validateStartup(configDir?: string): Promise<void> {
-  return configValidator.validateAtStartup(configDir);
+export async function validateStartup(configDir?: string, soft: boolean = false): Promise<void> {
+  return configValidator.validateAtStartup(configDir, soft);
 }
