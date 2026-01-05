@@ -1,6 +1,6 @@
 {
   "name": "agent-shepherd",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Orchestration system for AI coding agents across Beads issues using OpenCode",
   "type": "module",
   "bin": {

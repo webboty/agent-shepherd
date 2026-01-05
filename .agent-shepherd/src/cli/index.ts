@@ -39,6 +39,9 @@ const COMMANDS: Record<string, string> = {
 // Plugin command handlers registry
 const PLUGIN_HANDLERS: Record<string, Function> = {};
 
+// Loaded plugins registry for version display
+const LOADED_PLUGINS: Array<{ name: string; version: string }> = [];
+
 /**
  * Load plugins from .agent-shepherd/plugins/ directory
  */
@@ -104,7 +107,7 @@ function loadPlugins(): void {
           PLUGIN_HANDLERS[cmd.name] = handler;
         }
 
-        console.log(`Loaded plugin: ${manifest.name} v${manifest.version}`);
+        LOADED_PLUGINS.push({ name: manifest.name, version: manifest.version });
       } catch (error) {
         console.warn(`Failed to load plugin ${pluginName}:`, error);
       }
@@ -962,21 +965,18 @@ async function cmdQuickstart(): Promise<void> {
  */
 function getCurrentVersion(): string {
   try {
-    // Try VERSION file first
     const installDir = findInstallDir();
     const versionFile = join(installDir, "VERSION");
     if (existsSync(versionFile)) {
       return readFileSync(versionFile, "utf-8").trim();
     }
-  } catch {
-    // Fall back to package.json
-  }
 
-  // Fall back to package.json version
-  const packageJsonPath = join(__dirname, "..", "package.json");
-  if (existsSync(packageJsonPath)) {
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
-    return packageJson.version || "unknown";
+    const packageJsonPath = join(installDir, "package.json");
+    if (existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+      return packageJson.version || "unknown";
+    }
+  } catch {
   }
 
   return "unknown";
@@ -986,7 +986,17 @@ function getCurrentVersion(): string {
  * Version command - show installed version
  */
 function cmdVersion(): void {
-  console.log(getCurrentVersion());
+  const version = getCurrentVersion();
+  console.log(`\n  Agent Shepherd \x1b[36m${version}\x1b[0m`);
+  console.log("  └─ Plugins:");
+  if (LOADED_PLUGINS.length === 0) {
+    console.log("     (none)");
+  } else {
+    LOADED_PLUGINS.forEach(plugin => {
+      console.log(`     • ${plugin.name} \x1b[90m${plugin.version}\x1b[0m`);
+    });
+  }
+  console.log();
 }
 
 /**
