@@ -8027,14 +8027,15 @@ class PolicyCapabilityValidator {
       }
       return "\u2705 All policy-capability-agent chains are valid";
     }
-    const parts = [];
     if (errorCount > 0) {
+      const parts = [];
       parts.push(`${errorCount} error${errorCount > 1 ? "s" : ""}`);
+      if (warningCount > 0) {
+        parts.push(`${warningCount} warning${warningCount > 1 ? "s" : ""}`);
+      }
+      return `\u274C Validation failed: ${parts.join(", ")} found`;
     }
-    if (warningCount > 0) {
-      parts.push(`${warningCount} warning${warningCount > 1 ? "s" : ""}`);
-    }
-    return `\u274C Validation failed: ${parts.join(", ")} found`;
+    return `\u26A0\uFE0F  Validation passed with ${warningCount} warning${warningCount > 1 ? "s" : ""}`;
   }
 }
 var policyCapabilityValidator;
@@ -14620,7 +14621,7 @@ class ConfigurationValidator {
     results.push(chainResult);
     return results;
   }
-  async validateAtStartup(configDir) {
+  async validateAtStartup(configDir, soft = false) {
     console.log("\uD83D\uDD0D Validating configuration files...");
     const results = await this.validateAllConfigs(configDir);
     let hasErrors = false;
@@ -14635,10 +14636,14 @@ class ConfigurationValidator {
       }
     }
     if (hasErrors) {
-      console.log(`
+      if (!soft) {
+        console.log(`
 \u274C Configuration validation failed`);
-      console.log("Please fix the errors above before proceeding");
-      process.exit(1);
+        console.log("Please fix errors above before proceeding");
+        process.exit(1);
+      } else {
+        console.log("\u26A0\uFE0F  Configuration validation found errors (continuing in soft mode)");
+      }
     } else {
       console.log("\u2705 All configuration files are valid");
     }
@@ -14713,8 +14718,8 @@ class ConfigurationValidator {
     }
   }
 }
-async function validateStartup(configDir) {
-  return configValidator.validateAtStartup(configDir);
+async function validateStartup(configDir, soft = false) {
+  return configValidator.validateAtStartup(configDir, soft);
 }
 var import_ajv, import_ajv_formats, configValidator;
 var init_config_validator = __esm(() => {
@@ -39285,7 +39290,6 @@ import { join as join6 } from "path";
 import path from "path";
 import { execSync } from "child_process";
 import { homedir as homedir2, platform } from "os";
-var __dirname = "/Users/tonyhartmann/DevShare/JS/agent-shepherd/.agent-shepherd/src/cli";
 var COMMANDS = {
   worker: "Start the autonomous worker loop",
   monitor: "Start the supervision loop",
@@ -39307,6 +39311,7 @@ var COMMANDS = {
   help: "Show help information"
 };
 var PLUGIN_HANDLERS = {};
+var LOADED_PLUGINS = [];
 function loadPlugins() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
@@ -39352,7 +39357,7 @@ function loadPlugins() {
           COMMANDS[cmd.name] = cmd.description;
           PLUGIN_HANDLERS[cmd.name] = handler;
         }
-        console.log(`Loaded plugin: ${manifest.name} v${manifest.version}`);
+        LOADED_PLUGINS.push({ name: manifest.name, version: manifest.version });
       } catch (error) {
         console.warn(`Failed to load plugin ${pluginName}:`, error);
       }
@@ -39461,6 +39466,21 @@ function cmdInit() {
       console.log(`\u2705 Created directory: ${schemasDest}`);
     } else if (!existsSync6(schemasSource)) {
       console.log(`\u26A0\uFE0F  Warning: Schemas directory not found in installation`);
+    }
+  } catch {}
+  try {
+    const installDir = findInstallDir();
+    const pluginsSource = join6(installDir, "plugins");
+    if (existsSync6(pluginsSource)) {
+      const pluginDirs = readdirSync(pluginsSource, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+      for (const pluginName of pluginDirs) {
+        const sourcePath = join6(pluginsSource, pluginName);
+        const destPath = join6(pluginsDir, pluginName);
+        if (!existsSync6(destPath)) {
+          cpSync(sourcePath, destPath, { recursive: true });
+          console.log(`\u2705 Copied plugin: ${pluginName}`);
+        }
+      }
     }
   } catch {}
   const policiesPath = join6(configSubDir, "policies.yaml");
@@ -39716,7 +39736,7 @@ async function cmdValidatePolicyChain(soft = false) {
   console.log("\uD83D\uDD0D Validating policy-capability-agent chain...");
   try {
     const { validateStartup: validateStartup2 } = await Promise.resolve().then(() => (init_config_validator(), exports_config_validator));
-    await validateStartup2();
+    await validateStartup2(undefined, soft);
     const { policyCapabilityValidator: policyCapabilityValidator2 } = await Promise.resolve().then(() => (init_policy_capability_validator(), exports_policy_capability_validator));
     const result = await policyCapabilityValidator2.validateChain();
     console.log(`
@@ -39983,49 +40003,59 @@ async function cmdQuickstart() {
       console.log("\u26A0\uFE0F  OpenCode not available - using sample agent configurations");
       console.log("   You can sync agents later with: ashep sync-agents");
     }
-    console.log(`
-\uD83D\uDD0D Validating configuration...`);
+    console.log();
+    console.log("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
+    console.log("\uD83D\uDD0D Validating Configuration");
+    console.log("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
     const valid = await cmdValidatePolicyChain(true);
+    console.log();
+    const fallbackUsages = policyCapabilityValidator.getFallbackCapabilities();
+    if (fallbackUsages.length > 0) {
+      console.log("\u2139\uFE0F  Fallback Agent System");
+      console.log("   Your configuration includes a fallback agent system that allows");
+      console.log("   capabilities without specialized agents to be handled by general agents.");
+      console.log("   This is normal for first-time setup. The following capabilities use fallback:");
+      for (const usage of fallbackUsages) {
+        console.log(`   \u2022 ${usage.capability} \u2192 ${usage.fallbackAgent}`);
+      }
+      console.log("   You can customize fallback behavior in .agent-shepherd/config/config.yaml");
+      console.log();
+    }
     if (valid) {
-      console.log("\u2705 Configuration validation passed");
-      console.log("\uD83C\uDF31 Using simple policy with autonomous multi-phase workflow!");
+      console.log("\u2705 Summary");
+      console.log("   \uD83C\uDF31 Using simple policy with autonomous multi-phase workflow!");
       console.log("   Phases: Implement \u2192 Test \u2192 Validate (with automatic retry)");
       console.log("   Same agent handles all phases - demonstrates autonomous orchestration");
     } else {
-      console.log("\u26A0\uFE0F  Configuration validation found issues - this is normal for first-time setup");
+      console.log("\u26A0\uFE0F  Summary");
       console.log("   \uD83C\uDF31 Simple policy is set as default and works with basic agents");
       console.log("   Multi-phase workflow: Implement \u2192 Test \u2192 Validate (automatic retry on failure)");
-      console.log("   You can switch to advanced default policy when ready for exploration workflows");
-      console.log("   See: 'Configuration Customization (Advanced)' section below");
-      const fallbackUsages = policyCapabilityValidator.getFallbackCapabilities();
-      if (fallbackUsages.length > 0) {
-        console.log(`
-\u2139\uFE0F  Fallback Agent System`);
-        console.log("   Your configuration includes a fallback agent system that allows");
-        console.log("   capabilities without specialized agents to be handled by general agents.");
-        console.log("   This is normal for first-time setup. The following capabilities are using fallback:");
-        for (const usage of fallbackUsages) {
-          console.log(`   \u2022 ${usage.capability} \u2192 ${usage.fallbackAgent}`);
-        }
-        console.log("   You can customize fallback behavior in .agent-shepherd/config/config.yaml");
-      }
     }
-    console.log(`
-\uD83D\uDCDD Demo workflow ready!`);
+    console.log();
+    console.log("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
+    console.log("\uD83D\uDCDD Demo Workflow");
+    console.log("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
     console.log("   To try a demo:");
-    console.log("   1. Create a detailed issue: bd create --title 'Demo: Create hello world' --description '<detailed requirements here>'");
-    console.log("   2. Process it: ashep work <issue-id>");
+    console.log("   1. Create an issue with the animated hello world example:");
+    console.log("      bd create \\");
+    console.log("         --type task \\");
+    console.log("         --title 'Create animated hello world' \\");
+    console.log("         --description 'Create index.html with animated \\\"Hello World\\\" text. Use CSS for smooth pulsing animation. Add JavaScript click handler to change text color randomly.' \\");
+    console.log("         --labels quickstart,documentation");
+    console.log("   2. Process issue: ashep work <issue-id>");
     console.log("   3. View progress: ashep ui");
+    console.log();
+    console.log("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
+    console.log("\uD83C\uDF89 Quickstart Complete");
+    console.log("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
     console.log(`
-\uD83C\uDF89 Quickstart complete!`);
+Next Commands:`);
+    console.log("\u2022 ashep worker              - Start autonomous worker loop");
+    console.log("\u2022 ashep monitor            - Start supervision loop");
+    console.log("\u2022 ashep ui                 - Open flow visualization");
+    console.log("\u2022 ashep work <issue-id>    - Process specific issue");
     console.log(`
-Next steps:`);
-    console.log("\u2022 Start the worker: ashep worker");
-    console.log("\u2022 Start monitoring: ashep monitor");
-    console.log("\u2022 View UI: ashep ui");
-    console.log("\u2022 Process issues: ashep work <issue-id>");
-    console.log(`
-For more help: ashep help`);
+\uD83D\uDCD6 For more help: ashep help`);
   } catch (error) {
     console.error(`
 \u274C Quickstart failed:`, error instanceof Error ? error.message : String(error));
@@ -40045,16 +40075,27 @@ function getCurrentVersion() {
     if (existsSync6(versionFile)) {
       return readFileSync7(versionFile, "utf-8").trim();
     }
+    const packageJsonPath = join6(installDir, "package.json");
+    if (existsSync6(packageJsonPath)) {
+      const packageJson = JSON.parse(readFileSync7(packageJsonPath, "utf-8"));
+      return packageJson.version || "unknown";
+    }
   } catch {}
-  const packageJsonPath = join6(__dirname, "..", "package.json");
-  if (existsSync6(packageJsonPath)) {
-    const packageJson = JSON.parse(readFileSync7(packageJsonPath, "utf-8"));
-    return packageJson.version || "unknown";
-  }
   return "unknown";
 }
 function cmdVersion() {
-  console.log(getCurrentVersion());
+  const version = getCurrentVersion();
+  console.log(`
+  Agent Shepherd \x1B[36m${version}\x1B[0m`);
+  console.log("  \u2514\u2500 Plugins:");
+  if (LOADED_PLUGINS.length === 0) {
+    console.log("     (none)");
+  } else {
+    LOADED_PLUGINS.forEach((plugin) => {
+      console.log(`     \u2022 ${plugin.name} \x1B[90m${plugin.version}\x1B[0m`);
+    });
+  }
+  console.log();
 }
 async function cmdUpdate(version) {
   const targetVersion = version || "latest";
