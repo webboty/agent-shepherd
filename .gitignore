@@ -24,6 +24,7 @@ dist/
 *.log
 .agent-shepherd/*.jsonl
 .agent-shepherd/*.db
+.agent-shepherd/.agent-shepherd/*
 
 # OS
 .DS_Store
