@@ -12,6 +12,7 @@ export interface BeadsIssue {
   issue_type: string;
   created_at: string;
   updated_at: string;
+  labels?: string[];
   dependency_count?: number;
   dependent_count?: number;
 }
@@ -49,7 +50,13 @@ async function execBeadsCommand(args: string[]): Promise<string> {
 export async function getReadyIssues(): Promise<BeadsIssue[]> {
   const output = await execBeadsCommand(["ready", "--json"]);
   const issues = JSON.parse(output);
-  return Array.isArray(issues) ? issues : [];
+  const issuesArray = Array.isArray(issues) ? issues : [];
+
+  for (const issue of issuesArray) {
+    issue.labels = await getIssueLabels(issue.id);
+  }
+
+  return issuesArray;
 }
 
 /**
@@ -60,7 +67,11 @@ export async function getIssue(issueId: string): Promise<BeadsIssue | null> {
     const output = await execBeadsCommand(["show", issueId, "--json"]);
     const result = JSON.parse(output);
     // Beads returns an array, so take the first element
-    return Array.isArray(result) ? result[0] || null : result;
+    const issue = Array.isArray(result) ? result[0] || null : result;
+    if (issue) {
+      issue.labels = await getIssueLabels(issueId);
+    }
+    return issue;
   } catch {
     return null;
   }
@@ -139,4 +150,47 @@ export async function hasBlockers(issueId: string): Promise<boolean> {
     return true; // Treat missing issue as blocked
   }
   return (issue.dependency_count || 0) > 0;
+}
+
+/**
+ * Get labels for an issue
+ */
+export async function getIssueLabels(issueId: string): Promise<string[]> {
+  try {
+    const output = await execBeadsCommand(["label", "list", issueId, "--json"]);
+    const labels = JSON.parse(output);
+    return Array.isArray(labels) ? labels : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Update labels for an issue (add and remove)
+ */
+export async function updateIssueLabels(
+  issueId: string,
+  addLabels: string[] = [],
+  removeLabels: string[] = []
+): Promise<void> {
+  for (const label of addLabels) {
+    await addIssueLabel(issueId, label);
+  }
+  for (const label of removeLabels) {
+    await removeIssueLabel(issueId, label);
+  }
+}
+
+/**
+ * Add a label to an issue
+ */
+export async function addIssueLabel(issueId: string, label: string): Promise<void> {
+  await execBeadsCommand(["label", "add", issueId, label]);
+}
+
+/**
+ * Remove a label from an issue
+ */
+export async function removeIssueLabel(issueId: string, label: string): Promise<void> {
+  await execBeadsCommand(["label", "remove", issueId, label]);
 }
