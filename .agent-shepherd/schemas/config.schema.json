@@ -101,6 +101,54 @@
         }
       },
       "additionalProperties": false
+    },
+    "workflow": {
+      "type": "object",
+      "description": "Workflow trigger configuration",
+      "properties": {
+        "invalid_label_strategy": {
+          "type": "string",
+          "enum": ["error", "warning", "ignore"],
+          "default": "error",
+          "description": "How to handle invalid workflow labels: error (fail), warning (log and continue), ignore (silently skip)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "hitl": {
+      "type": "object",
+      "description": "Human-in-the-loop configuration",
+      "properties": {
+        "allowed_reasons": {
+          "type": "object",
+          "description": "Allowed HITL reasons configuration",
+          "properties": {
+            "predefined": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "description": "List of predefined HITL reasons",
+              "default": ["approval", "manual-intervention", "timeout", "error", "review-request"]
+            },
+            "allow_custom": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether custom HITL reasons are allowed"
+            },
+            "custom_validation": {
+              "type": "string",
+              "enum": ["none", "alphanumeric", "alphanumeric-dash-underscore"],
+              "default": "alphanumeric-dash-underscore",
+              "description": "Validation pattern for custom reasons: none (allow anything), alphanumeric (letters and numbers only), alphanumeric-dash-underscore (letters, numbers, dashes, and underscores)"
+            }
+          },
+          "required": ["predefined"]
+        }
+      },
+      "required": ["allowed_reasons"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -126,6 +174,16 @@
         "mappings": {
           "review": "summary",
           "architecture": "plan"
+        }
+      },
+      "workflow": {
+        "invalid_label_strategy": "error"
+      },
+      "hitl": {
+        "allowed_reasons": {
+          "predefined": ["approval", "manual-intervention", "timeout", "error", "review-request"],
+          "allow_custom": true,
+          "custom_validation": "alphanumeric-dash-underscore"
         }
       }
     }

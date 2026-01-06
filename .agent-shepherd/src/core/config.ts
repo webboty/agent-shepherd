@@ -14,6 +14,20 @@ export interface FallbackConfig {
   mappings?: Record<string, string>;
 }
 
+export interface WorkflowConfig {
+  invalid_label_strategy: "error" | "warning" | "ignore";
+}
+
+export interface AllowedReasonsConfig {
+  predefined: string[];
+  allow_custom: boolean;
+  custom_validation: "none" | "alphanumeric" | "alphanumeric-dash-underscore";
+}
+
+export interface HITLConfig {
+  allowed_reasons: AllowedReasonsConfig;
+}
+
 export interface AgentShepherdConfig {
   version: string;
   worker?: {
@@ -27,6 +41,8 @@ export interface AgentShepherdConfig {
   };
   ui?: UIConfig;
   fallback?: FallbackConfig;
+  workflow?: WorkflowConfig;
+  hitl?: HITLConfig;
 }
 
 /**
@@ -68,6 +84,17 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
         enabled: config.fallback.enabled ?? false,
         default_agent: config.fallback.default_agent,
         mappings: config.fallback.mappings
+      } : undefined,
+      workflow: {
+        invalid_label_strategy: "error",
+        ...config.workflow
+      },
+      hitl: config.hitl ? {
+        allowed_reasons: {
+          predefined: config.hitl.allowed_reasons?.predefined ?? ["approval", "manual-intervention", "timeout", "error", "review-request"],
+          allow_custom: config.hitl.allowed_reasons?.allow_custom ?? true,
+          custom_validation: config.hitl.allowed_reasons?.custom_validation ?? "alphanumeric-dash-underscore"
+        }
       } : undefined
     };
   } catch (error) {

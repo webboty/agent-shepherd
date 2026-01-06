@@ -430,10 +430,10 @@ agents:
       console.log(`ℹ️  Skipped (exists): ${agentsPath}`);
     }
   
-  // Create default config.yaml
-  const configPath = join(configSubDir, "config.yaml");
-  if (!existsSync(configPath)) {
-    const defaultConfig = `version: "1.0"
+   // Create default config.yaml
+   const configPath = join(configSubDir, "config.yaml");
+   if (!existsSync(configPath)) {
+     const defaultConfig = `version: "1.0"
 
 worker:
   poll_interval_ms: 30000
@@ -450,7 +450,7 @@ ui:
 
 # Fallback Agent System
 # When a policy requires a capability that no agent has,
-# the system will fall back to the specified agent.
+# the system will fall back to a specified agent.
 # This allows quickstart to work with default agents.
 fallback:
   enabled: true
@@ -459,12 +459,40 @@ fallback:
   # mappings:
   #   review: summary
   #   architecture: plan
-`;
-    writeFileSync(configPath, defaultConfig);
-    console.log(`✅ Created: ${configPath}`);
-  } else {
-    console.log(`ℹ️  Skipped (exists): ${configPath}`);
-  }
+
+# Workflow Trigger Configuration
+# Controls how workflow labels are handled on issues
+workflow:
+  # Strategy for invalid workflow labels:
+  # - error: Fail with error
+  # - warning: Log warning and continue
+  # - ignore: Silently skip
+  invalid_label_strategy: error
+
+# Human-in-the-Loop Configuration
+# Controls HITL (human-in-the-loop) behavior and allowed reasons
+hitl:
+  allowed_reasons:
+    # Predefined HITL reasons that are always allowed
+    predefined:
+      - approval
+      - manual-intervention
+      - timeout
+      - error
+      - review-request
+    # Allow custom HITL reasons (not in predefined list)
+    allow_custom: true
+    # Validation pattern for custom reasons:
+    # - none: Allow any text
+    # - alphanumeric: Letters and numbers only
+    # - alphanumeric-dash-underscore: Letters, numbers, dashes, underscores
+    custom_validation: alphanumeric-dash-underscore
+ `;
+     writeFileSync(configPath, defaultConfig);
+     console.log(`✅ Created: ${configPath}`);
+   } else {
+     console.log(`ℹ️  Skipped (exists): ${configPath}`);
+   }
   
   console.log("\n✅ Initialization complete!\n");
 

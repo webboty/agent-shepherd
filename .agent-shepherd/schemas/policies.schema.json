@@ -36,6 +36,21 @@
           "type": "string",
           "description": "Policy description"
         },
+        "issue_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "description": "Array of issue types that trigger this policy (e.g., ['bug', 'feature'])"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Priority for policy selection (higher = more preferred, used for tie-breaking)"
+        },
         "phases": {
           "type": "array",
           "minItems": 1,
@@ -169,6 +184,8 @@
         "default": {
           "name": "Default Workflow",
           "description": "Standard development workflow",
+          "issue_types": ["bug", "feature", "task"],
+          "priority": 50,
           "phases": [
             {
               "name": "plan",
