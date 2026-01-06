@@ -262,3 +262,11 @@ export async function getHITLReason(issueId: string): Promise<string | null> {
   
   return null;
 }
+
+/**
+ * Check if issue has excluded label (ashep-excluded)
+ */
+export async function hasExcludedLabel(issueId: string): Promise<boolean> {
+  const labels = await getIssueLabels(issueId);
+  return labels.includes("ashep-excluded");
+}

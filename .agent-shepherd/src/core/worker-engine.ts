@@ -12,6 +12,7 @@ import {
   setHITLLabel,
   clearHITLLabels,
   getCurrentPhase,
+  hasExcludedLabel,
 } from "./beads.ts";
 import { getOpenCodeClient } from "./opencode.ts";
 import {
@@ -25,7 +26,6 @@ import { loadConfig } from "./config.ts";
 export interface WorkerConfig {
   poll_interval_ms?: number;
   max_concurrent_runs?: number;
-  excluded_tags?: string[];
 }
 
 export interface ProcessResult {
@@ -51,7 +51,6 @@ export class WorkerEngine {
     this.config = {
       poll_interval_ms: 30000, // 30 seconds default
       max_concurrent_runs: 3,
-      excluded_tags: ["ashep:excluded"],
       ...config,
     };
   }
@@ -109,14 +108,18 @@ export class WorkerEngine {
   private async getEligibleIssues(): Promise<BeadsIssue[]> {
     const readyIssues = await getReadyIssues();
 
-    // Filter out excluded issues
-    return readyIssues.filter((issue) => {
-      // Check if issue has excluded tags in description or title
-      const text = `${issue.title} ${issue.description}`.toLowerCase();
-      return !this.config.excluded_tags!.some((tag) =>
-        text.includes(tag.toLowerCase())
-      );
-    });
+    // Filter out excluded issues by label
+    const eligibleIssues: BeadsIssue[] = [];
+    for (const issue of readyIssues) {
+      const isExcluded = await hasExcludedLabel(issue.id);
+      if (!isExcluded) {
+        eligibleIssues.push(issue);
+      } else {
+        console.log(`Skipping excluded issue: ${issue.id} - ${issue.title}`);
+      }
+    }
+    
+    return eligibleIssues;
   }
 
   /**
