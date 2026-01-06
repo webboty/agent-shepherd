@@ -194,3 +194,71 @@ export async function addIssueLabel(issueId: string, label: string): Promise<voi
 export async function removeIssueLabel(issueId: string, label: string): Promise<void> {
   await execBeadsCommand(["label", "remove", issueId, label]);
 }
+
+/**
+ * Set phase label for an issue (ashep-phase:<phase-name>)
+ */
+export async function setPhaseLabel(issueId: string, phaseName: string): Promise<void> {
+  const label = `ashep-phase:${phaseName}`;
+  await addIssueLabel(issueId, label);
+}
+
+/**
+ * Remove all phase labels from an issue
+ */
+export async function removePhaseLabels(issueId: string): Promise<void> {
+  const labels = await getIssueLabels(issueId);
+  const phaseLabels = labels.filter((label) => label.startsWith("ashep-phase:"));
+  
+  for (const label of phaseLabels) {
+    await removeIssueLabel(issueId, label);
+  }
+}
+
+/**
+ * Set HITL (Human-in-the-Loop) label for an issue (ashep-hitl:<reason>)
+ */
+export async function setHITLLabel(issueId: string, reason: string): Promise<void> {
+  const label = `ashep-hitl:${reason}`;
+  await addIssueLabel(issueId, label);
+}
+
+/**
+ * Clear all HITL labels from an issue
+ */
+export async function clearHITLLabels(issueId: string): Promise<void> {
+  const labels = await getIssueLabels(issueId);
+  const hitlLabels = labels.filter((label) => label.startsWith("ashep-hitl:"));
+  
+  for (const label of hitlLabels) {
+    await removeIssueLabel(issueId, label);
+  }
+}
+
+/**
+ * Get current phase from issue labels
+ */
+export async function getCurrentPhase(issueId: string): Promise<string | null> {
+  const labels = await getIssueLabels(issueId);
+  const phaseLabel = labels.find((label) => label.startsWith("ashep-phase:"));
+  
+  if (phaseLabel) {
+    return phaseLabel.replace("ashep-phase:", "");
+  }
+  
+  return null;
+}
+
+/**
+ * Get HITL reason from issue labels
+ */
+export async function getHITLReason(issueId: string): Promise<string | null> {
+  const labels = await getIssueLabels(issueId);
+  const hitlLabel = labels.find((label) => label.startsWith("ashep-hitl:"));
+  
+  if (hitlLabel) {
+    return hitlLabel.replace("ashep-hitl:", "");
+  }
+  
+  return null;
+}

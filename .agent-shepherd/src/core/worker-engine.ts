@@ -3,11 +3,24 @@
  * Handles autonomous issue processing, agent selection, and run execution
  */
 
-import { getReadyIssues, updateIssue, type BeadsIssue } from "./beads.ts";
+import {
+  getReadyIssues,
+  updateIssue,
+  type BeadsIssue,
+  setPhaseLabel,
+  removePhaseLabels,
+  setHITLLabel,
+  clearHITLLabels,
+  getCurrentPhase,
+} from "./beads.ts";
 import { getOpenCodeClient } from "./opencode.ts";
-import { getPolicyEngine } from "./policy.ts";
+import {
+  getPolicyEngine,
+  validateHITLReason,
+} from "./policy.ts";
 import { getAgentRegistry } from "./agent-registry.ts";
 import { getLogger, type RunOutcome } from "./logging.ts";
+import { loadConfig } from "./config.ts";
 
 export interface WorkerConfig {
   poll_interval_ms?: number;
@@ -115,7 +128,21 @@ export class WorkerEngine {
     // 1. Resolve policy and phase using matchPolicy
     const policy = this.policyEngine.matchPolicy(issue);
     const phases = this.policyEngine.getPhaseSequence(policy);
-    const phase = phases[0] || "plan";
+
+    // Check for existing phase label to resume from
+    const currentPhaseLabel = await getCurrentPhase(issue.id);
+    let phase: string;
+    
+    if (currentPhaseLabel && phases.includes(currentPhaseLabel)) {
+      // Resume from existing phase
+      phase = currentPhaseLabel;
+      console.log(`Resuming issue from phase '${phase}'`);
+    } else {
+      // Start from first phase
+      phase = phases[0] || "plan";
+      // Set initial phase label
+      await setPhaseLabel(issue.id, phase);
+    }
 
     console.log(`Using policy '${policy}' at phase '${phase}'`);
 
@@ -330,6 +357,12 @@ ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval b
     switch (transition.type) {
       case "advance":
         await updateIssue(issueId, { status: "open" });
+        // Update phase label to next phase
+        if (transition.next_phase) {
+          await setPhaseLabel(issueId, transition.next_phase);
+          // Clear HITL labels when advancing
+          await clearHITLLabels(issueId);
+        }
         console.log(
           `Advanced to next phase: ${transition.next_phase || "unknown"}`
         );
@@ -337,19 +370,50 @@ ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval b
 
       case "retry":
         await updateIssue(issueId, { status: "open" });
+        // Keep existing phase label on retry
+        // Clear HITL labels when retrying
+        await clearHITLLabels(issueId);
         console.log(`Retrying phase: ${transition.reason}`);
         break;
 
       case "block":
         await updateIssue(issueId, { status: "blocked" });
+        // Set HITL label for approval required
+        if (transition.reason?.includes("approval") || transition.reason?.includes("Human approval")) {
+          const config = loadConfig();
+          const hitlReason = transition.reason?.toLowerCase().includes("approval") 
+            ? "approval" 
+            : "manual-intervention";
+          
+          if (validateHITLReason(hitlReason, config.hitl)) {
+            await setHITLLabel(issueId, hitlReason);
+            // Generate approval note
+            await this.generateApprovalNote(issueId, hitlReason, transition.reason);
+          }
+        }
         console.log(`Blocked issue: ${transition.reason}`);
         break;
 
       case "close":
         await updateIssue(issueId, { status: "closed" });
+        // Remove all tracking labels on close
+        await removePhaseLabels(issueId);
+        await clearHITLLabels(issueId);
         console.log(`Closed issue: ${transition.reason}`);
         break;
     }
+  }
+
+  /**
+   * Generate approval note when HITL is triggered
+   */
+  private async generateApprovalNote(
+    issueId: string,
+    reason: string,
+    details: string
+  ): Promise<void> {
+    const note = `🔔 HITL Required: ${reason}\n\n${details}\n\nPlease review and provide approval to proceed.`;
+    await updateIssue(issueId, { notes: note });
   }
 }
 

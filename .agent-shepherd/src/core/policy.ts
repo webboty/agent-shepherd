@@ -7,6 +7,7 @@ import { parse as parseYAML } from "yaml";
 import { readFileSync } from "fs";
 import { getConfigPath } from "./path-utils";
 import { type BeadsIssue } from "./beads.ts";
+import { type HITLConfig, loadConfig } from "./config.ts";
 
 export interface PhaseConfig {
   name: string;
@@ -407,4 +408,35 @@ export function getPolicyEngine(configPath?: string): PolicyEngine {
     defaultPolicyEngine = new PolicyEngine(defaultPath);
   }
   return defaultPolicyEngine;
+}
+
+/**
+ * Validate HITL reason against predefined list and custom validation rules
+ */
+export function validateHITLReason(reason: string, config?: HITLConfig): boolean {
+  const hitlConfig = config || loadConfig().hitl;
+  
+  if (!hitlConfig) {
+    return true;
+  }
+  
+  const { predefined, allow_custom, custom_validation } = hitlConfig.allowed_reasons;
+  
+  if (predefined.includes(reason)) {
+    return true;
+  }
+  
+  if (allow_custom) {
+    switch (custom_validation) {
+      case "none":
+        return true;
+      case "alphanumeric":
+        return /^[a-z0-9]+$/i.test(reason);
+      case "alphanumeric-dash-underscore":
+      default:
+        return /^[a-z][a-z0-9_-]*$/i.test(reason);
+    }
+  }
+  
+  return false;
 }
