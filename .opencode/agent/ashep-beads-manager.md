@@ -38,6 +38,7 @@ permission:
     "wget *": ask
     "docker *": ask
     "kubectl *": ask
+    "bd *": allow
   edit: allow
 ---
 # Beads Manager

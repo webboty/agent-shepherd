@@ -16,7 +16,15 @@ tools:
   context7: true
   serena: true
 permission:
-  git: true
+  edit:
+    "*": allow
+    "**/*.env*": deny
+    "**/*.key": deny
+    "**/*.secret": deny
+    "node_modules/**": deny
+    ".git/**": deny
+  git: allow
+  webfetch: allow
   bash:
     "git push": allow
     "git pull": allow
@@ -33,7 +41,6 @@ permission:
     "wget *": ask
     "docker *": ask
     "kubectl *": ask
-  edit: allow
 ---
 # GitHub Master Agent
 
