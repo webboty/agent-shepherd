@@ -6,6 +6,7 @@
 import { parse as parseYAML } from "yaml";
 import { readFileSync } from "fs";
 import { getConfigPath } from "./path-utils";
+import { type BeadsIssue } from "./beads.ts";
 
 export interface PhaseConfig {
   name: string;
@@ -29,6 +30,8 @@ export interface RetryConfig {
 export interface PolicyConfig {
   name: string;
   description?: string;
+  issue_types?: string[];
+  priority?: number;
   phases: PhaseConfig[];
   retry?: RetryConfig;
   timeout_base_ms?: number;
@@ -140,6 +143,78 @@ export class PolicyEngine {
    */
   getDefaultPolicyName(): string {
     return this.defaultPolicy;
+  }
+
+  /**
+   * Match a policy to an issue based on labels and issue type
+   * Priority order:
+   * 1. Explicit workflow label (ashep-workflow:<name>)
+   * 2. Issue type matching (highest priority first, ties broken by config order)
+   * 3. Default policy
+   */
+  matchPolicy(issue: BeadsIssue): string {
+    const labels = issue.labels || [];
+
+    // Check for explicit workflow label
+    const workflowLabel = labels.find(label => label.startsWith("ashep-workflow:"));
+    if (workflowLabel) {
+      const workflowName = workflowLabel.replace("ashep-workflow:", "");
+      
+      // Validate that the workflow exists
+      if (this.policies.has(workflowName)) {
+        return workflowName;
+      } else {
+        // Handle invalid workflow label based on config
+        const strategy = this.getInvalidLabelStrategy();
+        
+        if (strategy === "error") {
+          throw new Error(`Invalid workflow label: ${workflowLabel}. Policy '${workflowName}' does not exist.`);
+        } else if (strategy === "warning") {
+          console.warn(`Invalid workflow label: ${workflowLabel}. Policy '${workflowName}' does not exist. Falling back to default.`);
+        }
+        // For "ignore", silently fall through to default
+      }
+    }
+
+    // Match by issue type (if defined)
+    if (issue.issue_type) {
+      const matchingPolicies: Array<{ name: string; priority: number; index: number }> = [];
+      
+      for (const [name, policy] of this.policies.entries()) {
+        if (policy.issue_types && policy.issue_types.includes(issue.issue_type)) {
+          const priority = policy.priority || 50;
+          const index = Array.from(this.policies.keys()).indexOf(name);
+          matchingPolicies.push({ name, priority, index });
+        }
+      }
+
+      // Sort by priority (highest first), then by config order (earliest first)
+      if (matchingPolicies.length > 0) {
+        matchingPolicies.sort((a, b) => {
+          if (b.priority !== a.priority) {
+            return b.priority - a.priority; // Higher priority first
+          }
+          return a.index - b.index; // Earlier in config first (tie-breaker)
+        });
+        return matchingPolicies[0].name;
+      }
+    }
+
+    // Fall back to default policy
+    return this.defaultPolicy;
+  }
+
+  /**
+   * Get the invalid label strategy from configuration
+   */
+  private getInvalidLabelStrategy(): "error" | "warning" | "ignore" {
+    try {
+      const { loadConfig } = require("./config.ts");
+      const config = loadConfig();
+      return config.workflow?.invalid_label_strategy || "error";
+    } catch {
+      return "error";
+    }
   }
 
   /**

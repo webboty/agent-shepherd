@@ -112,8 +112,8 @@ export class WorkerEngine {
   async processIssue(issue: BeadsIssue): Promise<ProcessResult> {
     console.log(`Processing issue: ${issue.id} - ${issue.title}`);
 
-    // 1. Resolve policy and phase
-    const policy = this.policyEngine.getDefaultPolicyName();
+    // 1. Resolve policy and phase using matchPolicy
+    const policy = this.policyEngine.matchPolicy(issue);
     const phases = this.policyEngine.getPhaseSequence(policy);
     const phase = phases[0] || "plan";
 
