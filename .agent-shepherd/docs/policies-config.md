@@ -124,30 +124,136 @@ See [Main Configuration](../config-config.md#fallback-agent-configuration) for g
 **Purpose**: Detailed explanation of policy purpose and scope  
 **Impact**: Helps users understand when to apply each policy
 
-#### `trigger` (object)
-**Required**: Yes  
-**Purpose**: Conditions that activate this policy  
-**Impact**: Determines which issues use this workflow
-
-##### `type` (string)
-**Required**: Yes  
-**Purpose**: Type of trigger condition  
-**Impact**: Controls when policy is applied  
-**Values**:
-- `"issue"`: Standard issue-based triggering
-- `"manual"`: Requires explicit policy selection
-
-##### `patterns` (array of strings)
-**Required**: No (for type: "issue")  
-**Purpose**: Issue labels/tags that match this policy  
-**Impact**: Filters issues to appropriate workflows  
-**Values**: Issue labels like "bug", "feature", "enhancement", "urgent"
-
-##### `priority` (number)
+#### `issue_types` (array of strings)
 **Required**: No  
-**Purpose**: Policy selection priority when multiple match  
+**Purpose**: Issue types that trigger this policy (e.g., `['bug', 'feature']`)  
+**Impact**: Automatic policy selection based on issue type matching  
+**Values**: Beads issue types (lowercase, alphanumeric, dashes, underscores)
+
+#### `priority` (number)
+**Required**: No (default: 50)  
+**Purpose**: Policy selection priority when multiple policies match an issue type  
 **Impact**: Higher priority policies take precedence  
-**Values**: 1-100 (higher = more preferred)
+**Values**: 1-100 (higher = more preferred)  
+**Note**: When multiple policies match the same issue type, priority determines selection. Ties are broken by order in the config file.
+
+### Trigger System
+
+Agent Shepherd uses a label-based trigger system to automatically select policies for issues:
+
+#### Priority Order
+
+1. **Explicit Workflow Label** (highest priority)
+   - Label format: `ashep-workflow:<policy-name>`
+   - Example: `ashep-workflow:security-audit`
+   - Override all other triggers when present
+   - **Invalid label handling**: Controlled by `workflow.invalid_label_strategy` in config.yaml
+     - `error`: Fail with error message (default)
+     - `warning`: Log warning and fall back to default policy
+     - `ignore`: Silently ignore and fall back to default policy
+
+2. **Issue Type Matching** (automatic)
+   - Matches issue type to policy `issue_types` array
+   - Multiple policies can match same issue type
+   - Policy with highest `priority` wins
+   - Config order breaks priority ties (earlier in file wins)
+
+3. **Default Policy** (fallback)
+   - Policy specified in `default_policy` field
+   - Used when no explicit label or issue type match
+
+#### Label Naming Conventions
+
+- `ashep-workflow:<name>`: Explicit workflow assignment
+- `ashep-phase:<name>`: Current workflow phase (auto-managed)
+- `ashep-hitl:<reason>`: Human-in-the-loop state (auto-managed)
+- `ashep-excluded`: Exclude issue from processing
+
+#### Example Usage
+
+```bash
+# Explicit workflow assignment
+bd update ISSUE-123 --labels "ashep-workflow:security-audit"
+
+# Issue type matching (automatic)
+bd create --type bug --title "Fix login bug"
+# Policies with issue_types: ['bug'] will match
+
+# Exclude from processing
+bd update ISSUE-123 --labels "ashep-excluded"
+```
+
+### Trigger Examples
+
+#### Explicit Workflow Label
+```yaml
+# policies.yaml
+security-audit:
+  name: "Security Audit Workflow"
+  phases:
+    - name: threat-modeling
+      capabilities: [security, analysis]
+    - name: implementation
+      capabilities: [coding, security]
+```
+
+```bash
+# Force use of security-audit workflow
+bd update ISSUE-123 --labels "ashep-workflow:security-audit"
+```
+
+#### Issue Type Matching
+```yaml
+# policies.yaml
+quick-fixes:
+  name: "Quick Bug Fixes"
+  issue_types: [bug, quick-fix]
+  priority: 80
+  phases:
+    - name: triage
+      capabilities: [analysis]
+
+detailed-investigation:
+  name: "Detailed Investigation"
+  issue_types: [bug]
+  priority: 60
+  phases:
+    - name: deep-analysis
+      capabilities: [architecture, analysis]
+```
+
+```bash
+# Both policies match 'bug' type
+# quick-fixes wins due to higher priority (80 > 60)
+bd create --type bug --title "Fix critical bug"
+```
+
+#### Invalid Workflow Label Handling
+```yaml
+# config.yaml
+workflow:
+  invalid_label_strategy: "warning"  # or "error" or "ignore"
+```
+
+```bash
+# Invalid workflow label (policy doesn't exist)
+bd update ISSUE-123 --labels "ashep-workflow:nonexistent"
+
+# With strategy "error": Processing fails with error
+# With strategy "warning": Warning logged, falls back to default
+# With strategy "ignore": Silently falls back to default
+```
+
+### Migration from Deprecated Fields
+
+**Deprecated** (removed in v2.0):
+- `trigger.type` field (automatic label-based triggering now)
+- `trigger.patterns` field (use `issue_types` instead)
+
+**New approach**:
+- Labels: Add `ashep-workflow:<name>` label to issue
+- Issue types: Configure `issue_types` array in policy
+- Priority: Configure `priority` field in policy
 
 #### `phases` (array)
 **Required**: Yes  
@@ -234,12 +340,17 @@ See [Main Configuration](../config-config.md#fallback-agent-configuration) for g
 
 ## Policy Execution Flow
 
-1. **Trigger Matching**: Issue labels matched against policy triggers
-2. **Phase Sequencing**: Phases executed in order, respecting dependencies
-3. **Agent Selection**: Best agent chosen based on capabilities and constraints
-4. **Model Resolution**: Model determined by priority hierarchy (Phase > Agent > OpenCode)
-5. **Iteration Control**: Phases can iterate until success or max_iterations reached
-6. **Dependency Resolution**: Dependent phases wait for prerequisites
+1. **Trigger Matching**: Issue labels and type matched against policies
+   - Explicit `ashep-workflow:<name>` label (highest priority)
+   - Issue type matching with priority ordering
+   - Default policy as fallback
+2. **Phase Resumption**: If `ashep-phase:<name>` label exists, resume from that phase
+3. **Phase Sequencing**: Phases executed in order, respecting dependencies
+4. **Agent Selection**: Best agent chosen based on capabilities and constraints
+5. **Model Resolution**: Model determined by priority hierarchy (Phase > Agent > OpenCode)
+6. **Iteration Control**: Phases can iterate until success or max_iterations reached
+7. **Dependency Resolution**: Dependent phases wait for prerequisites
+8. **Transition Handling**: Phase labels updated on transitions (`ashep-phase:<name>`, `ashep-hitl:<reason>`)
 
 ## Model Priority Hierarchy
 
@@ -279,9 +390,8 @@ agents:
 ```yaml
 - id: "full-stack-feature"
   name: "Full Stack Feature Development"
-  trigger:
-    type: "issue"
-    patterns: ["feature", "full-stack"]
+  issue_types: ["feature", "full-stack"]
+  priority: 70
   phases:
     - name: "architecture-review"
       description: "Review system architecture implications"
@@ -309,9 +419,8 @@ agents:
 ```yaml
 - id: "security-audit"
   name: "Security-Focused Development"
-  trigger:
-    type: "issue"
-    patterns: ["security", "audit"]
+  issue_types: ["security", "audit"]
+  priority: 90
   phases:
     - name: "threat-modeling"
       capabilities: ["security", "analysis"]
@@ -332,9 +441,8 @@ agents:
 ```yaml
 - id: "quick-fixes"
   name: "Fast Bug Fixes"
-  trigger:
-    type: "issue"
-    patterns: ["bug", "quick-fix"]
+  issue_types: ["bug", "quick-fix"]
+  priority: 80
   phases:
     - name: "triage"
       capabilities: ["analysis"]
@@ -354,9 +462,8 @@ agents:
 ```yaml
 - id: "complex-development"
   name: "Complex Feature Development"
-  trigger:
-    type: "issue"
-    patterns: ["feature", "complex"]
+  issue_types: ["feature", "complex"]
+  priority: 60
   phases:
     - name: "analysis"
       description: "Analyze requirements"

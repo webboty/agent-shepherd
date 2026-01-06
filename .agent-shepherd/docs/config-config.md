@@ -24,6 +24,29 @@ monitor:
 ui:
   port: 3000
   host: localhost
+
+workflow:
+  invalid_label_strategy: "error"
+
+hitl:
+  allowed_reasons:
+    predefined:
+      - approval
+      - manual-intervention
+      - timeout
+      - error
+      - review-request
+    allow_custom: true
+    custom_validation: "alphanumeric-dash-underscore"
+
+fallback:
+  enabled: true
+  default_agent: build
+  mappings:
+    review: summary
+    architecture: plan
+    documentation: summary
+    testing: general
 ```
 
 ## Field Reference
@@ -134,6 +157,178 @@ ui:
 - `"localhost"`: Local development (secure)
 - `"127.0.0.1"`: Explicit local binding
 - `"0.0.0.0"`: All network interfaces (less secure)
+
+## Workflow Configuration
+
+The workflow configuration controls how Agent Shepherd handles workflow triggers and label management.
+
+### `workflow` (object)
+**Required**: No  
+**Purpose**: Workflow trigger and label management settings  
+**Impact**: Controls policy selection behavior when using labels
+
+#### `invalid_label_strategy` (string)
+**Required**: No (default: "error")  
+**Purpose**: How to handle invalid workflow labels  
+**Impact**: Determines system behavior when encountering invalid `ashep-workflow:<name>` labels
+
+**Values**:
+- `"error"`: Fail processing with error message (default, safest)
+- `"warning"`: Log warning and continue with default policy
+- `"ignore"`: Silently ignore and continue with default policy
+
+**Examples**:
+
+```yaml
+workflow:
+  invalid_label_strategy: "error"  # Strict mode (recommended for production)
+```
+
+```yaml
+workflow:
+  invalid_label_strategy: "warning"  # Forgiving mode (good for development)
+```
+
+```yaml
+workflow:
+  invalid_label_strategy: "ignore"  # Silent mode (not recommended)
+```
+
+### When to Use Each Strategy
+
+**`error`** (recommended for production):
+- Prevents silent failures
+- Ensures workflow labels are valid
+- Fails fast with clear error messages
+
+**`warning`** (good for development):
+- Allows workflow to continue
+- Alerts to potential misconfigurations
+- Good for testing new workflows
+
+**`ignore`** (rarely used):
+- Silently falls back to default policy
+- Useful for completely automated systems
+- Not recommended (can hide issues)
+
+## Human-in-the-Loop (HITL) Configuration
+
+The HITL configuration controls human intervention points in workflows.
+
+### `hitl` (object)
+**Required**: No  
+**Purpose**: Human-in-the-loop approval and intervention settings  
+**Impact**: Controls when and how human approval is required
+
+#### `allowed_reasons` (object)
+**Required**: Yes (if `hitl` is specified)  
+**Purpose**: Allowed HITL reasons and validation rules  
+**Impact**: Controls which HITL labels are valid
+
+##### `predefined` (array of strings)
+**Required**: Yes  
+**Purpose**: Predefined HITL reasons that are always allowed  
+**Impact**: Standardizes human intervention reasons  
+**Default**: `["approval", "manual-intervention", "timeout", "error", "review-request"]`
+
+**Values**: Lowercase, alphanumeric with dashes/underscores
+
+##### `allow_custom` (boolean)
+**Required**: No (default: true)  
+**Purpose**: Whether custom HITL reasons are allowed  
+**Impact**: Flexibility in human intervention labeling
+
+##### `custom_validation` (string)
+**Required**: No (default: "alphanumeric-dash-underscore")  
+**Purpose**: Validation pattern for custom reasons  
+**Impact**: Controls format of custom HITL reasons
+
+**Values**:
+- `"none"`: Allow any custom reason (not recommended)
+- `"alphanumeric"`: Letters and numbers only
+- `"alphanumeric-dash-underscore"`: Letters, numbers, dashes, underscores (default)
+
+**Examples**:
+
+```yaml
+hitl:
+  allowed_reasons:
+    predefined:
+      - approval
+      - manual-intervention
+      - timeout
+      - error
+      - review-request
+    allow_custom: true
+    custom_validation: "alphanumeric-dash-underscore"
+```
+
+```yaml
+hitl:
+  allowed_reasons:
+    predefined:
+      - approval
+      - security-review
+    allow_custom: false  # Only allow predefined reasons
+```
+
+### HITL Label Format
+
+HITL labels follow this format: `ashep-hitl:<reason>`
+
+**Examples**:
+- `ashep-hitl:approval`
+- `ashep-hitl:security-review`
+- `ashep-hitl:manual-intervention`
+- `ashep-hitl:custom-reason-123`
+
+### HITL Validation
+
+When a HITL label is set, Agent Shepherd validates:
+1. Is the reason in the predefined list? → **Allowed**
+2. Is custom reason allowed? → **Validate with pattern**
+3. Does custom reason match validation pattern? → **Allowed or rejected**
+
+**Validation Examples**:
+
+```bash
+# Predefined reason (always allowed)
+bd update ISSUE-123 --labels "ashep-hitl:approval"
+
+# Custom reason (if allow_custom: true)
+bd update ISSUE-123 --labels "ashep-hitl:security-review"
+
+# Custom reason (if allow_custom: false)
+bd update ISSUE-123 --labels "ashep-hitl:custom-review"
+# Result: Rejected - custom reasons not allowed
+
+# Custom reason with invalid format
+bd update ISSUE-123 --labels "ashep-hitl:Invalid Reason!"
+# Result: Rejected - doesn't match "alphanumeric-dash-underscore"
+```
+
+### HITL in Workflow Transitions
+
+Agent Shepherd automatically manages HITL labels during workflow transitions:
+
+**Phase Completion → Block (approval required)**:
+```yaml
+phases:
+  - name: security-review
+    require_approval: true
+```
+Result: Sets `ashep-hitl:approval` label
+
+**Manual HITL Trigger**:
+```bash
+bd update ISSUE-123 --labels "ashep-hitl:manual-intervention"
+```
+Result: Worker pauses issue processing
+
+**HITL Resolution**:
+When human addresses HITL requirement, label is cleared automatically:
+- Removes `ashep-hitl:<reason>` label
+- Resumes phase processing
 
 ## Fallback Agent Configuration
 

@@ -8,6 +8,7 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 
 - **Intelligent Agent Selection**: Automatically matches issues to the best available AI agents based on capabilities and requirements
 - **Workflow Orchestration**: Manages complex development workflows with phases, retries, and human-in-the-loop approval
+- **Label-Based Workflows**: Automatic workflow selection via Beads labels with explicit assignment, issue type matching, and phase tracking
 - **Configuration Validation**: Validates policy-capability-agent relationships to prevent dead ends and ensure workflow integrity
 - **Visual Relationship Tree**: ASCII/JSON tree visualization showing policy-capability-agent mappings and health status
 - **Real-time Monitoring**: Supervises agent execution with stall detection and timeout management
@@ -208,6 +209,187 @@ bd create --title "Implement user authentication" --description "<paste OpenSpec
 ```
 
 **Note**: The simple policy is set as default for first-time users. Switch to advanced policy when you're ready for planning-heavy workflows.
+
+## Label-Based Workflow Control
+
+Agent Shepherd uses Beads labels to control workflow behavior, providing visibility and manual control over issue processing.
+
+### Workflow Labels
+
+| Label | Purpose | Usage |
+|--------|---------|--------|
+| `ashep-workflow:<name>` | Assign specific workflow | `bd update ISSUE-1 --labels "ashep-workflow:security-audit"` |
+| `ashep-phase:<name>` | Current workflow phase (auto) | System-managed, shows current phase |
+| `ashep-hitl:<reason>` | Human-in-the-loop state (auto) | System-managed for approvals |
+| `ashep-excluded` | Exclude from processing | `bd update ISSUE-1 --labels "ashep-excluded"` |
+
+### Automatic Workflow Selection
+
+Agent Shepherd automatically selects workflows using three priority levels:
+
+**1. Explicit Workflow Label** (highest priority)
+```bash
+# Force specific workflow
+bd update ISSUE-123 --labels "ashep-workflow:security-audit"
+```
+
+**2. Issue Type Matching** (automatic)
+```bash
+# Issue type automatically matched to policy
+bd create --type bug --title "Fix login error"
+# Policies with issue_types: ['bug'] will match
+```
+
+**3. Default Policy** (fallback)
+```bash
+# No label or type match → use default policy
+# Default policy specified in policies.yaml
+```
+
+### Phase Tracking and Resumption
+
+Agent Shepherd tracks workflow phases using labels:
+
+```bash
+# Worker automatically adds phase label
+ashep-phase:plan  # First phase
+ashep-phase:implement  # Second phase
+ashep-phase:test  # Third phase
+
+# Worker reads phase label to resume processing
+# If worker restarts, it resumes from current phase
+```
+
+**Manual Phase Control** (advanced):
+```bash
+# Manually set phase label to force phase (rarely needed)
+bd update ISSUE-123 --labels "ashep-phase:implement"
+```
+
+### Human-in-the-Loop (HITL) Labels
+
+When a workflow phase requires approval or human intervention:
+
+```bash
+# System automatically adds HITL label
+ashep-hitl:approval  # Approval required
+ashep-hitl:manual-intervention  # Manual intervention needed
+ashep-hitl:timeout  # Phase timed out
+ashep-hitl:error  # Error occurred
+ashep-hitl:review-request  # Review requested
+```
+
+**HITL Workflow**:
+```bash
+# 1. Worker pauses at approval point
+ashep-hitl:approval
+
+# 2. Human reviews issue
+bd show ISSUE-123
+
+# 3. Human resolves HITL (removes label or adds note)
+bd update ISSUE-123 --notes "Approved implementation"
+
+# 4. Worker detects resolution and resumes
+# ashep-hitl:approval label cleared automatically
+```
+
+### Exclusion Control
+
+Exclude issues from automated processing:
+
+```bash
+# Mark issue as excluded (won't be processed by worker)
+bd update ISSUE-123 --labels "ashep-excluded"
+
+# Later, remove exclusion to allow processing
+bd label remove ISSUE-123 ashep-excluded
+```
+
+**Use cases for exclusion**:
+- Manual testing required
+- Human-only tasks
+- Issues awaiting external dependencies
+- Testing workflow changes
+
+### Advanced Label Examples
+
+**Multi-workflow Setup**:
+```yaml
+# policies.yaml
+policies:
+  security-audit:
+    name: "Security Audit"
+    issue_types: [bug, feature]
+    priority: 90  # High priority for security
+    phases:
+      - name: threat-modeling
+        capabilities: [security, analysis]
+
+  quick-fix:
+    name: "Quick Fix"
+    issue_types: [bug]
+    priority: 50
+    phases:
+      - name: fix
+        capabilities: [coding]
+```
+
+```bash
+# Regular bug → quick-fix policy (priority 50)
+bd create --type bug --title "Fix typo"
+
+# Security bug → security-audit policy (priority 90)
+bd create --type bug --title "Fix security vulnerability"
+
+# Force security audit on any issue
+bd update ISSUE-123 --labels "ashep-workflow:security-audit"
+```
+
+**Invalid Workflow Label Handling**:
+```yaml
+# config.yaml
+workflow:
+  invalid_label_strategy: "warning"  # or "error" or "ignore"
+```
+
+```bash
+# Invalid workflow label (policy doesn't exist)
+bd update ISSUE-123 --labels "ashep-workflow:nonexistent"
+
+# With strategy "error": Worker fails with error
+# With strategy "warning": Worker logs warning, uses default
+# With strategy "ignore": Worker silently uses default
+```
+
+### Label Validation
+
+HITL labels are validated against configuration:
+
+```yaml
+# config.yaml
+hitl:
+  allowed_reasons:
+    predefined:
+      - approval
+      - manual-intervention
+      - security-review
+    allow_custom: true
+    custom_validation: "alphanumeric-dash-underscore"
+```
+
+**Valid labels**:
+```bash
+ashep-hitl:approval  # Predefined (always allowed)
+ashep-hitl:security-review  # Predefined (always allowed)
+ashep-hitl:custom-reason-123  # Custom (matches validation)
+```
+
+**Invalid labels**:
+```bash
+ashep-hitl:Invalid  # Wrong case (must be lowercase)
+ashep-hitl:invalid reason!  # Contains spaces and special chars
+```
 
 ## Fallback Agent System
 
@@ -445,9 +627,8 @@ version: "1.0"
 policies:
   - id: "default-workflow"
     name: "Default Development Workflow"
-    trigger:
-      type: "issue"
-      patterns: ["feature", "bug"]
+    issue_types: ["feature", "bug"]
+    priority: 50
     phases:
       - name: "analysis"
         capabilities: ["analysis", "planning"]

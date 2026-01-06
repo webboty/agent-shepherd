@@ -287,11 +287,22 @@ Main system settings:
 
 ### config/policies.yaml
 Workflow definitions:
-- Policy triggers (issue labels)
+- **Label-based triggers**: Issue type matching and explicit workflow labels
 - Phase sequences with capabilities
 - Retry strategies
 - Timeout settings
 - Model overrides (optional)
+
+**Label Conventions**:
+- `ashep-workflow:<name>` - Explicit workflow assignment (highest priority)
+- `ashep-phase:<name>` - Current workflow phase (system-managed)
+- `ashep-hitl:<reason>` - Human-in-the-loop state (system-managed)
+- `ashep-excluded` - Exclude from processing (user-set)
+
+**Trigger Priority**:
+1. Explicit workflow label (`ashep-workflow:xxx`) → Direct assignment
+2. Issue type matching → Policy with matching `issue_types` array (highest priority wins)
+3. Default policy → Fallback
 
 ### config/agents.yaml
 Agent registry (auto-synced from OpenCode):

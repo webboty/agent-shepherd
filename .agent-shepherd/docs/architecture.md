@@ -55,10 +55,17 @@ Agent Shepherd is a sophisticated orchestration system designed to coordinate AI
 
 ### Data Flow
 
-1. **Issue Discovery**: Worker Engine polls Beads for ready issues
-2. **Policy Resolution**: Policy Engine determines appropriate workflow
-3. **Agent Selection**: Agent Registry finds best agent for current phase
-   - **Fallback Agent Selection**: When no agent has a capability, uses cascading fallback hierarchy (global → policy → phase) to select appropriate fallback agent
+ 1. **Issue Discovery**: Worker Engine polls Beads for ready issues
+2. **Label-Based Policy Resolution**: Policy Engine determines appropriate workflow using label triggers
+    - **Explicit workflow label** (`ashep-workflow:<name>`): Highest priority, direct policy assignment
+    - **Issue type matching**: Automatic matching based on policy `issue_types` arrays
+    - **Priority ordering**: Higher priority policies win when multiple match same issue type
+    - **Default policy**: Fallback when no label or type match
+3. **Phase Tracking**: Worker reads `ashep-phase:<name>` label to resume from current phase
+4. **HITL State Management**: Worker checks `ashep-hitl:<reason>` label for human intervention requirements
+5. **Exclusion Control**: Worker skips issues with `ashep-excluded` label
+6. **Agent Selection**: Agent Registry finds best agent for current phase
+    - **Fallback Agent Selection**: When no agent has a capability, uses cascading fallback hierarchy (global → policy → phase) to select appropriate fallback agent
 
 ### Capability-Based Matching with Fallback
 
@@ -103,6 +110,23 @@ Policies define sequential phases with:
 - Timeout multipliers
 - Approval requirements
 - Retry strategies
+- **Label-based tracking** via `ashep-phase:<name>` labels
+- **Resumption capability** from intermediate phases
+
+### Label-Based Orchestration
+
+Workflow management through Beads labels provides:
+- **Visibility**: Current state visible in issue labels
+- **Control**: Humans can manually set workflow labels
+- **Resumption**: Worker can resume from any phase
+- **Intervention**: HITL labels for human approval points
+- **Exclusion**: Skip processing for specific issues
+
+**Key Benefits**:
+- State persists across worker restarts
+- Issues can be manually paused/resumed
+- Integration with Beads UI and CLI
+- Audit trail in issue label history
 
 ### Capability-Based Matching
 
@@ -111,6 +135,82 @@ Agents are selected based on:
 - Agent priority scores
 - Performance tier preferences
 - Availability status
+
+### Label-Based Workflow System
+
+Agent Shepherd uses Beads labels for workflow orchestration, providing visibility and control over issue processing:
+
+#### Label Naming Conventions
+
+| Label Format | Purpose | Auto-Managed |
+|--------------|---------|---------------|
+| `ashep-workflow:<name>` | Explicit workflow assignment | No (user-set) |
+| `ashep-phase:<name>` | Current workflow phase | Yes (system) |
+| `ashep-hitl:<reason>` | Human-in-the-loop state | Yes (system) |
+| `ashep-excluded` | Exclude from processing | No (user-set) |
+
+#### Trigger System Priority
+
+1. **Explicit Workflow Label** (highest)
+   - `ashep-workflow:security-audit` → Forces use of security-audit policy
+   - Invalid label handling controlled by `workflow.invalid_label_strategy` config
+
+2. **Issue Type Matching** (automatic)
+   - Policy with `issue_types: ['bug']` matches bug issues
+   - Multiple policies can match same type
+   - Priority determines winner (config order breaks ties)
+
+3. **Default Policy** (fallback)
+   - Used when no label or type match
+   - Specified in `default_policy` field
+
+#### Phase Tracking
+
+- Worker reads `ashep-phase:<name>` label on issue processing
+- Resumes from current phase if label exists
+- Updates label on phase transitions
+- Clears label on workflow completion
+
+#### Human-in-the-Loop (HITL) Management
+
+- Worker checks `ashep-hitl:<reason>` label
+- Pauses processing when HITL label present
+- Validates HITL reasons against config:
+  - Predefined list (`approval`, `manual-intervention`, etc.)
+  - Custom reason validation (`alphanumeric`, `alphanumeric-dash-underscore`)
+- Clears label after human resolution
+
+#### Exclusion Control
+
+- Issues with `ashep-excluded` label are skipped
+- Worker logs skip message and continues to next issue
+- Useful for issues requiring manual processing or testing
+
+#### Label Lifecycle Example
+
+```bash
+# 1. Create issue
+bd create --type feature --title "Add authentication"
+
+# 2. Assign workflow (optional, overrides issue type)
+bd update ISSUE-1 --labels "ashep-workflow:security-audit"
+
+# 3. Worker starts processing
+# System adds: ashep-phase:threat-modeling
+
+# 4. Worker completes first phase
+# System updates: ashep-phase:implementation
+
+# 5. Approval required
+# System adds: ashep-hitl:approval
+
+# 6. Human reviews and approves
+# System removes: ashep-hitl:approval
+# System updates: ashep-phase:testing
+
+# 7. Workflow completes
+# System removes: ashep-phase:testing
+```
 
 ### Chain Validation System
 
