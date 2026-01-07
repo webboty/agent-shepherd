@@ -4,6 +4,7 @@ var __create = Object.create;
 var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __toESM = (mod, isNodeMode, target) => {
   target = mod != null ? __create(__getProtoOf(mod)) : {};
@@ -15,6 +16,20 @@ var __toESM = (mod, isNodeMode, target) => {
         enumerable: true
       });
   return to;
+};
+var __moduleCache = /* @__PURE__ */ new WeakMap;
+var __toCommonJS = (from) => {
+  var entry = __moduleCache.get(from), desc;
+  if (entry)
+    return entry;
+  entry = __defProp({}, "__esModule", { value: true });
+  if (from && typeof from === "object" || typeof from === "function")
+    __getOwnPropNames(from).map((key) => !__hasOwnProp.call(entry, key) && __defProp(entry, key, {
+      get: () => from[key],
+      enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
+    }));
+  __moduleCache.set(from, entry);
+  return entry;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
 var __export = (target, all) => {
@@ -7069,8 +7084,68 @@ function getConfigPath(filename) {
 }
 var init_path_utils = () => {};
 
+// src/core/config.ts
+var exports_config = {};
+__export(exports_config, {
+  loadConfig: () => loadConfig
+});
+import { readFileSync, existsSync as existsSync2 } from "fs";
+import { join as join2 } from "path";
+function loadConfig(configDir) {
+  const configPath = configDir ? join2(configDir, ".agent-shepherd", "config.yaml") : getConfigPath("config.yaml");
+  if (!existsSync2(configPath)) {
+    throw new Error(`Configuration file not found: ${configPath}`);
+  }
+  try {
+    const content = readFileSync(configPath, "utf-8");
+    const config = import_yaml.parse(content);
+    return {
+      version: config.version || "1.0",
+      worker: {
+        poll_interval_ms: 30000,
+        max_concurrent_runs: 3,
+        ...config.worker
+      },
+      monitor: {
+        poll_interval_ms: 1e4,
+        stall_threshold_ms: 60000,
+        timeout_multiplier: 1,
+        ...config.monitor
+      },
+      ui: {
+        port: 3000,
+        host: "localhost",
+        ...config.ui
+      },
+      fallback: config.fallback ? {
+        enabled: config.fallback.enabled ?? false,
+        default_agent: config.fallback.default_agent,
+        mappings: config.fallback.mappings
+      } : undefined,
+      workflow: {
+        invalid_label_strategy: "error",
+        ...config.workflow
+      },
+      hitl: config.hitl ? {
+        allowed_reasons: {
+          predefined: config.hitl.allowed_reasons?.predefined ?? ["approval", "manual-intervention", "timeout", "error", "review-request"],
+          allow_custom: config.hitl.allowed_reasons?.allow_custom ?? true,
+          custom_validation: config.hitl.allowed_reasons?.custom_validation ?? "alphanumeric-dash-underscore"
+        }
+      } : undefined
+    };
+  } catch (error) {
+    throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+var import_yaml;
+var init_config = __esm(() => {
+  init_path_utils();
+  import_yaml = __toESM(require_dist(), 1);
+});
+
 // src/core/policy.ts
-import { readFileSync } from "fs";
+import { readFileSync as readFileSync2 } from "fs";
 
 class PolicyEngine {
   policies;
@@ -7084,8 +7159,8 @@ class PolicyEngine {
   }
   loadPolicies(filePath) {
     try {
-      const content = readFileSync(filePath, "utf-8");
-      const config = import_yaml.parse(content);
+      const content = readFileSync2(filePath, "utf-8");
+      const config = import_yaml2.parse(content);
       if (!config.policies) {
         throw new Error("Invalid policies file: missing 'policies' key");
       }
@@ -7123,6 +7198,52 @@ class PolicyEngine {
   }
   getDefaultPolicyName() {
     return this.defaultPolicy;
+  }
+  matchPolicy(issue) {
+    const labels = issue.labels || [];
+    const workflowLabel = labels.find((label) => label.startsWith("ashep-workflow:"));
+    if (workflowLabel) {
+      const workflowName = workflowLabel.replace("ashep-workflow:", "");
+      if (this.policies.has(workflowName)) {
+        return workflowName;
+      } else {
+        const strategy = this.getInvalidLabelStrategy();
+        if (strategy === "error") {
+          throw new Error(`Invalid workflow label: ${workflowLabel}. Policy '${workflowName}' does not exist.`);
+        } else if (strategy === "warning") {
+          console.warn(`Invalid workflow label: ${workflowLabel}. Policy '${workflowName}' does not exist. Falling back to default.`);
+        }
+      }
+    }
+    if (issue.issue_type) {
+      const matchingPolicies = [];
+      for (const [name, policy] of this.policies.entries()) {
+        if (policy.issue_types && policy.issue_types.includes(issue.issue_type)) {
+          const priority = policy.priority || 50;
+          const index = Array.from(this.policies.keys()).indexOf(name);
+          matchingPolicies.push({ name, priority, index });
+        }
+      }
+      if (matchingPolicies.length > 0) {
+        matchingPolicies.sort((a, b) => {
+          if (b.priority !== a.priority) {
+            return b.priority - a.priority;
+          }
+          return a.index - b.index;
+        });
+        return matchingPolicies[0].name;
+      }
+    }
+    return this.defaultPolicy;
+  }
+  getInvalidLabelStrategy() {
+    try {
+      const { loadConfig: loadConfig2 } = (init_config(), __toCommonJS(exports_config));
+      const config = loadConfig2();
+      return config.workflow?.invalid_label_strategy || "error";
+    } catch {
+      return "error";
+    }
   }
   getPhaseSequence(policyName) {
     const policy = this.getPolicy(policyName);
@@ -7180,7 +7301,7 @@ class PolicyEngine {
       max_attempts: 3,
       backoff_strategy: "exponential"
     };
-    const retryCount = outcome.retry_count || 0;
+    const retryCount = outcome.retry_count ?? 0;
     if (retryCount < retryConfig.max_attempts - 1) {
       return {
         type: "retry",
@@ -7189,7 +7310,7 @@ class PolicyEngine {
     }
     return {
       type: "block",
-      reason: "Max retries exceeded"
+      reason: `Max retries exceeded (${retryConfig.max_attempts})`
     };
   }
   calculateRetryDelay(policyName, attemptNumber) {
@@ -7242,58 +7363,32 @@ function getPolicyEngine(configPath) {
   }
   return defaultPolicyEngine;
 }
-var import_yaml, defaultPolicyEngine = null;
+function validateHITLReason(reason, config) {
+  const hitlConfig = config || loadConfig().hitl;
+  if (!hitlConfig) {
+    return true;
+  }
+  const { predefined, allow_custom, custom_validation } = hitlConfig.allowed_reasons;
+  if (predefined.includes(reason)) {
+    return true;
+  }
+  if (allow_custom) {
+    switch (custom_validation) {
+      case "none":
+        return true;
+      case "alphanumeric":
+        return /^[a-z0-9]+$/i.test(reason);
+      case "alphanumeric-dash-underscore":
+      default:
+        return /^[a-z][a-z0-9_-]*$/i.test(reason);
+    }
+  }
+  return false;
+}
+var import_yaml2, defaultPolicyEngine = null;
 var init_policy = __esm(() => {
   init_path_utils();
-  import_yaml = __toESM(require_dist(), 1);
-});
-
-// src/core/config.ts
-var exports_config = {};
-__export(exports_config, {
-  loadConfig: () => loadConfig
-});
-import { readFileSync as readFileSync2, existsSync as existsSync2 } from "fs";
-import { join as join2 } from "path";
-function loadConfig(configDir) {
-  const configPath = configDir ? join2(configDir, ".agent-shepherd", "config.yaml") : getConfigPath("config.yaml");
-  if (!existsSync2(configPath)) {
-    throw new Error(`Configuration file not found: ${configPath}`);
-  }
-  try {
-    const content = readFileSync2(configPath, "utf-8");
-    const config = import_yaml2.parse(content);
-    return {
-      version: config.version || "1.0",
-      worker: {
-        poll_interval_ms: 30000,
-        max_concurrent_runs: 3,
-        ...config.worker
-      },
-      monitor: {
-        poll_interval_ms: 1e4,
-        stall_threshold_ms: 60000,
-        timeout_multiplier: 1,
-        ...config.monitor
-      },
-      ui: {
-        port: 3000,
-        host: "localhost",
-        ...config.ui
-      },
-      fallback: config.fallback ? {
-        enabled: config.fallback.enabled ?? false,
-        default_agent: config.fallback.default_agent,
-        mappings: config.fallback.mappings
-      } : undefined
-    };
-  } catch (error) {
-    throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-var import_yaml2;
-var init_config = __esm(() => {
-  init_path_utils();
+  init_config();
   import_yaml2 = __toESM(require_dist(), 1);
 });
 
@@ -38497,13 +38592,21 @@ async function execBeadsCommand(args) {
 async function getReadyIssues() {
   const output = await execBeadsCommand(["ready", "--json"]);
   const issues = JSON.parse(output);
-  return Array.isArray(issues) ? issues : [];
+  const issuesArray = Array.isArray(issues) ? issues : [];
+  for (const issue of issuesArray) {
+    issue.labels = await getIssueLabels(issue.id);
+  }
+  return issuesArray;
 }
 async function getIssue(issueId) {
   try {
     const output = await execBeadsCommand(["show", issueId, "--json"]);
     const result = JSON.parse(output);
-    return Array.isArray(result) ? result[0] || null : result;
+    const issue = Array.isArray(result) ? result[0] || null : result;
+    if (issue) {
+      issue.labels = await getIssueLabels(issueId);
+    }
+    return issue;
   } catch {
     return null;
   }
@@ -38523,6 +38626,55 @@ async function updateIssue(issueId, options) {
     args.push("--notes", options.notes);
   }
   await execBeadsCommand(args);
+}
+async function getIssueLabels(issueId) {
+  try {
+    const output = await execBeadsCommand(["label", "list", issueId, "--json"]);
+    const labels = JSON.parse(output);
+    return Array.isArray(labels) ? labels : [];
+  } catch {
+    return [];
+  }
+}
+async function addIssueLabel(issueId, label) {
+  await execBeadsCommand(["label", "add", issueId, label]);
+}
+async function removeIssueLabel(issueId, label) {
+  await execBeadsCommand(["label", "remove", issueId, label]);
+}
+async function setPhaseLabel(issueId, phaseName) {
+  const label = `ashep-phase:${phaseName}`;
+  await addIssueLabel(issueId, label);
+}
+async function removePhaseLabels(issueId) {
+  const labels = await getIssueLabels(issueId);
+  const phaseLabels = labels.filter((label) => label.startsWith("ashep-phase:"));
+  for (const label of phaseLabels) {
+    await removeIssueLabel(issueId, label);
+  }
+}
+async function setHITLLabel(issueId, reason) {
+  const label = `ashep-hitl:${reason}`;
+  await addIssueLabel(issueId, label);
+}
+async function clearHITLLabels(issueId) {
+  const labels = await getIssueLabels(issueId);
+  const hitlLabels = labels.filter((label) => label.startsWith("ashep-hitl:"));
+  for (const label of hitlLabels) {
+    await removeIssueLabel(issueId, label);
+  }
+}
+async function getCurrentPhase(issueId) {
+  const labels = await getIssueLabels(issueId);
+  const phaseLabel = labels.find((label) => label.startsWith("ashep-phase:"));
+  if (phaseLabel) {
+    return phaseLabel.replace("ashep-phase:", "");
+  }
+  return null;
+}
+async function hasExcludedLabel(issueId) {
+  const labels = await getIssueLabels(issueId);
+  return labels.includes("ashep-excluded");
 }
 
 // src/core/opencode.ts
@@ -38691,6 +38843,9 @@ class Logger {
       CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)
     `);
     this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase_status ON runs(issue_id, phase, status)
+    `);
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS decisions (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
@@ -38823,6 +38978,15 @@ class Logger {
     const rows = stmt.all(...params);
     return rows.map((row) => this.rowToRunRecord(row));
   }
+  getPhaseRetryCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ? AND status = 'failed'
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
   logDecision(decision) {
     const fullDecision = {
       ...decision,
@@ -38879,6 +39043,8 @@ function getLogger(dataDir) {
 }
 
 // src/core/worker-engine.ts
+init_config();
+
 class WorkerEngine {
   config;
   policyEngine = getPolicyEngine();
@@ -38890,7 +39056,6 @@ class WorkerEngine {
     this.config = {
       poll_interval_ms: 30000,
       max_concurrent_runs: 3,
-      excluded_tags: ["ashep:excluded"],
       ...config
     };
   }
@@ -38923,16 +39088,30 @@ class WorkerEngine {
   }
   async getEligibleIssues() {
     const readyIssues = await getReadyIssues();
-    return readyIssues.filter((issue) => {
-      const text = `${issue.title} ${issue.description}`.toLowerCase();
-      return !this.config.excluded_tags.some((tag) => text.includes(tag.toLowerCase()));
-    });
+    const eligibleIssues = [];
+    for (const issue of readyIssues) {
+      const isExcluded = await hasExcludedLabel(issue.id);
+      if (!isExcluded) {
+        eligibleIssues.push(issue);
+      } else {
+        console.log(`Skipping excluded issue: ${issue.id} - ${issue.title}`);
+      }
+    }
+    return eligibleIssues;
   }
   async processIssue(issue) {
     console.log(`Processing issue: ${issue.id} - ${issue.title}`);
-    const policy = this.policyEngine.getDefaultPolicyName();
+    const policy = this.policyEngine.matchPolicy(issue);
     const phases = this.policyEngine.getPhaseSequence(policy);
-    const phase = phases[0] || "plan";
+    const currentPhaseLabel = await getCurrentPhase(issue.id);
+    let phase;
+    if (currentPhaseLabel && phases.includes(currentPhaseLabel)) {
+      phase = currentPhaseLabel;
+      console.log(`Resuming issue from phase '${phase}'`);
+    } else {
+      phase = phases[0] || "plan";
+      await setPhaseLabel(issue.id, phase);
+    }
     console.log(`Using policy '${policy}' at phase '${phase}'`);
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
     const agent = this.agentRegistry.selectAgent({
@@ -38949,6 +39128,7 @@ class WorkerEngine {
       };
     }
     console.log(`Selected agent: ${agent.name} (${agent.id})`);
+    const retryCount = this.logger.getPhaseRetryCount(issue.id, phase);
     const runId = `run-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     this.logger.logDecision({
       run_id: runId,
@@ -38961,6 +39141,7 @@ class WorkerEngine {
         policy
       }
     });
+    const attemptNumber = retryCount + 1;
     const run = this.logger.createRun({
       id: runId,
       issue_id: issue.id,
@@ -38968,7 +39149,11 @@ class WorkerEngine {
       agent_id: agent.id,
       policy_name: policy,
       phase,
-      status: "pending"
+      status: "pending",
+      metadata: {
+        attempt_number: attemptNumber,
+        retry_count: retryCount
+      }
     });
     await updateIssue(issue.id, { status: "in_progress" });
     let outcome;
@@ -38993,6 +39178,7 @@ class WorkerEngine {
     }
     const transition = this.policyEngine.determineTransition(policy, phase, {
       success: outcome.success,
+      retry_count: retryCount,
       requires_approval: outcome.requires_approval
     });
     this.logger.logDecision({
@@ -39085,21 +39271,44 @@ ${phaseConfig?.require_approval ? `
     switch (transition.type) {
       case "advance":
         await updateIssue(issueId, { status: "open" });
+        if (transition.next_phase) {
+          await setPhaseLabel(issueId, transition.next_phase);
+          await clearHITLLabels(issueId);
+        }
         console.log(`Advanced to next phase: ${transition.next_phase || "unknown"}`);
         break;
       case "retry":
         await updateIssue(issueId, { status: "open" });
+        await clearHITLLabels(issueId);
         console.log(`Retrying phase: ${transition.reason}`);
         break;
       case "block":
         await updateIssue(issueId, { status: "blocked" });
+        if (transition.reason?.includes("approval") || transition.reason?.includes("Human approval")) {
+          const config = loadConfig();
+          const hitlReason = transition.reason?.toLowerCase().includes("approval") ? "approval" : "manual-intervention";
+          if (validateHITLReason(hitlReason, config.hitl)) {
+            await setHITLLabel(issueId, hitlReason);
+            await this.generateApprovalNote(issueId, hitlReason, transition.reason);
+          }
+        }
         console.log(`Blocked issue: ${transition.reason}`);
         break;
       case "close":
         await updateIssue(issueId, { status: "closed" });
+        await removePhaseLabels(issueId);
+        await clearHITLLabels(issueId);
         console.log(`Closed issue: ${transition.reason}`);
         break;
     }
+  }
+  async generateApprovalNote(issueId, reason, details) {
+    const note = `\uD83D\uDD14 HITL Required: ${reason}
+
+${details}
+
+Please review and provide approval to proceed.`;
+    await updateIssue(issueId, { notes: note });
   }
 }
 var defaultWorkerEngine = null;
@@ -39637,7 +39846,7 @@ ui:
 
 # Fallback Agent System
 # When a policy requires a capability that no agent has,
-# the system will fall back to the specified agent.
+# the system will fall back to a specified agent.
 # This allows quickstart to work with default agents.
 fallback:
   enabled: true
@@ -39646,7 +39855,35 @@ fallback:
   # mappings:
   #   review: summary
   #   architecture: plan
-`;
+
+# Workflow Trigger Configuration
+# Controls how workflow labels are handled on issues
+workflow:
+  # Strategy for invalid workflow labels:
+  # - error: Fail with error
+  # - warning: Log warning and continue
+  # - ignore: Silently skip
+  invalid_label_strategy: error
+
+# Human-in-the-Loop Configuration
+# Controls HITL (human-in-the-loop) behavior and allowed reasons
+hitl:
+  allowed_reasons:
+    # Predefined HITL reasons that are always allowed
+    predefined:
+      - approval
+      - manual-intervention
+      - timeout
+      - error
+      - review-request
+    # Allow custom HITL reasons (not in predefined list)
+    allow_custom: true
+    # Validation pattern for custom reasons:
+    # - none: Allow any text
+    # - alphanumeric: Letters and numbers only
+    # - alphanumeric-dash-underscore: Letters, numbers, dashes, underscores
+    custom_validation: alphanumeric-dash-underscore
+ `;
     writeFileSync2(configPath, defaultConfig);
     console.log(`\u2705 Created: ${configPath}`);
   } else {
