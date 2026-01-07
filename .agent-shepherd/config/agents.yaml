@@ -7,6 +7,8 @@ agents:
       - coding
       - refactoring
       - building
+      - testing
+      - qa
     priority: 15
     active: true
     constraints:
@@ -73,6 +75,7 @@ agents:
       - documentation
       - summary
       - analysis
+      - review
     priority: 8
     active: true
     constraints:
@@ -118,6 +121,11 @@ agents:
     description: Analyzes test results and decides next workflow phase
     capabilities:
       - test-decision
+      - quality-decision
+      - planning-decision
+      - failure-analysis
+      - test-clarification
+      - review-decision
       - analysis
     priority: 8
     active: true
@@ -130,7 +138,13 @@ agents:
     description: Reviews validation results and quality metrics
     capabilities:
       - validation-decision
+      - validation
       - code-analysis
+      - quality-decision
+      - planning-decision
+      - failure-analysis
+      - test-clarification
+      - review-decision
     priority: 9
     active: true
     constraints:
@@ -143,6 +157,11 @@ agents:
     capabilities:
       - complex-decision
       - planning
+      - planning-decision
+      - failure-analysis
+      - test-clarification
+      - review-decision
+      - quality-decision
     priority: 10
     active: true
     constraints:

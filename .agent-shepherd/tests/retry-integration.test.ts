@@ -57,7 +57,7 @@ default_policy: retry-policy
   });
 
   describe('End-to-End Retry Flow with max_attempts: 2', () => {
-    it('should allow retry on first failure (retry_count = 0, max_attempts = 2)', () => {
+    it('should allow retry on first failure (retry_count = 0, max_attempts = 2)', async () => {
       const issueId = 'integration-test-issue-1';
       const phase = 'test-phase';
       const policy = 'retry-policy';
@@ -95,7 +95,7 @@ default_policy: retry-policy
       expect(transition.reason).toBe('Max retries exceeded (2)');
     });
 
-    it('should retry first failure (retry_count = 0)', () => {
+    it('should retry first failure (retry_count = 0)', async () => {
       const issueId = 'integration-test-issue-2';
       const phase = 'test-phase';
       const policy = 'retry-policy';
@@ -115,7 +115,7 @@ default_policy: retry-policy
       expect(transition.reason).toBe('Retry 1/2');
     });
 
-    it('should block after max_attempts reached', () => {
+    it('should block after max_attempts reached', async () => {
       const issueId = 'integration-test-issue-3';
       const phase = 'test-phase';
       const policy = 'retry-policy';
@@ -151,7 +151,7 @@ default_policy: retry-policy
   });
 
   describe('Retry Count Properly Increments Across Attempts', () => {
-    it('should track retry count progression', () => {
+    it('should track retry count progression', async () => {
       const issueId = 'integration-test-issue-4';
       const phase = 'test-phase';
       const policy = 'retry-policy';
@@ -200,7 +200,7 @@ default_policy: retry-policy
   });
 
   describe('Max_attempts Blocks After Limit Reached', () => {
-    it('should enforce max_attempts limit strictly', () => {
+    it('should enforce max_attempts limit strictly', async () => {
       const issueId = 'integration-test-issue-5';
       const phase = 'test-phase';
       const policy = 'retry-policy';
@@ -229,7 +229,7 @@ default_policy: retry-policy
       expect(transition.reason).toBe('Max retries exceeded (2)');
     });
 
-    it('should allow success on retry attempt', () => {
+    it('should allow success on retry attempt', async () => {
       const issueId = 'integration-test-issue-6';
       const phase = 'test-phase';
       const policy = 'retry-policy';
@@ -274,7 +274,7 @@ default_policy: retry-policy
   });
 
   describe('Full Workflow Simulation', () => {
-    it('should simulate complete retry workflow', () => {
+    it('should simulate complete retry workflow', async () => {
       const issueId = 'integration-test-issue-7';
       const phase = 'test-phase';
       const policy = 'retry-policy';

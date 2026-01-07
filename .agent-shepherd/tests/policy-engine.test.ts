@@ -117,8 +117,8 @@ default_policy: default
       expect(noNextPhase).toBe(null);
     });
 
-    it('should determine phase transitions', () => {
-      const transition = await policyEngine.determineTransition('default', plan', {
+    it('should determine phase transitions', async () => {
+      const transition = await policyEngine.determineTransition('default', 'plan', {
         success: true
       });
       expect(transition.type).toBe('advance');
@@ -186,8 +186,8 @@ default_policy: default
       expect(planPhase?.transitions?.on_failure).toBe('plan');
     });
 
-    it('should use string transition for direct jump', () => {
-      const transition = await policyEngine.determineTransition('default', plan', {
+    it('should use string transition for direct jump', async () => {
+      const transition = await policyEngine.determineTransition('default', 'plan', {
         success: true
       });
       expect(transition.type).toBe('advance');
@@ -250,7 +250,7 @@ default_policy: default
       }
     });
 
-    it('should fall back to default behavior without transitions', () => {
+    it('should fall back to default behavior without transitions', async () => {
       const noTransitionsPolicy = `
 policies:
   simple:

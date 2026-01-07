@@ -87,7 +87,7 @@ default_policy: default
   });
 
   describe('Backward Compatibility', () => {
-    it('should support existing advance transition type', () => {
+    it('should support existing advance transition type', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: true
       });
@@ -97,7 +97,7 @@ default_policy: default
       expect(transition.reason).toBe('Phase completed successfully');
     });
 
-    it('should support existing retry transition type', () => {
+    it('should support existing retry transition type', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: 0
@@ -107,7 +107,7 @@ default_policy: default
       expect(transition.reason).toBe('Retry 1/3');
     });
 
-    it('should support existing block transition type for approval', () => {
+    it('should support existing block transition type for approval', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: true,
         requires_approval: true
@@ -117,7 +117,7 @@ default_policy: default
       expect(transition.reason).toBe('Human approval required');
     });
 
-    it('should support existing block transition type for max retries', () => {
+    it('should support existing block transition type for max retries', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: 3
@@ -127,7 +127,7 @@ default_policy: default
       expect(transition.reason).toBe('Max retries exceeded (3)');
     });
 
-    it('should support existing close transition type', () => {
+    it('should support existing close transition type', async () => {
       const transition = await policyEngine.determineTransition('default', 'validate', {
         success: true
       });
@@ -330,7 +330,7 @@ default_policy: default
   });
 
   describe('Policy Validation', () => {
-    it('should throw error for nonexistent policy', () => {
+    it('should throw error for nonexistent policy', async () => {
       const transition = await policyEngine.determineTransition('nonexistent', 'plan', {
         success: true
       });
@@ -339,7 +339,7 @@ default_policy: default
       expect(transition.reason).toBe('Policy not found');
     });
 
-    it('should throw error for nonexistent phase', () => {
+    it('should throw error for nonexistent phase', async () => {
       const transition = await policyEngine.determineTransition('default', 'nonexistent', {
         success: true
       });

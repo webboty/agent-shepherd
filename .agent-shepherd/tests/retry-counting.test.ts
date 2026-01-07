@@ -207,7 +207,7 @@ default_policy: default
   });
 
   describe('PolicyEngine.determineTransition() with retry_count', () => {
-    it('should allow retry on first failure (retry_count = 0, max_attempts = 3)', () => {
+    it('should allow retry on first failure (retry_count = 0, max_attempts = 3)', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: 0,
@@ -217,7 +217,7 @@ default_policy: default
       expect(transition.reason).toBe('Retry 1/3');
     });
 
-    it('should allow retry on second failure (retry_count = 1, max_attempts = 3)', () => {
+    it('should allow retry on second failure (retry_count = 1, max_attempts = 3)', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: 1,
@@ -227,7 +227,7 @@ default_policy: default
       expect(transition.reason).toBe('Retry 2/3');
     });
 
-    it('should block when retry_count reaches limit (retry_count = 2, max_attempts = 3)', () => {
+    it('should block when retry_count reaches limit (retry_count = 2, max_attempts = 3)', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: 2,
@@ -237,7 +237,7 @@ default_policy: default
       expect(transition.reason).toBe('Max retries exceeded (3)');
     });
 
-    it('should block immediately with max_attempts = 1 (retry_count = 0)', () => {
+    it('should block immediately with max_attempts = 1 (retry_count = 0)', async () => {
       const transition = await policyEngine.determineTransition('limited', 'plan', {
         success: false,
         retry_count: 0,
@@ -247,7 +247,7 @@ default_policy: default
       expect(transition.reason).toBe('Max retries exceeded (1)');
     });
 
-    it('should allow retry when retry_count is undefined (backward compatibility)', () => {
+    it('should allow retry when retry_count is undefined (backward compatibility)', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: undefined,
@@ -257,7 +257,7 @@ default_policy: default
       expect(transition.reason).toBe('Retry 1/3');
     });
 
-    it('should advance on success regardless of retry_count', () => {
+    it('should advance on success regardless of retry_count', async () => {
       const transition = await policyEngine.determineTransition('default', 'plan', {
         success: true,
         retry_count: 5,
@@ -267,7 +267,7 @@ default_policy: default
       expect(transition.next_phase).toBe('implement');
     });
 
-    it('should close on success at last phase regardless of retry_count', () => {
+    it('should close on success at last phase regardless of retry_count', async () => {
       const transition = await policyEngine.determineTransition('default', 'implement', {
         success: true,
         retry_count: 5,
@@ -307,7 +307,7 @@ default_policy: default
   });
 
   describe('Integration: Retry Counting Flow', () => {
-    it('should integrate logger and policy engine for retry decision', () => {
+    it('should integrate logger and policy engine for retry decision', async () => {
       const issueId = 'issue-test-1';
       const phase = 'plan';
 
@@ -323,7 +323,7 @@ default_policy: default
       expect(transition.reason).toBe('Retry 1/3');
     });
 
-    it('should block after max failed attempts', () => {
+    it('should block after max failed attempts', async () => {
       const issueId = 'issue-test-2';
       const phase = 'plan';
 
