@@ -559,67 +559,104 @@ ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval b
       throw new Error(`No run found with ID ${this.currentRunId}`);
     }
 
-    const instructions = this.policyEngine.buildDecisionInstructions(
-      issue,
-      transition.decision_config!,
-      run.outcome,
-      this.currentPhase || ''
-    );
+    const maxRetries = 2;
+    let lastError: string | undefined;
 
-    const result = await this.opencode.runAgentCLI({
-      directory: process.cwd(),
-      title: `Decision: ${transition.dynamic_agent}`,
-      agent: agent.id,
-      message: instructions,
-    });
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      let instructions = this.policyEngine.buildDecisionInstructions(
+        issue,
+        transition.decision_config!,
+        run.outcome,
+        this.currentPhase || ''
+      );
 
-    if (!result.success) {
-      throw new Error(`Decision agent execution failed: ${result.error}`);
-    }
-
-    const decision = this.policyEngine.parseDecisionResponse(
-      result.output,
-      transition.decision_config!
-    );
-
-    this.logger.logDecision({
-      run_id: this.currentRunId || '',
-      type: 'dynamic_decision',
-      decision: decision.action,
-      reasoning: decision.reasoning,
-      metadata: {
-        decision_agent_id: agent.id,
-        capability: transition.dynamic_agent,
-        prompt: transition.decision_config!.prompt,
-        allowed_destinations: transition.decision_config!.allowed_destinations,
-        confidence_thresholds: transition.decision_config!.confidence_thresholds,
-        confidence: decision.confidence,
-        target_phase: decision.target_phase,
-        requires_approval: decision.requires_approval,
-        issue_id: issue.id,
-        from_phase: this.currentPhase,
-        raw_response: result.output,
-        parsed_decision: decision
+      if (attempt > 0) {
+        console.log(`Retry attempt ${attempt}/${maxRetries} for decision agent`);
+        instructions = instructions + `\n\nNote: Previous attempts failed. Please provide a clearer, more explicit decision following the required format.`;
       }
-    });
 
-    if (decision.requires_approval) {
-      return {
-        type: 'block',
-        reason: `Decision requires approval: ${decision.reasoning}`
-      };
-    } else if (decision.target_phase) {
-      return {
-        type: decision.action.startsWith('jump_to_') ? 'jump_back' : 'advance',
-        next_phase: decision.target_phase,
-        reason: decision.reasoning
-      };
-    } else {
-      return {
-        type: 'close',
-        reason: decision.reasoning
-      };
+      const result = await this.opencode.runAgentCLI({
+        directory: process.cwd(),
+        title: `Decision: ${transition.dynamic_agent}${attempt > 0 ? ` (Attempt ${attempt})` : ''}`,
+        agent: agent.id,
+        message: instructions,
+      });
+
+      if (!result.success) {
+        lastError = `Decision agent execution failed: ${result.error}`;
+        console.error(lastError);
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+          continue;
+        }
+        
+        throw new Error(lastError);
+      }
+
+      const decision = this.policyEngine.parseDecisionResponse(
+        result.output,
+        transition.decision_config!
+      );
+
+      if (!decision) {
+        lastError = `Failed to parse decision response`;
+        console.error(lastError);
+        
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+          continue;
+        }
+        
+        return {
+          type: 'block',
+          reason: `Decision requires approval: Failed to parse AI response after ${attempt + 1} attempts. Last error: ${lastError}`
+        };
+      }
+
+      this.logger.logDecision({
+        run_id: this.currentRunId || '',
+        type: 'dynamic_decision',
+        decision: decision.action,
+        reasoning: decision.reasoning,
+        metadata: {
+          decision_agent_id: agent.id,
+          capability: transition.dynamic_agent,
+          prompt: transition.decision_config!.prompt,
+          allowed_destinations: transition.decision_config!.allowed_destinations,
+          confidence_thresholds: transition.decision_config!.confidence_thresholds,
+          confidence: decision.confidence,
+          target_phase: decision.target_phase,
+          requires_approval: decision.requires_approval,
+          issue_id: issue.id,
+          from_phase: this.currentPhase,
+          raw_response: result.output,
+          parsed_decision: decision,
+          attempt_number: attempt + 1,
+          max_attempts: maxRetries + 1
+        }
+      });
+
+      if (decision.requires_approval) {
+        return {
+          type: 'block',
+          reason: `Decision requires approval: ${decision.reasoning}`
+        };
+      } else if (decision.target_phase) {
+        return {
+          type: decision.action.startsWith('jump_to_') ? 'jump_back' : 'advance',
+          next_phase: decision.target_phase,
+          reason: decision.reasoning
+        };
+      } else {
+        return {
+          type: 'close',
+          reason: decision.reasoning
+        };
+      }
     }
+
+    throw new Error(`Decision agent failed after ${maxRetries + 1} attempts: ${lastError}`);
   }
 
   /**

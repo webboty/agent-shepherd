@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "decision-prompts.schema.json",
+  "title": "Decision Prompts Configuration",
+  "description": "Configuration for decision agent prompt templates",
+  "type": "object",
+  "required": ["version", "templates"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Configuration version",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "templates": {
+      "type": "object",
+      "description": "Decision prompt templates by capability name",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "description", "system_prompt", "prompt_template"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Template name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Template description"
+          },
+          "system_prompt": {
+            "type": "string",
+            "description": "System prompt for the decision agent"
+          },
+          "prompt_template": {
+            "type": "string",
+            "description": "User prompt template with variable substitution placeholders"
+          }
+        }
+      }
+    },
+    "default_template": {
+      "type": "string",
+      "description": "Default template name to use when specific template not found"
+    }
+  }
+}

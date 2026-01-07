@@ -10,6 +10,7 @@ import { type BeadsIssue } from "./beads.ts";
 import { type HITLConfig, loadConfig } from "./config.ts";
 import { getAgentRegistry } from "./agent-registry.ts";
 import { getLogger, type RunOutcome } from "./logging.ts";
+import { getDecisionPromptBuilder, type TemplateContext } from "./decision-builder.ts";
 
 export interface PhaseConfig {
   name: string;
@@ -689,44 +690,20 @@ export class PolicyEngine {
     issue: BeadsIssue,
     transitionConfig: TransitionConfig,
     previousOutcome: RunOutcome,
-    currentPhase: string
+    currentPhase: string,
+    context?: Partial<TemplateContext>
   ): string {
-    return `
-# WORKFLOW DECISION TASK
+    const builder = getDecisionPromptBuilder();
 
-## Issue Context:
-- **Title**: ${issue.title}
-- **Description**: ${issue.description}
-- **Type**: ${issue.issue_type}
-- **Priority**: P${issue.priority}
-- **Current Status**: ${issue.status}
-
-## Previous Phase Result:
-- **Phase**: ${currentPhase}
-- **Outcome**: ${previousOutcome.success ? 'SUCCESS' : 'FAILED'}
-- **Message**: ${previousOutcome.message || 'No details'}
-- **Duration**: ${previousOutcome.metrics?.duration_ms || 'unknown'}ms
-- **Error**: ${previousOutcome.error || 'None'}
-${previousOutcome.warnings ? `- **Warnings**: ${previousOutcome.warnings.join(', ')}` : ''}
-
-## Decision Instructions:
-${transitionConfig.prompt}
-
-## Allowed Next Phases:
-${transitionConfig.allowed_destinations.map(dest => `- **${dest}**`).join('\n')}
-
-## Response Format:
-\`\`\`json
-{
-  "decision": "jump_to_phase_name" | "advance_to_phase_name" | "require_approval",
-  "reasoning": "Brief explanation of decision logic",
-  "confidence": 0.0-1.0,
-  "recommendations": ["Optional additional suggestions"]
-}
-\`\`\`
-
-Make your decision based on context above.
-    `.trim();
+    return builder.buildDecisionInstructions(
+      issue,
+      transitionConfig.capability,
+      previousOutcome,
+      currentPhase,
+      transitionConfig.prompt,
+      transitionConfig.allowed_destinations,
+      context
+    );
   }
 
   /**
@@ -737,44 +714,16 @@ Make your decision based on context above.
     response: string,
     transitionConfig: TransitionConfig
   ): DecisionResult {
-    try {
-      const parsed = JSON.parse(response);
+    const builder = getDecisionPromptBuilder();
 
-      if (!parsed.decision || !parsed.reasoning) {
-        throw new Error('Invalid decision response: missing required fields (decision, reasoning)');
-      }
+    const parsedResponse = builder.parseDecisionResponse(
+      response,
+      transitionConfig.allowed_destinations,
+      transitionConfig.confidence_thresholds
+    );
 
-      let targetPhase: string | undefined;
-      if (parsed.decision.startsWith('jump_to_')) {
-        targetPhase = parsed.decision.replace('jump_to_', '');
-      } else if (parsed.decision.startsWith('advance_to_')) {
-        targetPhase = parsed.decision.replace('advance_to_', '');
-      }
-
-      if (targetPhase && !transitionConfig.allowed_destinations.includes(targetPhase)) {
-        throw new Error(`Decision attempted unauthorized jump to: ${targetPhase}. Allowed: ${transitionConfig.allowed_destinations.join(', ')}`);
-      }
-
-      const confidenceThresholds = transitionConfig.confidence_thresholds || {
-        auto_advance: 0.8,
-        require_approval: 0.6
-      };
-
-      const requiresApproval =
-        parsed.decision === 'require_approval' ||
-        (parsed.confidence < confidenceThresholds.require_approval);
-
-      return {
-        action: parsed.decision,
-        target_phase: targetPhase,
-        reasoning: parsed.reasoning,
-        confidence: parsed.confidence || 0.5,
-        requires_approval: requiresApproval,
-        recommendations: parsed.recommendations
-      };
-
-    } catch (error) {
-      console.error('Failed to parse decision response:', error);
+    if (!parsedResponse) {
+      console.error('Failed to parse decision response');
       return {
         action: 'require_approval',
         reasoning: 'Failed to parse AI decision response',
@@ -782,6 +731,33 @@ Make your decision based on context above.
         requires_approval: true
       };
     }
+
+    const validation = (builder as any).validateResponse(
+      response,
+      transitionConfig.allowed_destinations,
+      transitionConfig.confidence_thresholds
+    );
+
+    if (validation.warnings && validation.warnings.length > 0) {
+      console.warn('Decision response warnings:', validation.warnings.join(', '));
+    }
+
+    let targetPhase: string | undefined;
+    if (parsedResponse.decision.startsWith('jump_to_')) {
+      targetPhase = parsedResponse.decision.replace('jump_to_', '');
+    } else if (parsedResponse.decision.startsWith('advance_to_')) {
+      targetPhase = parsedResponse.decision.replace('advance_to_', '');
+    }
+
+    return {
+      action: parsedResponse.decision,
+      target_phase: targetPhase,
+      reasoning: parsedResponse.reasoning,
+      confidence: parsedResponse.confidence,
+      requires_approval: parsedResponse.decision === 'require_approval' ||
+        (parsedResponse.confidence < (transitionConfig.confidence_thresholds?.require_approval || 0.6)),
+      recommendations: parsedResponse.recommendations
+    };
   }
 
   /**
