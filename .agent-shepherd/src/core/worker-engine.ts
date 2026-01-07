@@ -207,15 +207,28 @@ export class WorkerEngine {
 
     // 5. Launch agent in OpenCode
     let outcome: RunOutcome;
+    let sessionId: string | undefined;
     try {
-      outcome = await this.launchAgent(issue, agent.id, phase, policy);
+      const launchResult = await this.launchAgent(issue, agent.id, phase, policy);
+      outcome = launchResult.outcome;
+      sessionId = launchResult.sessionId;
 
       // Update run with outcome
-      this.logger.updateRun(run.id, {
+      const updateData: any = {
         status: outcome.success ? "completed" : "failed",
         outcome,
         completed_at: Date.now(),
-      });
+      };
+
+      // Store session_id in metadata for debugging
+      if (sessionId) {
+        updateData.metadata = {
+          ...run.metadata,
+          session_id: sessionId,
+        };
+      }
+
+      this.logger.updateRun(run.id, updateData);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       outcome = {
@@ -269,37 +282,31 @@ export class WorkerEngine {
     agentId: string,
     phase: string,
     policy: string
-  ): Promise<RunOutcome> {
-    // Get agent configuration
+  ): Promise<{ outcome: RunOutcome; sessionId?: string }> {
+    const startTimestamp = Date.now();
+
     const agent = this.agentRegistry.getAgent(agentId);
     if (!agent) {
       throw new Error(`Agent ${agentId} not found in registry`);
     }
 
-    // Get phase configuration to check for model override
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
 
-    // Determine model to use (priority: Phase > Agent > OpenCode default)
     let modelToUse: string | undefined;
     if (phaseConfig?.model) {
-      // Phase-level model override (highest priority)
       modelToUse = phaseConfig.model;
       console.log(`Using phase-specified model: ${modelToUse}`);
     } else if (agent.model_id) {
-      // Agent-level model configuration
       modelToUse = agent.provider_id ? `${agent.provider_id}/${agent.model_id}` : agent.model_id;
       console.log(`Using agent-configured model: ${modelToUse}`);
     } else {
-      // OpenCode agent default (no override)
       console.log(`Using OpenCode agent default model`);
     }
 
-    // Prepare instructions for the agent
     const instructions = this.buildInstructions(issue, phase, policy);
 
     console.log(`Running agent ${agentId} with OpenCode CLI...`);
 
-    // Run agent using OpenCode CLI
     const result = await this.opencode.runAgentCLI({
       directory: process.cwd(),
       title: `${issue.id}: ${issue.title}`,
@@ -308,19 +315,63 @@ export class WorkerEngine {
       message: instructions,
     });
 
+    const endTimestamp = Date.now();
+    const wallClockDurationMs = endTimestamp - startTimestamp;
+
     if (!result.success) {
       console.error(`Agent execution failed: ${result.error}`);
       return {
-        success: false,
-        error: result.error || "Agent execution failed",
+        outcome: {
+          success: false,
+          error: result.error || "Agent execution failed",
+          metrics: {
+            duration_ms: wallClockDurationMs,
+            start_time_ms: startTimestamp,
+            end_time_ms: endTimestamp,
+          },
+        },
+        sessionId: result.sessionId,
       };
     }
 
     console.log(`Agent execution completed successfully`);
 
+    const parsedOutcome = this.opencode.parseRunOutput(result.output, result.error || "");
+
+    if (!parsedOutcome.success) {
+      console.error(`Agent execution reported failure: ${parsedOutcome.error}`);
+    }
+
+    const policyTimeout = this.policyEngine.calculateTimeout(policy, phase);
+    const actualDuration = parsedOutcome.metrics?.duration_ms || wallClockDurationMs;
+
+    let timeoutReason: string | undefined;
+    if (actualDuration > policyTimeout) {
+      timeoutReason = `Execution exceeded timeout of ${policyTimeout}ms (actual: ${actualDuration}ms)`;
+      console.warn(timeoutReason);
+      parsedOutcome.success = false;
+      parsedOutcome.error = timeoutReason;
+    }
+
+    const outcome: RunOutcome = {
+      success: parsedOutcome.success,
+      message: parsedOutcome.message || "Task completed by agent",
+      artifacts: parsedOutcome.artifacts?.map((a) => a.path) || [],
+      error: parsedOutcome.error,
+      error_details: parsedOutcome.error_details,
+      warnings: parsedOutcome.warnings,
+      tool_calls: parsedOutcome.tool_calls,
+      metrics: {
+        ...parsedOutcome.metrics,
+        duration_ms: actualDuration,
+        start_time_ms: parsedOutcome.metrics?.start_time_ms || startTimestamp,
+        end_time_ms: parsedOutcome.metrics?.end_time_ms || endTimestamp,
+      },
+    };
+
     return {
-      success: true,
-      message: "Task completed by agent",
+      outcome,
+      sessionId: parsedOutcome.session_id || result.sessionId,
     };
   }
 

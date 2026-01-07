@@ -24,16 +24,46 @@ export interface RunRecord {
   };
 }
 
+export interface Artifact {
+  path: string;
+  operation: "created" | "modified" | "deleted";
+  size?: number;
+  type?: "file" | "directory";
+}
+
+export interface ErrorDetails {
+  type?: string;
+  message?: string;
+  stack_trace?: string;
+  file_path?: string;
+  line_number?: number;
+}
+
+export interface ToolCall {
+  name: string;
+  inputs: any;
+  outputs?: string;
+  duration_ms?: number;
+  status: "completed" | "error" | "cancelled";
+}
+
 export interface RunOutcome {
   success: boolean;
   message?: string;
-  artifacts?: string[];
+  artifacts?: string[] | Artifact[];
   requires_approval?: boolean;
   error?: string;
+  error_details?: ErrorDetails;
+  warnings?: string[];
+  tool_calls?: ToolCall[];
   metrics?: {
     duration_ms?: number;
     tokens_used?: number;
     cost?: number;
+    start_time_ms?: number;
+    end_time_ms?: number;
+    api_calls_count?: number;
+    model_name?: string;
   };
 }
 
