@@ -45,6 +45,7 @@ agents:
     capabilities:
       - coding
       - planning
+      - architecture
       - analysis
     priority: 10
     active: true
