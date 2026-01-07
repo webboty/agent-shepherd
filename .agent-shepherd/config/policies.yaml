@@ -112,3 +112,251 @@ policies:
 
 
 default_policy: simple
+
+# Enhanced workflow with intelligent test-based routing
+enhanced-dev:
+  name: Enhanced Development Workflow
+  description: Workflow with intelligent test-based routing and conditional transitions
+  phases:
+    - name: develop
+      description: Develop the feature based on issue description
+      capabilities:
+        - coding
+      transitions:
+        on_success: test
+        on_failure: develop
+
+    - name: test
+      description: Test the implementation
+      capabilities:
+        - testing
+        - qa
+      transitions:
+        on_success:
+          capability: test-decision
+          prompt: |
+            Tests passed. Assess code quality:
+            - Are there any flaky tests?
+            - Is test coverage sufficient?
+            - Are edge cases covered?
+          allowed_destinations:
+            - validate
+            - develop
+            - test
+          confidence_thresholds:
+            auto_advance: 0.8
+            require_approval: 0.6
+        on_failure:
+          capability: test-decision
+          prompt: |
+            Tests failed. Analyze failures:
+            - Are test failures due to code bugs or test issues?
+            - Should we fix code or fix tests?
+          allowed_destinations:
+            - develop
+            - test
+          messaging: true
+
+    - name: validate
+      description: Validate the implementation
+      capabilities:
+        - validation
+      transitions:
+        on_success: close
+        on_partial_success:
+          capability: validation-decision
+          prompt: |
+            Validation partially passed. Assess quality:
+            - Coverage gaps?
+            - Severity of remaining issues?
+            - Business requirements met?
+          allowed_destinations:
+            - develop
+            - validate
+            - close
+
+  retry:
+    max_attempts: 3
+    backoff_strategy: exponential
+    initial_delay_ms: 5000
+    max_delay_ms: 30000
+
+  timeout_base_ms: 300000
+  stall_threshold_ms: 60000
+  require_hitl: false
+
+# Quality gate workflow with partial success handling
+quality-gate:
+  name: Quality Gate Workflow
+  description: Workflow with quality gates and partial success transitions
+  phases:
+    - name: implement
+      description: Implement the feature
+      capabilities:
+        - coding
+      transitions:
+        on_success: test
+        on_failure: implement
+
+    - name: test
+      description: Run tests and quality checks
+      capabilities:
+        - testing
+        - qa
+      transitions:
+        on_success:
+          capability: quality-decision
+          prompt: |
+            Assess test results and code quality:
+            - All tests passing?
+            - Code coverage meets threshold?
+            - Any linting issues?
+          allowed_destinations:
+            - review
+            - implement
+            - test
+          confidence_thresholds:
+            auto_advance: 0.9
+            require_approval: 0.7
+        on_partial_success:
+          capability: quality-decision
+          prompt: |
+            Partial success detected. Determine next step:
+            - Some tests failed but critical ones passed?
+            - Minor quality issues only?
+            - Need additional validation?
+          allowed_destinations:
+            - review
+            - implement
+            - test
+
+    - name: review
+      description: Code review phase
+      capabilities:
+        - review
+        - documentation
+      transitions:
+        on_success: close
+        on_partial_success:
+          capability: review-decision
+          prompt: |
+            Review partially successful. Assess:
+            - Minor issues that can be addressed post-merge?
+            - Requires additional documentation?
+            - Needs rework?
+          allowed_destinations:
+            - implement
+            - review
+            - close
+        require_approval: true
+
+  retry:
+    max_attempts: 2
+    backoff_strategy: exponential
+    initial_delay_ms: 5000
+    max_delay_ms: 30000
+
+  timeout_base_ms: 300000
+  stall_threshold_ms: 60000
+  require_hitl: false
+
+# Flexible workflow with multiple conditional transitions
+flexible-workflow:
+  name: Flexible Workflow
+  description: Workflow with flexible AI-based routing for various outcomes
+  phases:
+    - name: plan
+      description: Planning and design phase
+      capabilities:
+        - planning
+        - architecture
+      transitions:
+        on_success: implement
+        on_unclear:
+          capability: planning-decision
+          prompt: |
+            Planning outcome is unclear. Determine next step:
+            - Need more requirements gathering?
+            - Should clarify with stakeholders?
+            - Can proceed with minimal requirements?
+          allowed_destinations:
+            - plan
+            - implement
+
+    - name: implement
+      description: Implementation phase
+      capabilities:
+        - coding
+        - refactoring
+      transitions:
+        on_success: test
+        on_failure:
+          capability: failure-analysis
+          prompt: |
+            Implementation failed. Analyze:
+            - Technical blocker?
+            - Requirements unclear?
+            - Need architectural change?
+          allowed_destinations:
+            - plan
+            - implement
+            - test
+
+    - name: test
+      description: Testing phase
+      capabilities:
+        - testing
+        - qa
+      transitions:
+        on_success: review
+        on_failure: implement
+        on_unclear:
+          capability: test-clarification
+          prompt: |
+            Test results are unclear. Determine:
+            - Flaky tests?
+            - Environment issues?
+            - Need additional test cases?
+          allowed_destinations:
+            - implement
+            - test
+            - review
+
+    - name: review
+      description: Code review phase
+      capabilities:
+        - review
+        - documentation
+      transitions:
+        on_success: close
+        on_failure:
+          capability: review-decision
+          prompt: |
+            Review failed. Determine next step:
+            - Major issues requiring rework?
+            - Minor issues that can be addressed post-merge?
+            - Documentation concerns?
+          allowed_destinations:
+            - implement
+            - review
+        on_partial_success:
+          capability: review-decision
+          prompt: |
+            Review partially successful. Assess:
+            - Can proceed with minor tweaks?
+            - Requires additional documentation?
+          allowed_destinations:
+            - implement
+            - review
+            - close
+        require_approval: true
+
+  retry:
+    max_attempts: 3
+    backoff_strategy: exponential
+    initial_delay_ms: 5000
+    max_delay_ms: 60000
+
+  timeout_base_ms: 300000
+  stall_threshold_ms: 60000
+  require_hitl: false

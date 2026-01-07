@@ -14,12 +14,31 @@ export interface PhaseConfig {
   name: string;
   description?: string;
   capabilities?: string[];
-  agent?: string;  // Specific agent to use for this phase
-  model?: string;  // Model override in format "provider/model"
+  agent?: string;
+  model?: string;
   timeout_multiplier?: number;
   require_approval?: boolean;
   fallback_agent?: string;
   fallback_enabled?: boolean;
+  transitions?: TransitionBlock;
+}
+
+export interface TransitionConfig {
+  capability: string;
+  prompt: string;
+  allowed_destinations: string[];
+  messaging?: boolean;
+  confidence_thresholds?: {
+    auto_advance: number;
+    require_approval: number;
+  };
+}
+
+export interface TransitionBlock {
+  on_success?: string | TransitionConfig;
+  on_failure?: string | TransitionConfig;
+  on_partial_success?: TransitionConfig;
+  on_unclear?: TransitionConfig;
 }
 
 export interface RetryConfig {
@@ -59,6 +78,19 @@ export type PhaseTransition = {
   dynamic_agent?: string;
   decision_config?: any;
 };
+
+/**
+ * Map outcome types to transition configuration keys
+ */
+export function getTransitionKey(outcome: {
+  success: boolean;
+  result_type?: 'success' | 'failure' | 'partial_success' | 'unclear';
+}): string {
+  if (outcome.result_type) {
+    return `on_${outcome.result_type}`;
+  }
+  return outcome.success ? 'on_success' : 'on_failure';
+}
 
 /**
  * Policy Engine for managing workflow phases and transitions
@@ -121,9 +153,71 @@ export class PolicyEngine {
       throw new Error(`Policy '${name}' must have at least one phase`);
     }
 
+    const phaseNames = policy.phases.map(p => p.name);
+
     for (const phase of policy.phases) {
       if (!phase.name) {
         throw new Error(`Policy '${name}' has a phase without a name`);
+      }
+
+      if (phase.transitions) {
+        this.validateTransitionBlock(phase.name, phase.transitions, phaseNames);
+      }
+    }
+  }
+
+  /**
+   * Validate transition block configuration
+   */
+  private validateTransitionBlock(
+    phaseName: string,
+    transitions: TransitionBlock,
+    policyPhases: string[]
+  ): void {
+    for (const [key, transition] of Object.entries(transitions)) {
+      if (key === 'on_partial_success' || key === 'on_unclear') {
+        // These must be objects only, not strings
+        if (typeof transition === 'string') {
+          throw new Error(
+            `Invalid ${key} transition in phase '${phaseName}': must be object, not string`
+          );
+        }
+      }
+
+      if (typeof transition === 'string') {
+        if (!policyPhases.includes(transition)) {
+          throw new Error(
+            `Invalid ${key} transition in phase '${phaseName}': phase '${transition}' not found in policy`
+          );
+        }
+      } else if (typeof transition === 'object' && transition !== null) {
+        if (!transition.capability || !transition.prompt || !transition.allowed_destinations) {
+          throw new Error(
+            `Invalid ${key} transition in phase '${phaseName}': missing required fields (capability, prompt, allowed_destinations)`
+          );
+        }
+
+        for (const dest of transition.allowed_destinations) {
+          if (!policyPhases.includes(dest)) {
+            throw new Error(
+              `Invalid ${key} transition in phase '${phaseName}': destination '${dest}' not found in policy`
+            );
+          }
+        }
+
+        if (transition.confidence_thresholds) {
+          const { auto_advance, require_approval } = transition.confidence_thresholds;
+          if (auto_advance !== undefined && (auto_advance < 0 || auto_advance > 1)) {
+            throw new Error(
+              `Invalid auto_advance threshold in ${key} transition for phase '${phaseName}': must be 0.0-1.0`
+            );
+          }
+          if (require_approval !== undefined && (require_approval < 0 || require_approval > 1)) {
+            throw new Error(
+              `Invalid require_approval threshold in ${key} transition for phase '${phaseName}': must be 0.0-1.0`
+            );
+          }
+        }
       }
     }
   }
@@ -271,6 +365,7 @@ export class PolicyEngine {
       success: boolean;
       retry_count?: number;
       requires_approval?: boolean;
+      result_type?: 'success' | 'failure' | 'partial_success' | 'unclear';
     }
   ): PhaseTransition {
     const policy = this.getPolicy(policyName);
@@ -283,6 +378,36 @@ export class PolicyEngine {
       return { type: "block", reason: "Phase not found" };
     }
 
+    // Check for custom transitions (OPTIONAL - only if defined)
+    if (phaseConfig.transitions) {
+      const transitionKey = getTransitionKey(outcome);
+      const transitionConfig = (phaseConfig.transitions as Record<string, string | TransitionConfig>)[transitionKey];
+
+      if (transitionConfig !== undefined) {
+        if (typeof transitionConfig === 'string') {
+          // DIRECT JUMP: on_success: "validate"
+          const transition = {
+            type: 'advance' as const,
+            next_phase: transitionConfig,
+            reason: `Direct transition to ${transitionConfig}`
+          };
+          this.validateTransition(policyName, currentPhase, transition);
+          return transition;
+        } else {
+          // AI ROUTING: on_failure: {capability: "...", prompt: "..."}
+          const transition = {
+            type: 'dynamic_decision' as const,
+            dynamic_agent: transitionConfig.capability,
+            decision_config: transitionConfig,
+            reason: `AI routing for ${transitionKey}`
+          };
+          this.validateTransition(policyName, currentPhase, transition);
+          return transition;
+        }
+      }
+    }
+
+    // DEFAULT LINEAR BEHAVIOR (no transitions block or no matching key)
     // Check if approval is required
     if (outcome.requires_approval || phaseConfig.require_approval) {
       const transition = {

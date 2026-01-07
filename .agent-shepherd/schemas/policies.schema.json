@@ -139,6 +139,10 @@
         "fallback_enabled": {
           "type": "boolean",
           "description": "Whether fallback is enabled for this phase. Overrides policy and global settings."
+        },
+        "transitions": {
+          "$ref": "#/definitions/TransitionBlock",
+          "description": "Optional transition configuration for complex routing"
         }
       },
       "additionalProperties": false
@@ -176,6 +180,93 @@
         }
       },
       "additionalProperties": false
+    },
+    "TransitionConfig": {
+      "type": "object",
+      "required": ["capability", "prompt", "allowed_destinations"],
+      "properties": {
+        "capability": {
+          "type": "string",
+          "description": "Decision agent capability (e.g., 'test-decision')"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Decision instructions for the agent"
+        },
+        "allowed_destinations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "description": "Safety constraint - valid phases to jump to"
+        },
+        "messaging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable phase messenger for complex data exchange"
+        },
+        "confidence_thresholds": {
+          "type": "object",
+          "properties": {
+            "auto_advance": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "High confidence threshold for auto progression"
+            },
+            "require_approval": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Medium confidence threshold triggering review"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Confidence thresholds for automatic vs manual routing"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Configuration for AI-based conditional routing"
+    },
+    "TransitionBlock": {
+      "type": "object",
+      "properties": {
+        "on_success": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Direct jump to phase name"
+            },
+            {
+              "$ref": "#/definitions/TransitionConfig"
+            }
+          ],
+          "description": "Transition on success - can be direct jump or AI decision"
+        },
+        "on_failure": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Direct jump to phase name"
+            },
+            {
+              "$ref": "#/definitions/TransitionConfig"
+            }
+          ],
+          "description": "Transition on failure - can be direct jump or AI decision"
+        },
+        "on_partial_success": {
+          "$ref": "#/definitions/TransitionConfig",
+          "description": "Transition on partial success - AI decision only (not string)"
+        },
+        "on_unclear": {
+          "$ref": "#/definitions/TransitionConfig",
+          "description": "Transition on unclear outcome - AI decision only (not string)"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Optional transition configuration for phases"
     }
   },
   "examples": [
