@@ -168,6 +168,9 @@ export class WorkerEngine {
 
     console.log(`Selected agent: ${agent.name} (${agent.id})`);
 
+    // Get retry count for this issue and phase
+    const retryCount = this.logger.getPhaseRetryCount(issue.id, phase);
+
     // Log agent selection decision
     const runId = `run-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     
@@ -184,6 +187,7 @@ export class WorkerEngine {
     });
 
     // 3. Create run record
+    const attemptNumber = retryCount + 1;
     const run = this.logger.createRun({
       id: runId,
       issue_id: issue.id,
@@ -192,6 +196,10 @@ export class WorkerEngine {
       policy_name: policy,
       phase,
       status: "pending",
+      metadata: {
+        attempt_number: attemptNumber,
+        retry_count: retryCount,
+      },
     });
 
     // 4. Update issue status to in_progress
@@ -225,6 +233,7 @@ export class WorkerEngine {
     // 6. Determine transition based on outcome
     const transition = this.policyEngine.determineTransition(policy, phase, {
       success: outcome.success,
+      retry_count: retryCount,
       requires_approval: outcome.requires_approval,
     });
 

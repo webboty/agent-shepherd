@@ -120,6 +120,10 @@ export class Logger {
     `);
 
     this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase_status ON runs(issue_id, phase, status)
+    `);
+
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS decisions (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
@@ -331,6 +335,20 @@ export class Logger {
     const rows = stmt.all(...params) as any[];
 
     return rows.map((row) => this.rowToRunRecord(row));
+  }
+
+  /**
+   * Get retry count for a specific issue and phase
+   * Counts failed attempts for the given issue and phase combination
+   */
+  getPhaseRetryCount(issueId: string, phaseName: string): number {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ? AND status = 'failed'
+    `);
+    const result = stmt.get(issueId, phaseName) as any;
+    return result?.count || 0;
   }
 
   /**

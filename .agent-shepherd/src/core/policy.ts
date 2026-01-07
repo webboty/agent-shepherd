@@ -310,7 +310,7 @@ export class PolicyEngine {
       backoff_strategy: "exponential",
     };
 
-    const retryCount = outcome.retry_count || 0;
+    const retryCount = outcome.retry_count ?? 0;
 
     if (retryCount < retryConfig.max_attempts - 1) {
       return {
@@ -322,7 +322,7 @@ export class PolicyEngine {
     // Max retries exceeded
     return {
       type: "block",
-      reason: "Max retries exceeded",
+      reason: `Max retries exceeded (${retryConfig.max_attempts})`,
     };
   }
 
