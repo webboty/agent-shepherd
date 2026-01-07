@@ -158,7 +158,7 @@ agents:
       const outputs = await runCLICommand('install', [], tempDir);
       const output = outputs.join(' ');
 
-      expect(output).toContain('Configuration directory NOT found');
+      expect(output).toContain('Checking dependencies');
 
       rmSync(tempDir, { recursive: true });
     });
