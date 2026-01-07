@@ -188,6 +188,10 @@ export class WorkerEngine {
 
     // 3. Create run record
     const attemptNumber = retryCount + 1;
+
+    // Get cumulative phase duration from previous runs
+    const previousPhaseTotal = this.logger.getPhaseTotalDuration(issue.id, phase);
+
     const run = this.logger.createRun({
       id: runId,
       issue_id: issue.id,
@@ -199,6 +203,7 @@ export class WorkerEngine {
       metadata: {
         attempt_number: attemptNumber,
         retry_count: retryCount,
+        phase_total_duration_ms: previousPhaseTotal,
       },
     });
 
@@ -209,7 +214,7 @@ export class WorkerEngine {
     let outcome: RunOutcome;
     let sessionId: string | undefined;
     try {
-      const launchResult = await this.launchAgent(issue, agent.id, phase, policy);
+      const launchResult = await this.launchAgent(run.id, issue, agent.id, phase, policy);
       outcome = launchResult.outcome;
       sessionId = launchResult.sessionId;
 
@@ -220,11 +225,20 @@ export class WorkerEngine {
         completed_at: Date.now(),
       };
 
-      // Store session_id in metadata for debugging
+      // Store session_id and update cumulative phase duration
+      const currentPhaseTotal = (run.metadata as any)?.phase_total_duration_ms || 0;
+      const currentDuration = outcome.metrics?.duration_ms || 0;
+      
       if (sessionId) {
         updateData.metadata = {
           ...run.metadata,
           session_id: sessionId,
+          phase_total_duration_ms: currentPhaseTotal + currentDuration,
+        };
+      } else {
+        updateData.metadata = {
+          ...run.metadata,
+          phase_total_duration_ms: currentPhaseTotal + currentDuration,
         };
       }
 
@@ -278,6 +292,7 @@ export class WorkerEngine {
    * Launch agent using OpenCode CLI
    */
   private async launchAgent(
+    runId: string,
     issue: BeadsIssue,
     agentId: string,
     phase: string,
@@ -351,6 +366,18 @@ export class WorkerEngine {
       console.warn(timeoutReason);
       parsedOutcome.success = false;
       parsedOutcome.error = timeoutReason;
+
+      this.logger.logDecision({
+        run_id: runId,
+        type: "timeout",
+        decision: "timeout_exceeded",
+        reasoning: timeoutReason,
+        metadata: {
+          timeout_threshold_ms: policyTimeout,
+          actual_duration_ms: actualDuration,
+          phase,
+        },
+      });
     }
 
     const outcome: RunOutcome = {

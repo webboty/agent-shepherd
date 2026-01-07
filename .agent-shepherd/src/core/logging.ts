@@ -71,7 +71,7 @@ export interface DecisionRecord {
   id: string;
   run_id: string;
   timestamp: number;
-  type: "agent_selection" | "phase_transition" | "retry" | "hitl";
+  type: "agent_selection" | "phase_transition" | "retry" | "hitl" | "timeout";
   decision: string;
   reasoning?: string;
   metadata?: {
@@ -151,6 +151,10 @@ export class Logger {
 
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_runs_issue_phase_status ON runs(issue_id, phase, status)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_phase_completed ON runs(phase, completed_at)
     `);
 
     this.db.run(`
@@ -379,6 +383,244 @@ export class Logger {
     `);
     const result = stmt.get(issueId, phaseName) as any;
     return result?.count || 0;
+  }
+
+  /**
+   * Get total duration for all runs matching a query
+   */
+  getTotalDuration(query: RunQuery): number {
+    let sql = "SELECT SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+    return result?.total || 0;
+  }
+
+  /**
+   * Get average duration for all runs matching a query
+   */
+  getAverageDuration(query: RunQuery): number {
+    let sql = "SELECT AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+    return result?.avg || 0;
+  }
+
+  /**
+   * Get minimum duration for all runs matching a query
+   */
+  getMinDuration(query: RunQuery): number | null {
+    let sql = "SELECT MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+    return result?.min || null;
+  }
+
+  /**
+   * Get maximum duration for all runs matching a query
+   */
+  getMaxDuration(query: RunQuery): number | null {
+    let sql = "SELECT MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+    return result?.max || null;
+  }
+
+  /**
+   * Get duration statistics for all runs matching a query
+   */
+  getDurationStats(query: RunQuery): {
+    total: number;
+    average: number;
+    min: number | null;
+    max: number | null;
+    count: number;
+  } {
+    let sql = `
+      SELECT 
+        SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total,
+        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg,
+        MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min,
+        MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max,
+        COUNT(*) as count
+      FROM runs
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+
+    return {
+      total: result?.total || 0,
+      average: result?.avg || 0,
+      min: result?.min || null,
+      max: result?.max || null,
+      count: result?.count || 0,
+    };
+  }
+
+  /**
+   * Get cumulative duration for a specific issue and phase
+   */
+  getPhaseTotalDuration(issueId: string, phaseName: string): number {
+    return this.getTotalDuration({ issue_id: issueId, phase: phaseName });
+  }
+
+  /**
+   * Get average duration for a specific issue and phase
+   */
+  getPhaseAverageDuration(issueId: string, phaseName: string): number {
+    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
+  }
+
+  /**
+   * Get average phase duration (async wrapper for compatibility)
+   */
+  async getAveragePhaseDuration(issueId: string, phaseName: string): Promise<number> {
+    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
+  }
+
+  /**
+   * Get total duration for all phases of an issue
+   */
+  async getTotalIssueDuration(issueId: string): Promise<number> {
+    const total = this.getTotalDuration({ issue_id: issueId });
+    return total;
+  }
+
+  /**
+   * Get slowest phases for an issue
+   */
+  async getSlowestPhases(
+    issueId: string,
+    limit: number = 10
+  ): Promise<Array<{ phase: string; avg_duration_ms: number }>> {
+    const stmt = this.db.prepare(`
+      SELECT 
+        phase,
+        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg_duration_ms
+      FROM runs
+      WHERE issue_id = ? 
+        AND outcome IS NOT NULL 
+        AND json_extract(outcome, '$.metrics.duration_ms') IS NOT NULL
+      GROUP BY phase
+      ORDER BY avg_duration_ms DESC
+      LIMIT ?
+    `);
+
+    const rows = stmt.all(issueId, limit) as any[];
+    return rows.map((row) => ({
+      phase: row.phase,
+      avg_duration_ms: row.avg_duration_ms || 0,
+    }));
   }
 
   /**
