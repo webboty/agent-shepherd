@@ -771,8 +771,8 @@ export class Logger {
 }
 
 /**
- * Create a singleton Logger instance
- */
+  * Create a singleton Logger instance
+  */
 let defaultLogger: Logger | null = null;
 
 export function getLogger(dataDir?: string): Logger {
@@ -780,4 +780,81 @@ export function getLogger(dataDir?: string): Logger {
     defaultLogger = new Logger(dataDir);
   }
   return defaultLogger;
+}
+
+export function queryAllRuns(query: RunQuery, dataDir?: string): RunRecord[] {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger } = require("./archive-logger");
+  const archiveLogger = new ArchiveLogger(dataDir);
+
+  try {
+    const activeRuns = logger.queryRuns(query);
+    const archiveRuns = archiveLogger.queryRuns(query);
+
+    const allRunsMap = new Map<string, RunRecord>();
+
+    for (const run of activeRuns) {
+      allRunsMap.set(run.id, run);
+    }
+
+    for (const run of archiveRuns) {
+      if (!allRunsMap.has(run.id)) {
+        allRunsMap.set(run.id, run);
+      }
+    }
+
+    const allRuns = Array.from(allRunsMap.values());
+    allRuns.sort((a, b) => b.created_at - a.created_at);
+
+    if (query.limit) {
+      const offset = query.offset || 0;
+      return allRuns.slice(offset, offset + query.limit);
+    }
+
+    return allRuns;
+  } finally {
+    archiveLogger.close();
+  }
+}
+
+export function getRunHistory(runId: string, dataDir?: string): RunRecord | null {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger } = require("./archive-logger");
+  const archiveLogger = new ArchiveLogger(dataDir);
+
+  try {
+    const activeRun = logger.getRun(runId);
+    if (activeRun) {
+      return activeRun;
+    }
+
+    return archiveLogger.getRun(runId);
+  } finally {
+    archiveLogger.close();
+  }
+}
+
+export function getRunWithArchival(runId: string, dataDir?: string): {
+  run: RunRecord | null;
+  location: "active" | "archive" | "not_found";
+} {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger } = require("./archive-logger");
+  const archiveLogger = new ArchiveLogger(dataDir);
+
+  try {
+    const activeRun = logger.getRun(runId);
+    if (activeRun) {
+      return { run: activeRun, location: "active" };
+    }
+
+    const archivedRun = archiveLogger.getRun(runId);
+    if (archivedRun) {
+      return { run: archivedRun, location: "archive" };
+    }
+
+    return { run: null, location: "not_found" };
+  } finally {
+    archiveLogger.close();
+  }
 }
