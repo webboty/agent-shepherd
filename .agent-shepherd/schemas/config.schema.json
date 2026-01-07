@@ -150,50 +150,158 @@
       "required": ["allowed_reasons"],
       "additionalProperties": false
     },
-    "loop_prevention": {
-      "type": "object",
-      "description": "Loop prevention configuration for dynamic workflows",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Master switch for loop prevention system. If false, all loop prevention checks are disabled."
+      "loop_prevention": {
+        "type": "object",
+        "description": "Loop prevention configuration for dynamic workflows",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Master switch for loop prevention system. If false, all loop prevention checks are disabled."
+          },
+          "max_visits_default": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 10,
+            "description": "Default maximum number of times a phase can be visited before being blocked. Can be overridden per-phase using max_visits field."
+          },
+          "max_transitions_default": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 5,
+            "description": "Default maximum number of times a specific phase→phase transition can occur before being blocked. For example, limits how many times develop→test can happen."
+          },
+          "cycle_detection_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable oscillating pattern detection. Catches patterns like develop→test→develop→test that visit/transition limits might miss."
+          },
+          "cycle_detection_length": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 10,
+            "default": 3,
+            "description": "Sensitivity for cycle detection. Length of transition sequence to analyze for oscillating patterns. Higher values detect longer cycles but may miss short oscillations."
+          },
+          "trigger_hitl": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether to trigger Human-in-the-loop (HITL) escalation when loop prevention limits are exceeded. When true, sets ashep-hitl label and blocks further execution until human review."
+          }
         },
-        "max_visits_default": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100,
-          "default": 10,
-          "description": "Default maximum number of times a phase can be visited before being blocked. Can be overridden per-phase using max_visits field."
-        },
-        "max_transitions_default": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 50,
-          "default": 5,
-          "description": "Default maximum number of times a specific phase→phase transition can occur before being blocked. For example, limits how many times develop→test can happen."
-        },
-        "cycle_detection_enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable oscillating pattern detection. Catches patterns like develop→test→develop→test that visit/transition limits might miss."
-        },
-        "cycle_detection_length": {
-          "type": "integer",
-          "minimum": 2,
-          "maximum": 10,
-          "default": 3,
-          "description": "Sensitivity for cycle detection. Length of transition sequence to analyze for oscillating patterns. Higher values detect longer cycles but may miss short oscillations."
-        },
-        "trigger_hitl": {
-          "type": "boolean",
-          "default": true,
-          "description": "Whether to trigger Human-in-the-loop (HITL) escalation when loop prevention limits are exceeded. When true, sets ashep-hitl label and blocks further execution until human review."
-        }
+        "required": [],
+        "additionalProperties": false
       },
-      "required": [],
-      "additionalProperties": false
-    }
+      "retention": {
+        "type": "object",
+        "description": "Data retention and garbage collection configuration",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Master switch for retention policy system. If false, no cleanup is performed."
+          },
+          "cleanup_on_startup": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to run cleanup on application startup."
+          },
+          "cleanup_interval_ms": {
+            "type": "integer",
+            "minimum": 60000,
+            "default": 3600000,
+            "description": "Interval between scheduled cleanup runs in milliseconds. Default is 1 hour."
+          },
+          "archive_enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether archiving is enabled for old runs."
+          },
+          "policies": {
+            "type": "array",
+            "description": "Retention policies for different types of runs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Unique name for this policy"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable description of the policy"
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Whether this policy is active"
+                },
+                "age_days": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "default": 30,
+                  "description": "Age threshold in days for considering runs for cleanup"
+                },
+                "max_runs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Maximum number of runs to keep. If 0, no limit."
+                },
+                "max_size_mb": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Maximum total size in MB. If 0, no limit."
+                },
+                "archive_enabled": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Whether to archive runs before deletion"
+                },
+                "archive_after_days": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Archive runs after this many days. If not specified, uses age_days."
+                },
+                "delete_after_days": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Delete runs after this many days. If 0, only archive."
+                },
+                "status_filter": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Only process runs with these statuses. If empty, all statuses."
+                },
+                "phase_filter": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Only process runs in these phases. If empty, all phases."
+                },
+                "keep_successful_runs": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Whether to keep successful runs and only archive/delete failed ones"
+                },
+                "keep_failed_runs": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Whether to keep failed runs (overrides keep_successful_runs when true)"
+                }
+              },
+              "required": ["name"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["policies"],
+        "additionalProperties": false
+      }
   },
   "additionalProperties": false,
   "examples": [
@@ -237,6 +345,27 @@
         "cycle_detection_enabled": true,
         "cycle_detection_length": 3,
         "trigger_hitl": true
+      },
+      "retention": {
+        "enabled": true,
+        "cleanup_on_startup": false,
+        "cleanup_interval_ms": 3600000,
+        "archive_enabled": true,
+        "policies": [
+          {
+            "name": "default",
+            "description": "Default retention policy for all runs",
+            "enabled": true,
+            "age_days": 90,
+            "max_runs": 1000,
+            "max_size_mb": 100,
+            "archive_enabled": true,
+            "archive_after_days": 30,
+            "delete_after_days": 90,
+            "keep_successful_runs": false,
+            "keep_failed_runs": true
+          }
+        ]
       }
     }
   ]

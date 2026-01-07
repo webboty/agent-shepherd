@@ -20,3 +20,21 @@ loop_prevention:
   cycle_detection_enabled: true
   cycle_detection_length: 3
   trigger_hitl: true
+
+retention:
+  enabled: true
+  cleanup_on_startup: false
+  cleanup_interval_ms: 3600000
+  archive_enabled: true
+  policies:
+    - name: default
+      description: Default retention policy for all runs
+      enabled: true
+      age_days: 90
+      max_runs: 1000
+      max_size_mb: 100
+      archive_enabled: true
+      archive_after_days: 30
+      delete_after_days: 90
+      keep_successful_runs: false
+      keep_failed_runs: true

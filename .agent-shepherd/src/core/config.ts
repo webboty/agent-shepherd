@@ -37,6 +37,30 @@ export interface LoopPreventionConfig {
   trigger_hitl: boolean;
 }
 
+export interface RetentionPolicy {
+  name: string;
+  description?: string;
+  enabled: boolean;
+  age_days: number;
+  max_runs: number;
+  max_size_mb: number;
+  archive_enabled: boolean;
+  archive_after_days?: number;
+  delete_after_days?: number;
+  status_filter?: string[];
+  phase_filter?: string[];
+  keep_successful_runs?: boolean;
+  keep_failed_runs?: boolean;
+}
+
+export interface RetentionConfig {
+  enabled: boolean;
+  cleanup_on_startup: boolean;
+  cleanup_interval_ms: number;
+  archive_enabled: boolean;
+  policies: RetentionPolicy[];
+}
+
 export interface AgentShepherdConfig {
   version: string;
   worker?: {
@@ -53,6 +77,7 @@ export interface AgentShepherdConfig {
   workflow?: WorkflowConfig;
   hitl?: HITLConfig;
   loop_prevention?: LoopPreventionConfig;
+  retention?: RetentionConfig;
 }
 
 /**
@@ -62,7 +87,7 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
   const configPath = configDir
     ? join(configDir, ".agent-shepherd", "config.yaml")
     : getConfigPath("config.yaml");
-  
+
   if (!existsSync(configPath)) {
     throw new Error(`Configuration file not found: ${configPath}`);
   }
@@ -70,7 +95,7 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
   try {
     const content = readFileSync(configPath, "utf-8");
     const config = parseYAML(content) as AgentShepherdConfig;
-    
+
     // Set defaults for missing values
     return {
       version: config.version || "1.0",
@@ -120,6 +145,19 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
         cycle_detection_enabled: true,
         cycle_detection_length: 3,
         trigger_hitl: true
+      },
+      retention: config.retention ? {
+        enabled: config.retention.enabled ?? true,
+        cleanup_on_startup: config.retention.cleanup_on_startup ?? false,
+        cleanup_interval_ms: config.retention.cleanup_interval_ms ?? 3600000,
+        archive_enabled: config.retention.archive_enabled ?? true,
+        policies: config.retention.policies ?? []
+      } : {
+        enabled: true,
+        cleanup_on_startup: false,
+        cleanup_interval_ms: 3600000,
+        archive_enabled: true,
+        policies: []
       }
     };
   } catch (error) {
@@ -127,4 +165,87 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
       `Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+}
+
+/**
+ * Load and validate retention configuration
+ */
+export function loadRetentionConfig(configDir?: string): RetentionConfig {
+  const fullConfig = loadConfig(configDir);
+
+  if (!fullConfig.retention) {
+    throw new Error("Retention configuration not found");
+  }
+
+  const retention = fullConfig.retention;
+
+  // Validate policies
+  if (!retention.policies || !Array.isArray(retention.policies)) {
+    throw new Error("Retention policies must be an array");
+  }
+
+  const policyNames = new Set<string>();
+
+  for (const policy of retention.policies) {
+    // Check unique policy names
+    if (policyNames.has(policy.name)) {
+      throw new Error(`Duplicate retention policy name: ${policy.name}`);
+    }
+    policyNames.add(policy.name);
+
+    // Validate age_days
+    if (!policy.age_days || policy.age_days <= 0) {
+      throw new Error(
+        `Policy '${policy.name}': age_days must be greater than 0`
+      );
+    }
+
+    // Validate archive_after_days > age_days if specified
+    if (
+      policy.archive_after_days !== undefined &&
+      policy.archive_after_days <= policy.age_days
+    ) {
+      throw new Error(
+        `Policy '${policy.name}': archive_after_days must be greater than age_days`
+      );
+    }
+
+    // Validate delete_after_days > archive_after_days if specified
+    if (
+      policy.delete_after_days !== undefined &&
+      policy.archive_after_days !== undefined &&
+      policy.delete_after_days <= policy.archive_after_days
+    ) {
+      throw new Error(
+        `Policy '${policy.name}': delete_after_days must be greater than archive_after_days`
+      );
+    }
+
+    // Validate delete_after_days > age_days if archive_after_days not specified
+    if (
+      policy.delete_after_days !== undefined &&
+      policy.archive_after_days === undefined &&
+      policy.delete_after_days <= policy.age_days
+    ) {
+      throw new Error(
+        `Policy '${policy.name}': delete_after_days must be greater than age_days`
+      );
+    }
+
+    // Validate max_runs
+    if (policy.max_runs !== undefined && policy.max_runs < 0) {
+      throw new Error(
+        `Policy '${policy.name}': max_runs must be >= 0`
+      );
+    }
+
+    // Validate max_size_mb
+    if (policy.max_size_mb !== undefined && policy.max_size_mb < 0) {
+      throw new Error(
+        `Policy '${policy.name}': max_size_mb must be >= 0`
+      );
+    }
+  }
+
+  return retention;
 }

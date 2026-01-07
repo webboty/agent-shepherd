@@ -14,6 +14,8 @@ import path from "path";
 import { execSync } from "child_process";
 import { homedir, platform } from "os";
 import { policyCapabilityValidator } from "../core/policy-capability-validator";
+import { getCleanupEngine } from "../core/cleanup-engine.ts";
+import { resetCleanupEngine } from "../core/cleanup-engine.ts";
 
 const COMMANDS: Record<string, string> = {
   worker: "Start the autonomous worker loop",
@@ -146,7 +148,7 @@ Configuration guide: docs/cli-reference.md
 }
 
 /**
- * Worker command - start autonomous processing
+ * Worker command - start autonomous worker loop
  */
 async function cmdWorker(): Promise<void> {
   console.log("Starting Agent Shepherd Worker...");
@@ -157,10 +159,16 @@ async function cmdWorker(): Promise<void> {
 
   const worker = getWorkerEngine();
 
+  // Initialize cleanup engine
+  const cleanupEngine = getCleanupEngine();
+  await cleanupEngine.start();
+
   // Handle graceful shutdown
   process.on("SIGINT", () => {
     console.log("\nStopping worker...");
+    cleanupEngine.stop();
     worker.stop();
+    resetCleanupEngine();
     process.exit(0);
   });
 
@@ -179,13 +187,19 @@ async function cmdMonitor(): Promise<void> {
 
   const monitor = getMonitorEngine();
 
+  // Initialize cleanup engine
+  const cleanupEngine = getCleanupEngine();
+  await cleanupEngine.start();
+
   // Resume any interrupted runs
   await monitor.resumeInterruptedRuns();
 
   // Handle graceful shutdown
   process.on("SIGINT", () => {
     console.log("\nStopping monitor...");
+    cleanupEngine.stop();
     monitor.stop();
+    resetCleanupEngine();
     process.exit(0);
   });
 
