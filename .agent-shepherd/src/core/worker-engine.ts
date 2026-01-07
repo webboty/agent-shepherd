@@ -442,7 +442,7 @@ ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval b
    */
   private async applyTransition(
     issueId: string,
-    transition: { type: string; next_phase?: string; reason?: string }
+    transition: { type: string; next_phase?: string; reason?: string; jump_target_phase?: string; dynamic_agent?: string; decision_config?: any }
   ): Promise<void> {
     switch (transition.type) {
       case "advance":
@@ -491,7 +491,47 @@ ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval b
         await clearHITLLabels(issueId);
         console.log(`Closed issue: ${transition.reason}`);
         break;
+
+      case "jump_back": {
+        await updateIssue(issueId, { status: "open" });
+        const targetPhase = transition.jump_target_phase || transition.next_phase;
+        if (targetPhase) {
+          await setPhaseLabel(issueId, targetPhase);
+          await clearHITLLabels(issueId);
+          console.log(`Jumped back to phase: ${targetPhase}`);
+        }
+        break;
+      }
+
+      case "dynamic_decision": {
+        try {
+          const finalTransition = await this.executeDecisionAgent(issueId, transition);
+          await this.applyTransition(issueId, finalTransition);
+          console.log(`Dynamic decision resulted in: ${finalTransition.type}`);
+        } catch (error) {
+          console.error(`Dynamic decision failed: ${error}`);
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          await updateIssue(issueId, { status: "blocked" });
+          if (validateHITLReason("manual-intervention", loadConfig().hitl)) {
+            await setHITLLabel(issueId, "manual-intervention");
+            await this.generateApprovalNote(issueId, "manual-intervention", `Dynamic decision failed: ${errorMsg}`);
+          }
+        }
+        break;
+      }
     }
+  }
+
+  /**
+   * Execute AI decision agent to determine transition
+   * NOTE: Full implementation will be in task 2.4
+   */
+  private async executeDecisionAgent(
+    issueId: string,
+    transition: { dynamic_agent?: string; decision_config?: any; reason?: string }
+  ): Promise<{ type: string; next_phase?: string; reason?: string }> {
+    console.log(`Executing decision agent ${transition.dynamic_agent} for issue ${issueId}`);
+    throw new Error("Decision agent execution not yet implemented (will be in task 2.4)");
   }
 
   /**

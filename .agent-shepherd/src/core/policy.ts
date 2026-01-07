@@ -8,6 +8,7 @@ import { readFileSync } from "fs";
 import { getConfigPath } from "./path-utils";
 import { type BeadsIssue } from "./beads.ts";
 import { type HITLConfig, loadConfig } from "./config.ts";
+import { getAgentRegistry } from "./agent-registry.ts";
 
 export interface PhaseConfig {
   name: string;
@@ -51,9 +52,12 @@ export interface PoliciesFile {
 }
 
 export type PhaseTransition = {
-  type: "advance" | "retry" | "block" | "close";
+  type: "advance" | "retry" | "block" | "close" | "jump_back" | "dynamic_decision";
   next_phase?: string;
   reason?: string;
+  jump_target_phase?: string;
+  dynamic_agent?: string;
+  decision_config?: any;
 };
 
 /**
@@ -281,26 +285,32 @@ export class PolicyEngine {
 
     // Check if approval is required
     if (outcome.requires_approval || phaseConfig.require_approval) {
-      return {
-        type: "block",
+      const transition = {
+        type: "block" as const,
         reason: "Human approval required",
       };
+      this.validateTransition(policyName, currentPhase, transition);
+      return transition;
     }
 
     // Handle success
     if (outcome.success) {
       const nextPhase = this.getNextPhase(policyName, currentPhase);
       if (nextPhase) {
-        return {
-          type: "advance",
+        const transition = {
+          type: "advance" as const,
           next_phase: nextPhase,
           reason: "Phase completed successfully",
         };
+        this.validateTransition(policyName, currentPhase, transition);
+        return transition;
       } else {
-        return {
-          type: "close",
+        const transition = {
+          type: "close" as const,
           reason: "All phases completed",
         };
+        this.validateTransition(policyName, currentPhase, transition);
+        return transition;
       }
     }
 
@@ -313,17 +323,21 @@ export class PolicyEngine {
     const retryCount = outcome.retry_count ?? 0;
 
     if (retryCount < retryConfig.max_attempts - 1) {
-      return {
-        type: "retry",
+      const transition = {
+        type: "retry" as const,
         reason: `Retry ${retryCount + 1}/${retryConfig.max_attempts}`,
       };
+      this.validateTransition(policyName, currentPhase, transition);
+      return transition;
     }
 
     // Max retries exceeded
-    return {
-      type: "block",
+    const transition = {
+      type: "block" as const,
       reason: `Max retries exceeded (${retryConfig.max_attempts})`,
     };
+    this.validateTransition(policyName, currentPhase, transition);
+    return transition;
   }
 
   /**
@@ -394,6 +408,53 @@ export class PolicyEngine {
   requiresHITL(policyName: string): boolean {
     const policy = this.getPolicy(policyName);
     return policy?.require_hitl || false;
+  }
+
+  /**
+   * Validate transition before returning it
+   * Ensures jump_target_phase exists and dynamic_agent is valid
+   */
+  private validateTransition(
+    policyName: string,
+    currentPhase: string,
+    transition: PhaseTransition
+  ): void {
+    if (transition.type === "jump_back") {
+      const targetPhase = transition.jump_target_phase || transition.next_phase;
+      if (!targetPhase) {
+        throw new Error("jump_back transition requires jump_target_phase or next_phase");
+      }
+
+      const policy = this.getPolicy(policyName);
+      if (!policy) {
+        throw new Error(`Policy '${policyName}' not found`);
+      }
+
+      const phaseExists = policy.phases.some((p) => p.name === targetPhase);
+      if (!phaseExists) {
+        throw new Error(`Target phase '${targetPhase}' not found in policy '${policyName}'`);
+      }
+
+      if (targetPhase === currentPhase) {
+        throw new Error(`Cannot jump from phase '${currentPhase}' to itself`);
+      }
+    }
+
+    if (transition.type === "dynamic_decision") {
+      if (!transition.dynamic_agent) {
+        throw new Error("dynamic_decision transition requires dynamic_agent");
+      }
+
+      const agentRegistry = getAgentRegistry();
+      const agents = agentRegistry.getAgentsByCapability(transition.dynamic_agent);
+      const activeAgents = agents.filter((agent) => agent.active !== false);
+
+      if (activeAgents.length === 0) {
+        throw new Error(
+          `No active agents found with capability '${transition.dynamic_agent}'`
+        );
+      }
+    }
   }
 }
 
