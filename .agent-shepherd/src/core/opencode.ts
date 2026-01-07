@@ -46,6 +46,26 @@ export interface ErrorDetails {
   stack_trace?: string;
   file_path?: string;
   line_number?: number;
+  code?: string;
+  context?: string;
+}
+
+export interface SessionMessage {
+  id?: string;
+  role: "user" | "assistant" | "system";
+  content?: string;
+  timestamp?: number;
+  tokens?: {
+    input?: number;
+    output?: number;
+    reasoning?: number;
+    total?: number;
+  };
+  parts?: Array<{
+    type: "text" | "tool" | "thinking";
+    tool?: string;
+    content?: string;
+  }>;
 }
 
 export interface ParsedRunOutcome {
@@ -65,6 +85,14 @@ export interface ParsedRunOutcome {
     end_time_ms?: number;
     api_calls_count?: number;
     model_name?: string;
+    cache_reads?: number;
+    cache_writes?: number;
+  };
+  messages?: SessionMessage[];
+  raw_output?: {
+    stdout: string;
+    stderr: string;
+    exit_code?: number;
   };
 }
 
@@ -183,6 +211,26 @@ export class OpenCodeClient {
   }
 
   /**
+   * Safe property getter for nested objects
+   */
+  private safeGet<T>(obj: any, path: string, defaultValue?: T): T | undefined {
+    try {
+      const keys = path.split(".");
+      let result = obj;
+      for (const key of keys) {
+        if (result && typeof result === "object" && key in result) {
+          result = result[key];
+        } else {
+          return defaultValue;
+        }
+      }
+      return result as T;
+    } catch {
+      return defaultValue;
+    }
+  }
+
+  /**
    * Parse comprehensive run outcome from OpenCode CLI JSON output
    */
   parseRunOutput(stdout: string, stderr: string): ParsedRunOutcome {
@@ -192,6 +240,11 @@ export class OpenCodeClient {
       tool_calls: [],
       warnings: [],
       metrics: {},
+      messages: [],
+      raw_output: {
+        stdout,
+        stderr,
+      },
     };
 
     const parseLine = (line: string) => {
@@ -210,109 +263,163 @@ export class OpenCodeClient {
       switch (event.type) {
         case "session.created":
         case "session.updated":
-          if (payload?.info?.id) {
-            outcome.session_id = payload.info.id;
+          if (this.safeGet<string>(payload, "info.id")) {
+            outcome.session_id = this.safeGet<string>(payload, "info.id");
           }
           break;
 
         case "session.status":
-          if (payload?.status?.type === "retry") {
+          if (this.safeGet<string>(payload, "status.type") === "retry") {
             outcome.warnings?.push(
-              `Session retry: ${payload.status.message} (attempt ${payload.status.attempt})`
+              `Session retry: ${this.safeGet<string>(payload, "status.message", "")} (attempt ${this.safeGet<number>(payload, "status.attempt", 0)})`
             );
           }
           break;
 
         case "session.error":
           outcome.success = false;
-          outcome.error = payload?.error?.message || "Session error occurred";
-          if (payload?.error) {
+          outcome.error = this.safeGet<string>(payload, "error.message", "Session error occurred");
+          if (this.safeGet<any>(payload, "error")) {
             outcome.error_details = {
-              type: payload.error.name || "SessionError",
-              message: payload.error.message,
+              type: this.safeGet<string>(payload, "error.name", "SessionError"),
+              message: this.safeGet<string>(payload, "error.message"),
+              stack_trace: this.safeGet<string>(payload, "error.stack"),
+              code: this.safeGet<string>(payload, "error.code"),
+              context: this.safeGet<string>(payload, "error.context"),
             };
           }
           break;
 
-        case "message.updated":
-          if (payload?.info?.role === "assistant") {
+        case "message.updated": {
+          const role = this.safeGet<string>(payload, "info.role");
+          if (role === "assistant" || role === "user") {
             const msg = payload.info;
-            if (msg.time?.created) {
-              outcome.metrics!.start_time_ms = msg.time.created;
+            if (role === "assistant") {
+              if (this.safeGet<number>(msg, "time.created")) {
+                outcome.metrics!.start_time_ms = this.safeGet<number>(msg, "time.created");
+              }
+              if (this.safeGet<number>(msg, "time.completed")) {
+                outcome.metrics!.end_time_ms = this.safeGet<number>(msg, "time.completed");
+              }
+              if (this.safeGet<any>(msg, "tokens")) {
+                outcome.metrics!.tokens_used = (this.safeGet<number>(msg, "tokens.input", 0) || 0) + (this.safeGet<number>(msg, "tokens.output", 0) || 0);
+                const tokens = this.safeGet<any>(msg, "tokens");
+                if (tokens && tokens.cache) {
+                  outcome.metrics!.cache_reads = this.safeGet<number>(tokens, "cache.read", 0) || 0;
+                  outcome.metrics!.cache_writes = this.safeGet<number>(tokens, "cache.write", 0) || 0;
+                }
+              }
+              if (this.safeGet<number>(msg, "cost")) {
+                outcome.metrics!.cost = this.safeGet<number>(msg, "cost");
+              }
+              const modelID = this.safeGet<string>(msg, "modelID");
+              const providerID = this.safeGet<string>(msg, "providerID");
+              if (modelID && providerID) {
+                outcome.metrics!.model_name = `${providerID}/${modelID}`;
+              }
+              if (this.safeGet<any>(msg, "error")) {
+                outcome.success = false;
+                outcome.error = this.safeGet<string>(msg, "error.data.message", "Message error occurred");
+                outcome.error_details = {
+                  type: this.safeGet<string>(msg, "error.name", "MessageError"),
+                  message: this.safeGet<string>(msg, "error.data.message"),
+                  stack_trace: this.safeGet<string>(msg, "error.data.stack"),
+                  file_path: this.safeGet<string>(msg, "error.data.file_path"),
+                  line_number: this.safeGet<number>(msg, "error.data.line_number"),
+                  code: this.safeGet<string>(msg, "error.data.code"),
+                };
+              }
             }
-            if (msg.time?.completed) {
-              outcome.metrics!.end_time_ms = msg.time.completed;
-            }
-            if (msg.tokens) {
-              outcome.metrics!.tokens_used = (msg.tokens.input || 0) + (msg.tokens.output || 0);
-            }
-            if (msg.cost) {
-              outcome.metrics!.cost = msg.cost;
-            }
-            if (msg.modelID && msg.providerID) {
-              outcome.metrics!.model_name = `${msg.providerID}/${msg.modelID}`;
-            }
-            if (msg.error) {
-              outcome.success = false;
-              outcome.error = msg.error.data?.message || "Message error occurred";
-              outcome.error_details = {
-                type: msg.error.name || "MessageError",
-                message: msg.error.data?.message,
+
+            const message: SessionMessage = {
+              id: this.safeGet<string>(msg, "id"),
+              role: role as "user" | "assistant" | "system",
+              content: this.safeGet<string>(msg, "content"),
+              timestamp: this.safeGet<number>(msg, "time.created"),
+            };
+
+            if (role === "assistant") {
+              message.tokens = {
+                input: this.safeGet<number>(msg, "tokens.input"),
+                output: this.safeGet<number>(msg, "tokens.output"),
+                reasoning: this.safeGet<number>(msg, "tokens.reasoning"),
+                total: this.safeGet<number>(msg, "tokens.total"),
               };
             }
+
+            outcome.messages?.push(message);
           }
           break;
+        }
 
         case "message.part.updated":
-          if (payload?.part?.type === "tool") {
+          if (this.safeGet<string>(payload, "part.type") === "tool") {
             const part = payload.part;
+            const toolName = this.safeGet<string>(part, "tool");
             const toolCall: ToolCall = {
-              name: part.tool,
-              inputs: part.state?.input,
-              status: part.state?.status || "completed",
+              name: toolName || "",
+              inputs: this.safeGet<any>(part, "state.input"),
+              status: this.safeGet<string>(part, "state.status", "completed") as any,
             };
-            if (part.state?.status === "completed" && part.state.output) {
-              toolCall.outputs = part.state.output;
+            const status = this.safeGet<string>(part, "state.status");
+            if (status === "completed") {
+              const output = this.safeGet<string>(part, "state.output");
+              if (output) {
+                toolCall.outputs = output;
+              }
             }
-            if (part.state?.time) {
-              const start = part.state.time.start || 0;
-              const end = part.state.time.end || start;
+            const timeObj = this.safeGet<any>(part, "state.time");
+            if (timeObj) {
+              const start = this.safeGet<number>(timeObj, "start", 0) || 0;
+              const end = this.safeGet<number>(timeObj, "end", start) || start;
               toolCall.duration_ms = end - start;
             }
             outcome.tool_calls?.push(toolCall);
           }
           break;
 
-        case "file.edited":
-          if (payload?.diff) {
-            const artifact: Artifact = {
-              path: payload.diff.file,
-              operation: "modified",
-            };
-            if (payload.diff.additions > 0 || payload.diff.deletions > 0) {
-              artifact.operation = "modified";
+        case "file.edited": {
+          if (this.safeGet<any>(payload, "diff")) {
+            const filePath = this.safeGet<string>(payload, "diff.file");
+            if (filePath) {
+              const artifact: Artifact = {
+                path: filePath,
+                operation: "modified",
+                size: this.safeGet<number>(payload, "diff.size"),
+                type: this.safeGet<string>(payload, "diff.type") as any,
+              };
+              const additions = this.safeGet<number>(payload, "diff.additions", 0) || 0;
+              const deletions = this.safeGet<number>(payload, "diff.deletions", 0) || 0;
+              if (additions > 0 || deletions > 0) {
+                artifact.operation = "modified";
+              }
+              outcome.artifacts?.push(artifact);
             }
-            outcome.artifacts?.push(artifact);
           }
           break;
+        }
 
         case "permission.updated":
           outcome.warnings?.push(
-            `Permission required: ${payload.title}`
+            `Permission required: ${this.safeGet<string>(payload, "title", "")}`
           );
           break;
 
-        case "command.executed":
+        case "command.executed": {
+          const timeObj = this.safeGet<any>(payload, "time");
+          const startTime = this.safeGet<number>(timeObj, "start");
+          const endTime = this.safeGet<number>(timeObj, "end");
           outcome.tool_calls?.push({
             name: "bash",
-            inputs: { command: payload.command },
-            outputs: payload.stdout,
-            status: payload.exitCode === 0 ? "completed" : "error",
-            duration_ms: payload.time?.start && payload.time?.end
-              ? payload.time.end - payload.time.start
+            inputs: { command: this.safeGet<string>(payload, "command", "") },
+            outputs: this.safeGet<string>(payload, "stdout"),
+            status: (this.safeGet<number>(payload, "exitCode", 0) === 0 ? "completed" : "error") as any,
+            duration_ms: (startTime !== undefined && endTime !== undefined)
+              ? endTime - startTime
               : undefined,
           });
           break;
+        }
       }
     };
 

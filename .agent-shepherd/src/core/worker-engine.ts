@@ -235,17 +235,19 @@ export class WorkerEngine {
       // Store session_id and update cumulative phase duration
       const currentPhaseTotal = (run.metadata as any)?.phase_total_duration_ms || 0;
       const currentDuration = outcome.metrics?.duration_ms || 0;
-      
+
       if (sessionId) {
         updateData.metadata = {
           ...run.metadata,
           session_id: sessionId,
           phase_total_duration_ms: currentPhaseTotal + currentDuration,
+          ...launchResult.metadata,
         };
       } else {
         updateData.metadata = {
           ...run.metadata,
           phase_total_duration_ms: currentPhaseTotal + currentDuration,
+          ...launchResult.metadata,
         };
       }
 
@@ -306,7 +308,7 @@ export class WorkerEngine {
     agentId: string,
     phase: string,
     policy: string
-  ): Promise<{ outcome: RunOutcome; sessionId?: string }> {
+  ): Promise<{ outcome: RunOutcome; sessionId?: string; metadata?: any }> {
     const startTimestamp = Date.now();
 
     const agent = this.agentRegistry.getAgent(agentId);
@@ -405,9 +407,15 @@ export class WorkerEngine {
       },
     };
 
+    const metadata: any = {
+      messages: parsedOutcome.messages,
+      raw_cli_output: parsedOutcome.raw_output,
+    };
+
     return {
       outcome,
       sessionId: parsedOutcome.session_id || result.sessionId,
+      metadata,
     };
   }
 

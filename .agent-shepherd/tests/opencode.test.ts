@@ -4,13 +4,122 @@
  */
 
 import { describe, test, expect, beforeEach } from "bun:test";
-import { OpenCodeClient, type ParsedRunOutcome } from "../src/core/opencode";
+import { OpenCodeClient, type ParsedRunOutcome, type SessionMessage } from "../src/core/opencode";
 
 describe("OpenCodeClient.parseRunOutput", () => {
   let client: OpenCodeClient;
 
   beforeEach(() => {
     client = new OpenCodeClient();
+  });
+
+  describe("Message extraction", () => {
+    test("extracts user messages", () => {
+      const stdout = JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            sessionID: "session-1",
+            role: "user",
+            content: "Hello, world",
+            time: { created: 1000 },
+          },
+        },
+      });
+
+      const result = client.parseRunOutput(stdout, "");
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages?.[0]).toEqual({
+        id: "msg-1",
+        role: "user",
+        content: "Hello, world",
+        timestamp: 1000,
+      });
+    });
+
+    test("extracts assistant messages with tokens", () => {
+      const stdout = JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-2",
+            sessionID: "session-1",
+            role: "assistant",
+            content: "I'll help you",
+            time: { created: 2000, completed: 3000 },
+            tokens: {
+              input: 500,
+              output: 200,
+              reasoning: 100,
+              total: 800,
+            },
+          },
+        },
+      });
+
+      const result = client.parseRunOutput(stdout, "");
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages?.[0]).toEqual({
+        id: "msg-2",
+        role: "assistant",
+        content: "I'll help you",
+        timestamp: 2000,
+        tokens: {
+          input: 500,
+          output: 200,
+          reasoning: 100,
+          total: 800,
+        },
+      });
+    });
+
+    test("extracts multiple messages in conversation", () => {
+      const stdout = [
+        JSON.stringify({
+          type: "message.updated",
+          properties: {
+            info: {
+              id: "msg-1",
+              role: "user",
+              content: "First message",
+              time: { created: 1000 },
+            },
+          },
+        }),
+        JSON.stringify({
+          type: "message.updated",
+          properties: {
+            info: {
+              id: "msg-2",
+              role: "assistant",
+              content: "Response",
+              time: { created: 2000 },
+            },
+          },
+        }),
+        JSON.stringify({
+          type: "message.updated",
+          properties: {
+            info: {
+              id: "msg-3",
+              role: "user",
+              content: "Follow-up",
+              time: { created: 3000 },
+            },
+          },
+        }),
+      ].join("\n");
+
+      const result = client.parseRunOutput(stdout, "");
+
+      expect(result.messages).toHaveLength(3);
+      expect(result.messages?.[0].role).toBe("user");
+      expect(result.messages?.[1].role).toBe("assistant");
+      expect(result.messages?.[2].role).toBe("user");
+    });
   });
 
   describe("Session ID extraction", () => {
@@ -318,6 +427,8 @@ describe("OpenCodeClient.parseRunOutput", () => {
           error: {
             name: "ApiError",
             message: "API rate limit exceeded",
+            code: "429",
+            stack: "Error: Rate limit\n    at api_call (api.js:123)\n    at process (index.js:456)",
           },
         },
       });
@@ -329,10 +440,12 @@ describe("OpenCodeClient.parseRunOutput", () => {
       expect(result.error_details).toEqual({
         type: "ApiError",
         message: "API rate limit exceeded",
+        code: "429",
+        stack_trace: "Error: Rate limit\n    at api_call (api.js:123)\n    at process (index.js:456)",
       });
     });
 
-    test("extracts error details from message", () => {
+    test("extracts error details from message with file location", () => {
       const stdout = JSON.stringify({
         type: "message.updated",
         properties: {
@@ -344,6 +457,9 @@ describe("OpenCodeClient.parseRunOutput", () => {
               data: {
                 providerID: "anthropic",
                 message: "Invalid API key",
+                file_path: "/src/auth.ts",
+                line_number: 42,
+                stack: "Error: Invalid key\n    at validate (auth.ts:42)\n    at api_call (index.js:789)",
               },
             },
           },
@@ -357,7 +473,87 @@ describe("OpenCodeClient.parseRunOutput", () => {
       expect(result.error_details).toEqual({
         type: "ProviderAuthError",
         message: "Invalid API key",
+        file_path: "/src/auth.ts",
+        line_number: 42,
+        stack_trace: "Error: Invalid key\n    at validate (auth.ts:42)\n    at api_call (index.js:789)",
       });
+    });
+  });
+
+  describe("Raw output caching", () => {
+    test("stores raw stdout and stderr in outcome", () => {
+      const stdout = JSON.stringify({
+        type: "session.created",
+        properties: {
+          info: { id: "session-1", title: "Test" },
+        },
+      });
+      const stderr = "Some warning message\n";
+
+      const result = client.parseRunOutput(stdout, stderr);
+
+      expect(result.raw_output).toBeDefined();
+      expect(result.raw_output?.stdout).toBe(stdout);
+      expect(result.raw_output?.stderr).toBe(stderr);
+    });
+
+    test("preserves raw output even when parsing fails", () => {
+      const stdout = "invalid json";
+      const stderr = "error output";
+
+      const result = client.parseRunOutput(stdout, stderr);
+
+      expect(result.raw_output?.stdout).toBe(stdout);
+      expect(result.raw_output?.stderr).toBe(stderr);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("Cache metrics", () => {
+    test("extracts cache read/write metrics", () => {
+      const stdout = JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+            tokens: {
+              input: 1000,
+              output: 500,
+              cache: {
+                read: 100,
+                write: 50,
+              },
+            },
+          },
+        },
+      });
+
+      const result = client.parseRunOutput(stdout, "");
+
+      expect(result.metrics?.cache_reads).toBe(100);
+      expect(result.metrics?.cache_writes).toBe(50);
+      expect(result.metrics?.tokens_used).toBe(1500);
+    });
+
+    test("handles missing cache metrics gracefully", () => {
+      const stdout = JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            tokens: { input: 1000, output: 500 },
+          },
+        },
+      });
+
+      const result = client.parseRunOutput(stdout, "");
+
+      expect(result.metrics?.cache_reads).toBeUndefined();
+      expect(result.metrics?.cache_writes).toBeUndefined();
+      expect(result.metrics?.tokens_used).toBe(1500);
     });
   });
 
