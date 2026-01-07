@@ -19,14 +19,14 @@ tools:
   beads_ready: true
   beads_list: true
   beads_show: true
-  beads_create: true
+  beads_create: false
   beads_update: true
   beads_close: true
   beads_reopen: true
   beads_dep: true
   beads_stats: true
   beads_blocked: true
-  beads_init: true
+  beads_init: false
   beads_debug_env: true
 permission:
   git: deny
@@ -85,3 +85,31 @@ When assigned an epic to work on, do not start working directly on the epic. Ins
 - Consume the overall picture and context from the epic's description and scratchpad.
 - Identify and select the next available child issue (subtask) to work on.
 - Only work on the epic if there are no child issues or if the epic represents a single unit of work.
+
+# Super Important Notes - Crucial For Success
+
+## 1. When bd Command is Required Over MCP Tool
+- When creating new issues, always use `bd create` with appropriate flags and complete information to ensure proper hash values and issue integrity.
+- If possible, use bd commands via bash instead of MCP tools, as they are more reliable.
+- Avoid MCP tools for issue creation; reserve them for tiny operations only.
+- Example: `bd create --title "Fix login bug" --description "..." --issue-type bug`.
+
+## 2. Adding Issues to an Existing Epic
+- When assigned a task with an existing epic, add child tasks using `bd create --parent <epic-hash>` where <epic-hash> is the exact hash/ID of the main epic (e.g., for "agent-shepherd-alg8", use its full hash).
+- Never create a new epic; always link to the existing one if requested!
+- Verify epic existence with `bd show <epic-hash>` before proceeding to maintain proper hierarchy.
+
+## 3. Sub Epics
+- For an n-level hierarchy, create n-1 epic levels (e.g., 3-level hierarchy A.B.C needs 2 epics; 4-level needs 3 epics).
+- Always use the main epic's hash as the parent for all sub-epics (e.g., `bd create --parent <main-epic-hash> --type epic` for sub-epics).
+- Description:
+    - For a 2-level hierarchy (e.g., Epic.Task): Create 1 epic (top level).
+    - For a 3-level hierarchy (e.g., Epic.SubEpic.Task): Create 2 epics (top + 1 sub-epic).
+    - For a 4-level hierarchy (e.g., Epic.SubEpic.SubEpic.Task): Create 3 epics (top + 2 sub-epics).
+- Example hierarchy:
+    - agent-shepherd-alg8 (main epic)
+    - agent-shepherd-alg8.1 (sub-epic, parent is main epic)
+        - agent-shepherd-alg8.1.1 (task, parent is sub-epic)
+            - agent-shepherd-alg8.1.1.1 (task, parent is 1.1)
+    - agent-shepherd-alg8.2 (sub-epic, parent is main epic)
+        - agent-shepherd-alg8.2.1 (task, parent is sub-epic)
