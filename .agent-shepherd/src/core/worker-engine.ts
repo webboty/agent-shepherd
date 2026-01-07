@@ -13,11 +13,13 @@ import {
   clearHITLLabels,
   getCurrentPhase,
   hasExcludedLabel,
+  getIssue,
 } from "./beads.ts";
 import { getOpenCodeClient } from "./opencode.ts";
 import {
   getPolicyEngine,
   validateHITLReason,
+  type PhaseTransition,
 } from "./policy.ts";
 import { getAgentRegistry } from "./agent-registry.ts";
 import { getLogger, type RunOutcome } from "./logging.ts";
@@ -46,6 +48,8 @@ export class WorkerEngine {
   private opencode = getOpenCodeClient();
   private logger = getLogger();
   private isRunning = false;
+  private currentRunId: string | null = null;
+  private currentPhase: string | null = null;
 
   constructor(config?: WorkerConfig) {
     this.config = {
@@ -173,7 +177,10 @@ export class WorkerEngine {
 
     // Log agent selection decision
     const runId = `run-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    
+
+    this.currentRunId = runId;
+    this.currentPhase = phase;
+
     this.logger.logDecision({
       run_id: runId,
       type: "agent_selection",
@@ -444,7 +451,7 @@ ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval b
    */
   private async applyTransition(
     issueId: string,
-    transition: { type: string; next_phase?: string; reason?: string; jump_target_phase?: string; dynamic_agent?: string; decision_config?: any }
+    transition: PhaseTransition
   ): Promise<void> {
     switch (transition.type) {
       case "advance":
@@ -526,14 +533,93 @@ ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval b
 
   /**
    * Execute AI decision agent to determine transition
-   * NOTE: Full implementation will be in task 2.4
    */
   private async executeDecisionAgent(
     issueId: string,
-    transition: { dynamic_agent?: string; decision_config?: any; reason?: string }
-  ): Promise<{ type: string; next_phase?: string; reason?: string }> {
+    transition: PhaseTransition
+  ): Promise<PhaseTransition> {
     console.log(`Executing decision agent ${transition.dynamic_agent} for issue ${issueId}`);
-    throw new Error("Decision agent execution not yet implemented (will be in task 2.4)");
+
+    const agent = this.agentRegistry.selectAgent({
+      required_capabilities: [transition.dynamic_agent || ''],
+      tags: ['decision']
+    });
+
+    if (!agent) {
+      throw new Error(`No decision agent found with capability: ${transition.dynamic_agent}`);
+    }
+
+    const issue = await getIssue(issueId);
+    if (!issue) {
+      throw new Error(`Issue ${issueId} not found`);
+    }
+
+    const run = this.logger.getRun(this.currentRunId || '');
+    if (!run || !run.outcome) {
+      throw new Error(`No run found with ID ${this.currentRunId}`);
+    }
+
+    const instructions = this.policyEngine.buildDecisionInstructions(
+      issue,
+      transition.decision_config!,
+      run.outcome,
+      this.currentPhase || ''
+    );
+
+    const result = await this.opencode.runAgentCLI({
+      directory: process.cwd(),
+      title: `Decision: ${transition.dynamic_agent}`,
+      agent: agent.id,
+      message: instructions,
+    });
+
+    if (!result.success) {
+      throw new Error(`Decision agent execution failed: ${result.error}`);
+    }
+
+    const decision = this.policyEngine.parseDecisionResponse(
+      result.output,
+      transition.decision_config!
+    );
+
+    this.logger.logDecision({
+      run_id: this.currentRunId || '',
+      type: 'dynamic_decision',
+      decision: decision.action,
+      reasoning: decision.reasoning,
+      metadata: {
+        decision_agent_id: agent.id,
+        capability: transition.dynamic_agent,
+        prompt: transition.decision_config!.prompt,
+        allowed_destinations: transition.decision_config!.allowed_destinations,
+        confidence_thresholds: transition.decision_config!.confidence_thresholds,
+        confidence: decision.confidence,
+        target_phase: decision.target_phase,
+        requires_approval: decision.requires_approval,
+        issue_id: issue.id,
+        from_phase: this.currentPhase,
+        raw_response: result.output,
+        parsed_decision: decision
+      }
+    });
+
+    if (decision.requires_approval) {
+      return {
+        type: 'block',
+        reason: `Decision requires approval: ${decision.reasoning}`
+      };
+    } else if (decision.target_phase) {
+      return {
+        type: decision.action.startsWith('jump_to_') ? 'jump_back' : 'advance',
+        next_phase: decision.target_phase,
+        reason: decision.reasoning
+      };
+    } else {
+      return {
+        type: 'close',
+        reason: decision.reasoning
+      };
+    }
   }
 
   /**

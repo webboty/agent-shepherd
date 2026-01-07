@@ -9,7 +9,7 @@ import { getConfigPath } from "./path-utils";
 import { type BeadsIssue } from "./beads.ts";
 import { type HITLConfig, loadConfig } from "./config.ts";
 import { getAgentRegistry } from "./agent-registry.ts";
-import { getLogger } from "./logging.ts";
+import { getLogger, type RunOutcome } from "./logging.ts";
 
 export interface PhaseConfig {
   name: string;
@@ -80,6 +80,15 @@ export type PhaseTransition = {
   dynamic_agent?: string;
   decision_config?: any;
 };
+
+export interface DecisionResult {
+  action: string;
+  target_phase?: string;
+  reasoning: string;
+  confidence: number;
+  requires_approval: boolean;
+  recommendations?: string[];
+}
 
 /**
  * Map outcome types to transition configuration keys
@@ -670,6 +679,109 @@ export class PolicyEngine {
     }
 
     return { detected: false };
+  }
+
+  /**
+   * Build comprehensive prompt for decision agents
+   * Combines issue data, previous results, and decision parameters
+   */
+  buildDecisionInstructions(
+    issue: BeadsIssue,
+    transitionConfig: TransitionConfig,
+    previousOutcome: RunOutcome,
+    currentPhase: string
+  ): string {
+    return `
+# WORKFLOW DECISION TASK
+
+## Issue Context:
+- **Title**: ${issue.title}
+- **Description**: ${issue.description}
+- **Type**: ${issue.issue_type}
+- **Priority**: P${issue.priority}
+- **Current Status**: ${issue.status}
+
+## Previous Phase Result:
+- **Phase**: ${currentPhase}
+- **Outcome**: ${previousOutcome.success ? 'SUCCESS' : 'FAILED'}
+- **Message**: ${previousOutcome.message || 'No details'}
+- **Duration**: ${previousOutcome.metrics?.duration_ms || 'unknown'}ms
+- **Error**: ${previousOutcome.error || 'None'}
+${previousOutcome.warnings ? `- **Warnings**: ${previousOutcome.warnings.join(', ')}` : ''}
+
+## Decision Instructions:
+${transitionConfig.prompt}
+
+## Allowed Next Phases:
+${transitionConfig.allowed_destinations.map(dest => `- **${dest}**`).join('\n')}
+
+## Response Format:
+\`\`\`json
+{
+  "decision": "jump_to_phase_name" | "advance_to_phase_name" | "require_approval",
+  "reasoning": "Brief explanation of decision logic",
+  "confidence": 0.0-1.0,
+  "recommendations": ["Optional additional suggestions"]
+}
+\`\`\`
+
+Make your decision based on context above.
+    `.trim();
+  }
+
+  /**
+   * Parse and validate AI decision responses
+   * Ensures decisions are safe, valid, and actionable
+   */
+  parseDecisionResponse(
+    response: string,
+    transitionConfig: TransitionConfig
+  ): DecisionResult {
+    try {
+      const parsed = JSON.parse(response);
+
+      if (!parsed.decision || !parsed.reasoning) {
+        throw new Error('Invalid decision response: missing required fields (decision, reasoning)');
+      }
+
+      let targetPhase: string | undefined;
+      if (parsed.decision.startsWith('jump_to_')) {
+        targetPhase = parsed.decision.replace('jump_to_', '');
+      } else if (parsed.decision.startsWith('advance_to_')) {
+        targetPhase = parsed.decision.replace('advance_to_', '');
+      }
+
+      if (targetPhase && !transitionConfig.allowed_destinations.includes(targetPhase)) {
+        throw new Error(`Decision attempted unauthorized jump to: ${targetPhase}. Allowed: ${transitionConfig.allowed_destinations.join(', ')}`);
+      }
+
+      const confidenceThresholds = transitionConfig.confidence_thresholds || {
+        auto_advance: 0.8,
+        require_approval: 0.6
+      };
+
+      const requiresApproval =
+        parsed.decision === 'require_approval' ||
+        (parsed.confidence < confidenceThresholds.require_approval);
+
+      return {
+        action: parsed.decision,
+        target_phase: targetPhase,
+        reasoning: parsed.reasoning,
+        confidence: parsed.confidence || 0.5,
+        requires_approval: requiresApproval,
+        recommendations: parsed.recommendations
+      };
+
+    } catch (error) {
+      console.error('Failed to parse decision response:', error);
+      return {
+        action: 'require_approval',
+        reasoning: 'Failed to parse AI decision response',
+        confidence: 0,
+        requires_approval: true
+      };
+    }
   }
 
   /**

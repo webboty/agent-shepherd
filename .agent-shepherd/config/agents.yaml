@@ -113,3 +113,39 @@ agents:
       performance_tier: balanced
     metadata:
       agent_type: primary
+  - id: test-quality-decider
+    name: Test Quality Decider
+    description: Analyzes test results and decides next workflow phase
+    capabilities:
+      - test-decision
+      - analysis
+    priority: 8
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: decision
+  - id: validation-gatekeeper
+    name: Validation Gatekeeper
+    description: Reviews validation results and quality metrics
+    capabilities:
+      - validation-decision
+      - code-analysis
+    priority: 9
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: decision
+  - id: workflow-orchestrator
+    name: Workflow Orchestrator
+    description: Handles complex multi-factor workflow decisions
+    capabilities:
+      - complex-decision
+      - planning
+    priority: 10
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: decision
