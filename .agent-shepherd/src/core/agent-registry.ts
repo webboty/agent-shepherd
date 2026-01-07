@@ -7,6 +7,7 @@ import { parse as parseYAML, stringify as stringifyYAML } from "yaml";
 import { readFileSync, writeFileSync } from "fs";
 import { getConfigPath } from "./path-utils";
 import { loadConfig } from "./config";
+import { type PolicyConfig, type PhaseConfig } from "./policy";
 
 export interface AgentConfig {
   id: string;
@@ -545,8 +546,8 @@ export class AgentRegistry {
    */
   selectAgentWithFallback(
     capability: string,
-    policy: any,
-    phase: any
+    policy: PolicyConfig,
+    phase: PhaseConfig
   ): { agent: AgentConfig | null; usedFallback: boolean } {
     const agents = this.getAllAgents().filter(agent => agent.active !== false);
 
@@ -582,8 +583,8 @@ export class AgentRegistry {
    */
   private getFallbackAgent(
     capability: string,
-    policy: any,
-    phase: any
+    policy: PolicyConfig,
+    phase: PhaseConfig
   ): AgentConfig | null {
     const config = this.config;
 
