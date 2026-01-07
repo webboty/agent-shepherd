@@ -158,6 +158,10 @@ export class Logger {
     `);
 
     this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase ON runs(issue_id, phase)
+    `);
+
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS decisions (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
@@ -172,6 +176,10 @@ export class Logger {
 
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_decisions_run_id ON decisions(run_id)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(type)
     `);
   }
 
@@ -380,6 +388,20 @@ export class Logger {
       SELECT COUNT(*) as count
       FROM runs
       WHERE issue_id = ? AND phase = ? AND status = 'failed'
+    `);
+    const result = stmt.get(issueId, phaseName) as any;
+    return result?.count || 0;
+  }
+
+  /**
+   * Get phase visit count for a specific issue and phase
+   * Counts all executions (regardless of status) for the given issue and phase combination
+   */
+  getPhaseVisitCount(issueId: string, phaseName: string): number {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ?
     `);
     const result = stmt.get(issueId, phaseName) as any;
     return result?.count || 0;
@@ -657,6 +679,48 @@ export class Logger {
   }
 
   /**
+   * Get decisions for a specific issue
+   */
+  getDecisionsForIssue(issueId: string, options?: { limit?: number }): DecisionRecord[] {
+    let sql = `
+      SELECT d.*
+      FROM decisions d
+      INNER JOIN runs r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+      ORDER BY d.timestamp DESC
+    `;
+    const params: any[] = [issueId];
+
+    if (options?.limit) {
+      sql += " LIMIT ?";
+      params.push(options.limit);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as any[];
+
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+
+  /**
+   * Get transition count for specific phase→phase pattern
+   * Counts how many times a specific transition has occurred for an issue
+   */
+  getTransitionCount(issueId: string, fromPhase: string, toPhase: string): number {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM decisions d
+      INNER JOIN runs r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+        AND d.type = 'phase_transition'
+        AND json_extract(d.metadata, '$.from_phase') = ?
+        AND json_extract(d.metadata, '$.to_phase') = ?
+    `);
+    const result = stmt.get(issueId, fromPhase, toPhase) as any;
+    return result?.count || 0;
+  }
+
+  /**
    * Convert SQLite row to RunRecord
    */
   private rowToRunRecord(row: any): RunRecord {
@@ -696,6 +760,13 @@ export class Logger {
    */
   close(): void {
     this.db.close();
+  }
+
+  /**
+   * Reset singleton instance (for testing)
+   */
+  static resetInstance(): void {
+    defaultLogger = null;
   }
 }
 

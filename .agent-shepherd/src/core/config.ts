@@ -28,6 +28,15 @@ export interface HITLConfig {
   allowed_reasons: AllowedReasonsConfig;
 }
 
+export interface LoopPreventionConfig {
+  enabled: boolean;
+  max_visits_default: number;
+  max_transitions_default: number;
+  cycle_detection_enabled: boolean;
+  cycle_detection_length: number;
+  trigger_hitl: boolean;
+}
+
 export interface AgentShepherdConfig {
   version: string;
   worker?: {
@@ -43,6 +52,7 @@ export interface AgentShepherdConfig {
   fallback?: FallbackConfig;
   workflow?: WorkflowConfig;
   hitl?: HITLConfig;
+  loop_prevention?: LoopPreventionConfig;
 }
 
 /**
@@ -95,7 +105,22 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
           allow_custom: config.hitl.allowed_reasons?.allow_custom ?? true,
           custom_validation: config.hitl.allowed_reasons?.custom_validation ?? "alphanumeric-dash-underscore"
         }
-      } : undefined
+      } : undefined,
+      loop_prevention: config.loop_prevention ? {
+        enabled: config.loop_prevention.enabled ?? true,
+        max_visits_default: config.loop_prevention.max_visits_default ?? 10,
+        max_transitions_default: config.loop_prevention.max_transitions_default ?? 5,
+        cycle_detection_enabled: config.loop_prevention.cycle_detection_enabled ?? true,
+        cycle_detection_length: config.loop_prevention.cycle_detection_length ?? 3,
+        trigger_hitl: config.loop_prevention.trigger_hitl ?? true
+      } : {
+        enabled: true,
+        max_visits_default: 10,
+        max_transitions_default: 5,
+        cycle_detection_enabled: true,
+        cycle_detection_length: 3,
+        trigger_hitl: true
+      }
     };
   } catch (error) {
     throw new Error(

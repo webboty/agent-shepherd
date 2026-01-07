@@ -12,3 +12,11 @@ monitor:
 ui:
   port: 3000
   host: localhost
+
+loop_prevention:
+  enabled: true
+  max_visits_default: 10
+  max_transitions_default: 5
+  cycle_detection_enabled: true
+  cycle_detection_length: 3
+  trigger_hitl: true

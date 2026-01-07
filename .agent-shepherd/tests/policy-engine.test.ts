@@ -118,7 +118,7 @@ default_policy: default
     });
 
     it('should determine phase transitions', () => {
-      const transition = policyEngine.determineTransition('default', 'plan', {
+      const transition = await policyEngine.determineTransition('default', plan', {
         success: true
       });
       expect(transition.type).toBe('advance');
@@ -187,7 +187,7 @@ default_policy: default
     });
 
     it('should use string transition for direct jump', () => {
-      const transition = policyEngine.determineTransition('default', 'plan', {
+      const transition = await policyEngine.determineTransition('default', plan', {
         success: true
       });
       expect(transition.type).toBe('advance');
@@ -271,7 +271,7 @@ default_policy: simple
       writeFileSync(policiesPath, noTransitionsPolicy);
       const simpleEngine = new PolicyEngine(policiesPath);
 
-      const transition = simpleEngine.determineTransition('simple', 'phase1', {
+      const transition = await simpleEngine.determineTransition('simple', 'phase1', {
         success: true
       });
       expect(transition.type).toBe('advance');

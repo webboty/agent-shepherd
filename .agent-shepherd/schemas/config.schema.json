@@ -149,6 +149,50 @@
       },
       "required": ["allowed_reasons"],
       "additionalProperties": false
+    },
+    "loop_prevention": {
+      "type": "object",
+      "description": "Loop prevention configuration for dynamic workflows",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master switch for loop prevention system. If false, all loop prevention checks are disabled."
+        },
+        "max_visits_default": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 10,
+          "description": "Default maximum number of times a phase can be visited before being blocked. Can be overridden per-phase using max_visits field."
+        },
+        "max_transitions_default": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 5,
+          "description": "Default maximum number of times a specific phase→phase transition can occur before being blocked. For example, limits how many times develop→test can happen."
+        },
+        "cycle_detection_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable oscillating pattern detection. Catches patterns like develop→test→develop→test that visit/transition limits might miss."
+        },
+        "cycle_detection_length": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10,
+          "default": 3,
+          "description": "Sensitivity for cycle detection. Length of transition sequence to analyze for oscillating patterns. Higher values detect longer cycles but may miss short oscillations."
+        },
+        "trigger_hitl": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to trigger Human-in-the-loop (HITL) escalation when loop prevention limits are exceeded. When true, sets ashep-hitl label and blocks further execution until human review."
+        }
+      },
+      "required": [],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -185,6 +229,14 @@
           "allow_custom": true,
           "custom_validation": "alphanumeric-dash-underscore"
         }
+      },
+      "loop_prevention": {
+        "enabled": true,
+        "max_visits_default": 10,
+        "max_transitions_default": 5,
+        "cycle_detection_enabled": true,
+        "cycle_detection_length": 3,
+        "trigger_hitl": true
       }
     }
   ]

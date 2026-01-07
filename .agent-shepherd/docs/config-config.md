@@ -330,6 +330,282 @@ When human addresses HITL requirement, label is cleared automatically:
 - Removes `ashep-hitl:<reason>` label
 - Resumes phase processing
 
+## Loop Prevention Configuration
+
+The loop prevention system prevents infinite loops in dynamic workflows through phase visit tracking, transition limits, and cycle detection. This is critical for AI-powered workflows that can create complex, non-linear paths through phases.
+
+### `loop_prevention` (object)
+**Required**: No  
+**Purpose**: Prevent infinite loops in dynamic workflows  
+**Impact**: Detects and blocks workflows from getting stuck in repeating patterns
+
+#### `enabled` (boolean)
+**Required**: No (default: true)  
+**Purpose**: Master switch for loop prevention system  
+**Impact**: When false, all loop prevention checks are disabled (not recommended)
+
+**Values**: true/false
+
+**Examples**:
+```yaml
+loop_prevention:
+  enabled: true  # Enable all loop prevention (recommended)
+```
+
+```yaml
+loop_prevention:
+  enabled: false  # Disable all loop prevention (not recommended)
+```
+
+#### `max_visits_default` (number)
+**Required**: No (default: 10)  
+**Purpose**: Default maximum number of times a phase can be visited before being blocked  
+**Impact**: Prevents phases from repeating indefinitely
+
+**Values**: 1-100
+
+**How it works**:
+- Each time a phase executes, a visit is counted
+- When visit count ≥ max_visits, the phase is blocked
+- Can be overridden per-phase using the `max_visits` field in phase config
+
+**Examples**:
+```yaml
+loop_prevention:
+  max_visits_default: 10  # Standard limit (recommended)
+```
+
+```yaml
+loop_prevention:
+  max_visits_default: 3  # Strict limit for quick-fail workflows
+```
+
+```yaml
+loop_prevention:
+  max_visits_default: 50  # Permissive limit for iterative development
+```
+
+#### `max_transitions_default` (number)
+**Required**: No (default: 5)  
+**Purpose**: Default maximum number of times a specific phase→phase transition can occur before being blocked  
+**Impact**: Prevents problematic transition patterns from repeating
+
+**Values**: 1-50
+
+**How it works**:
+- Tracks specific phase→phase transitions (e.g., develop→test)
+- When transition count ≥ max_transitions, that specific jump is blocked
+- More granular than phase visits - targets specific problematic patterns
+- Useful for catching systemic issues like "tests keep failing, go back to develop"
+
+**Examples**:
+```yaml
+loop_prevention:
+  max_transitions_default: 5  # Standard limit (recommended)
+```
+
+```yaml
+loop_prevention:
+  max_transitions_default: 3  # Strict limit to catch issues quickly
+```
+
+#### `cycle_detection_enabled` (boolean)
+**Required**: No (default: true)  
+**Purpose**: Enable oscillating pattern detection  
+**Impact**: Catches patterns that visit/transition limits might miss
+
+**How it works**:
+- Analyzes recent transition sequences (last 10 transitions)
+- Looks for patterns that reverse themselves (oscillation)
+- Detects patterns like: develop→test→develop→test
+- Cycle length is configurable via `cycle_detection_length`
+
+**Values**: true/false
+
+**Examples**:
+```yaml
+loop_prevention:
+  cycle_detection_enabled: true  # Enable cycle detection (recommended)
+```
+
+```yaml
+loop_prevention:
+  cycle_detection_enabled: false  # Disable cycle detection
+```
+
+#### `cycle_detection_length` (number)
+**Required**: No (default: 3)  
+**Purpose**: Sensitivity for cycle detection - length of transition sequence to analyze  
+**Impact**: Controls how aggressive cycle detection is
+
+**Values**: 2-10
+
+**How it works**:
+- Analyzes transition sequences of this length
+- Looks for patterns that match their reverse (oscillation)
+- Higher values: Detect longer cycles, may miss short oscillations
+- Lower values: Catch short oscillations, more false positives
+
+**Examples**:
+```yaml
+loop_prevention:
+  cycle_detection_length: 3  # Detect develop→test→develop patterns (recommended)
+```
+
+```yaml
+loop_prevention:
+  cycle_detection_length: 4  # Detect longer patterns like dev→test→review→test→dev
+```
+
+```yaml
+loop_prevention:
+  cycle_detection_length: 2  # Very sensitive, catches any back-and-forth pattern
+```
+
+#### `trigger_hitl` (boolean)
+**Required**: No (default: true)  
+**Purpose**: Whether to trigger Human-in-the-loop (HITL) escalation when loop prevention limits are exceeded  
+**Impact**: Controls whether loop prevention blocks or triggers human review
+
+**Values**: true/false
+
+**How it works**:
+- When true: Sets `ashep-hitl:<reason>` label and blocks execution
+- When false: Blocks execution but does not trigger HITL
+- Human must manually review and unblock when HITL is triggered
+
+**Examples**:
+```yaml
+loop_prevention:
+  trigger_hitl: true  # Require human review on loops (recommended)
+```
+
+```yaml
+loop_prevention:
+  trigger_hitl: false  # Block without human intervention
+```
+
+## Per-Phase Configuration Override
+
+Phases can override the default `max_visits` limit using the `max_visits` field in the phase configuration:
+
+```yaml
+phases:
+  - name: develop
+    capabilities: [coding]
+    max_visits: 20  # Allow more iterations than default
+  - name: test
+    capabilities: [testing]
+    max_visits: 5  # Limit test phase strictly
+```
+
+### When to Use Per-Phase Overrides
+
+**Increase `max_visits`** (higher than default):
+- Iterative development phases where repeated attempts are expected
+- Debugging phases where multiple test cycles are normal
+- Research/exploration phases with unknown requirements
+
+**Decrease `max_visits`** (lower than default):
+- Review phases that should complete quickly
+- Phases prone to getting stuck
+- Final validation phases that should be one-shot
+
+## Loop Prevention in Action
+
+### Scenario 1: Phase Visit Limit Exceeded
+
+```yaml
+# Config
+loop_prevention:
+  max_visits_default: 10
+
+# Issue visits "develop" phase 10 times
+# Result: "develop" phase blocked on 11th attempt
+# Message: "Phase 'develop' exceeded max_visits (10) with 11 visits"
+```
+
+### Scenario 2: Transition Limit Exceeded
+
+```yaml
+# Config
+loop_prevention:
+  max_transitions_default: 5
+
+# Workflow executes develop→test transition 5 times
+# Result: develop→test jump blocked on 6th attempt
+# Message: "Transition develop→test exceeded max_transitions (5) with 6 occurrences"
+```
+
+### Scenario 3: Oscillating Cycle Detected
+
+```yaml
+# Config
+loop_prevention:
+  cycle_detection_enabled: true
+  cycle_detection_length: 3
+
+# Workflow pattern: develop→test→develop→test→develop
+# Result: Cycle detected, workflow blocked
+# Message: "Oscillating cycle detected: develop→test→develop"
+```
+
+## Complete Loop Prevention Configuration Example
+
+```yaml
+loop_prevention:
+  enabled: true
+  max_visits_default: 10
+  max_transitions_default: 5
+  cycle_detection_enabled: true
+  cycle_detection_length: 3
+  trigger_hitl: true
+```
+
+With per-phase overrides:
+
+```yaml
+policies:
+  enhanced-dev:
+    phases:
+      - name: develop
+        capabilities: [coding]
+        max_visits: 20  # Allow more iterations
+      - name: test
+        capabilities: [testing, qa]
+        max_visits: 5  # Limit test phase strictly
+```
+
+## Troubleshooting Loop Prevention
+
+### Workflows Getting Blocked Too Quickly
+
+**Issue**: Phases are being blocked before completing their work
+
+**Solutions**:
+1. Increase `max_visits_default` for more permissive limits
+2. Add per-phase `max_visits` overrides for phases that legitimately need many iterations
+3. Check if cycles are false positives - adjust `cycle_detection_length`
+
+### Workflows Not Blocked When They Should Be
+
+**Issue**: Loop prevention is not catching infinite loops
+
+**Solutions**:
+1. Verify `loop_prevention.enabled` is true
+2. Decrease `max_visits_default` and `max_transitions_default` for stricter limits
+3. Adjust `cycle_detection_length` to catch different pattern lengths
+4. Check logs to see which checks are failing to detect the loop
+
+### HITL Labels Not Being Set
+
+**Issue**: Loop prevention blocks but no HITL label appears
+
+**Solutions**:
+1. Verify `loop_prevention.trigger_hitl` is true
+2. Check HITL configuration for valid reasons
+3. Review logs for any validation errors
+
 ## Fallback Agent Configuration
 
 The fallback system allows Agent Shepherd to use a default agent when a policy requires a capability that no agent has. This is useful for:

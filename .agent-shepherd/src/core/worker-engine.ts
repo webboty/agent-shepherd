@@ -258,11 +258,11 @@ export class WorkerEngine {
     }
 
     // 6. Determine transition based on outcome
-    const transition = this.policyEngine.determineTransition(policy, phase, {
+    const transition = await this.policyEngine.determineTransition(policy, phase, {
       success: outcome.success,
       retry_count: retryCount,
       requires_approval: outcome.requires_approval,
-    });
+    }, issue.id);
 
     // Log transition decision
     this.logger.logDecision({
@@ -271,6 +271,8 @@ export class WorkerEngine {
       decision: transition.type,
       reasoning: transition.reason,
       metadata: {
+        from_phase: phase,
+        to_phase: transition.next_phase,
         next_phase: transition.next_phase,
         outcome,
       },

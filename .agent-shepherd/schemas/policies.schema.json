@@ -140,6 +140,12 @@
           "type": "boolean",
           "description": "Whether fallback is enabled for this phase. Overrides policy and global settings."
         },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of times this phase can be visited before being blocked by loop prevention. Overrides global loop_prevention.max_visits_default."
+        },
         "transitions": {
           "$ref": "#/definitions/TransitionBlock",
           "description": "Optional transition configuration for complex routing"

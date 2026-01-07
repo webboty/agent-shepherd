@@ -82,7 +82,7 @@ default_policy: retry-policy
       expect(retryCount).toBe(1);
 
       // Determine transition with actual retry count
-      const transition = policyEngine.determineTransition(policy, phase, {
+      const transition = await policyEngine.determineTransition(policy, phase, {
         success: false,
         retry_count: retryCount,
       });
@@ -105,7 +105,7 @@ default_policy: retry-policy
       expect(initialRetryCount).toBe(0);
 
       // Determine transition
-      const transition = policyEngine.determineTransition(policy, phase, {
+      const transition = await policyEngine.determineTransition(policy, phase, {
         success: false,
         retry_count: initialRetryCount,
       });
@@ -140,7 +140,7 @@ default_policy: retry-policy
       const retryCount = logger.getPhaseRetryCount(issueId, phase);
       expect(retryCount).toBe(2);
 
-      const transition = policyEngine.determineTransition(policy, phase, {
+      const transition = await policyEngine.determineTransition(policy, phase, {
         success: false,
         retry_count: retryCount,
       });
@@ -189,7 +189,7 @@ default_policy: retry-policy
       expect(retryCount).toBe(2);
 
       // Verify transition decisions at each stage
-      let transition = policyEngine.determineTransition(policy, phase, {
+      let transition = await policyEngine.determineTransition(policy, phase, {
         success: false,
         retry_count: 1,
       });
@@ -220,7 +220,7 @@ default_policy: retry-policy
       expect(retryCount).toBe(1);
 
       // This is the second attempt (retry_count = 1), should be the last allowed
-      const transition = policyEngine.determineTransition(policy, phase, {
+      const transition = await policyEngine.determineTransition(policy, phase, {
         success: false,
         retry_count: retryCount,
       });
@@ -249,7 +249,7 @@ default_policy: retry-policy
       expect(retryCount).toBe(1);
 
       // This is the second attempt, but it succeeds
-      const transition = policyEngine.determineTransition(policy, phase, {
+      const transition = await policyEngine.determineTransition(policy, phase, {
         success: true,
         retry_count: retryCount,
       });
@@ -283,7 +283,7 @@ default_policy: retry-policy
       let retryCount = logger.getPhaseRetryCount(issueId, phase);
       expect(retryCount).toBe(0);
 
-      let transition = policyEngine.determineTransition(policy, phase, {
+      let transition = await policyEngine.determineTransition(policy, phase, {
         success: false,
         retry_count: retryCount,
       });
@@ -310,7 +310,7 @@ default_policy: retry-policy
       retryCount = logger.getPhaseRetryCount(issueId, phase);
       expect(retryCount).toBe(1);
 
-      transition = policyEngine.determineTransition(policy, phase, {
+      transition = await policyEngine.determineTransition(policy, phase, {
         success: false,
         retry_count: retryCount,
       });
@@ -337,7 +337,7 @@ default_policy: retry-policy
       retryCount = logger.getPhaseRetryCount(issueId, phase);
       expect(retryCount).toBe(2);
 
-      transition = policyEngine.determineTransition(policy, phase, {
+      transition = await policyEngine.determineTransition(policy, phase, {
         success: false,
         retry_count: retryCount,
       });

@@ -208,7 +208,7 @@ default_policy: default
 
   describe('PolicyEngine.determineTransition() with retry_count', () => {
     it('should allow retry on first failure (retry_count = 0, max_attempts = 3)', () => {
-      const transition = policyEngine.determineTransition('default', 'plan', {
+      const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: 0,
       });
@@ -218,7 +218,7 @@ default_policy: default
     });
 
     it('should allow retry on second failure (retry_count = 1, max_attempts = 3)', () => {
-      const transition = policyEngine.determineTransition('default', 'plan', {
+      const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: 1,
       });
@@ -228,7 +228,7 @@ default_policy: default
     });
 
     it('should block when retry_count reaches limit (retry_count = 2, max_attempts = 3)', () => {
-      const transition = policyEngine.determineTransition('default', 'plan', {
+      const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: 2,
       });
@@ -238,7 +238,7 @@ default_policy: default
     });
 
     it('should block immediately with max_attempts = 1 (retry_count = 0)', () => {
-      const transition = policyEngine.determineTransition('limited', 'plan', {
+      const transition = await policyEngine.determineTransition('limited', 'plan', {
         success: false,
         retry_count: 0,
       });
@@ -248,7 +248,7 @@ default_policy: default
     });
 
     it('should allow retry when retry_count is undefined (backward compatibility)', () => {
-      const transition = policyEngine.determineTransition('default', 'plan', {
+      const transition = await policyEngine.determineTransition('default', 'plan', {
         success: false,
         retry_count: undefined,
       });
@@ -258,7 +258,7 @@ default_policy: default
     });
 
     it('should advance on success regardless of retry_count', () => {
-      const transition = policyEngine.determineTransition('default', 'plan', {
+      const transition = await policyEngine.determineTransition('default', 'plan', {
         success: true,
         retry_count: 5,
       });
@@ -268,7 +268,7 @@ default_policy: default
     });
 
     it('should close on success at last phase regardless of retry_count', () => {
-      const transition = policyEngine.determineTransition('default', 'implement', {
+      const transition = await policyEngine.determineTransition('default', 'implement', {
         success: true,
         retry_count: 5,
       });
@@ -314,7 +314,7 @@ default_policy: default
       const initialRetryCount = logger.getPhaseRetryCount(issueId, phase);
       expect(initialRetryCount).toBe(0);
 
-      const transition = policyEngine.determineTransition('default', phase, {
+      const transition = await policyEngine.determineTransition('default', phase, {
         success: false,
         retry_count: initialRetryCount,
       });
@@ -342,7 +342,7 @@ default_policy: default
       const retryCount = logger.getPhaseRetryCount(issueId, phase);
       expect(retryCount).toBe(3);
 
-      const transition = policyEngine.determineTransition('default', phase, {
+      const transition = await policyEngine.determineTransition('default', phase, {
         success: false,
         retry_count: retryCount,
       });

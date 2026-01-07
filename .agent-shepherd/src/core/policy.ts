@@ -9,6 +9,7 @@ import { getConfigPath } from "./path-utils";
 import { type BeadsIssue } from "./beads.ts";
 import { type HITLConfig, loadConfig } from "./config.ts";
 import { getAgentRegistry } from "./agent-registry.ts";
+import { getLogger } from "./logging.ts";
 
 export interface PhaseConfig {
   name: string;
@@ -21,6 +22,7 @@ export interface PhaseConfig {
   fallback_agent?: string;
   fallback_enabled?: boolean;
   transitions?: TransitionBlock;
+  max_visits?: number;
 }
 
 export interface TransitionConfig {
@@ -358,7 +360,7 @@ export class PolicyEngine {
   /**
    * Determine phase transition based on run outcome
    */
-  determineTransition(
+  async determineTransition(
     policyName: string,
     currentPhase: string,
     outcome: {
@@ -366,8 +368,9 @@ export class PolicyEngine {
       retry_count?: number;
       requires_approval?: boolean;
       result_type?: 'success' | 'failure' | 'partial_success' | 'unclear';
-    }
-  ): PhaseTransition {
+    },
+    issueId?: string
+  ): Promise<PhaseTransition> {
     const policy = this.getPolicy(policyName);
     if (!policy) {
       return { type: "block", reason: "Policy not found" };
@@ -378,6 +381,16 @@ export class PolicyEngine {
       return { type: "block", reason: "Phase not found" };
     }
 
+    if (issueId) {
+      const phaseValidation = await this.validatePhaseLimits(policyName, issueId, currentPhase);
+      if (!phaseValidation.valid) {
+        return { type: "block", reason: phaseValidation.reason };
+      }
+    }
+
+    // Determine the transition
+    let transition: PhaseTransition;
+
     // Check for custom transitions (OPTIONAL - only if defined)
     if (phaseConfig.transitions) {
       const transitionKey = getTransitionKey(outcome);
@@ -386,31 +399,29 @@ export class PolicyEngine {
       if (transitionConfig !== undefined) {
         if (typeof transitionConfig === 'string') {
           // DIRECT JUMP: on_success: "validate"
-          const transition = {
+          transition = {
             type: 'advance' as const,
             next_phase: transitionConfig,
             reason: `Direct transition to ${transitionConfig}`
           };
-          this.validateTransition(policyName, currentPhase, transition);
-          return transition;
         } else {
           // AI ROUTING: on_failure: {capability: "...", prompt: "..."}
-          const transition = {
+          transition = {
             type: 'dynamic_decision' as const,
             dynamic_agent: transitionConfig.capability,
             decision_config: transitionConfig,
             reason: `AI routing for ${transitionKey}`
           };
-          this.validateTransition(policyName, currentPhase, transition);
-          return transition;
         }
+        this.validateTransition(policyName, currentPhase, transition);
+        return await this.applyLoopPrevention(transition, issueId, currentPhase);
       }
     }
 
     // DEFAULT LINEAR BEHAVIOR (no transitions block or no matching key)
     // Check if approval is required
     if (outcome.requires_approval || phaseConfig.require_approval) {
-      const transition = {
+      transition = {
         type: "block" as const,
         reason: "Human approval required",
       };
@@ -422,21 +433,19 @@ export class PolicyEngine {
     if (outcome.success) {
       const nextPhase = this.getNextPhase(policyName, currentPhase);
       if (nextPhase) {
-        const transition = {
+        transition = {
           type: "advance" as const,
           next_phase: nextPhase,
           reason: "Phase completed successfully",
         };
-        this.validateTransition(policyName, currentPhase, transition);
-        return transition;
       } else {
-        const transition = {
+        transition = {
           type: "close" as const,
           reason: "All phases completed",
         };
-        this.validateTransition(policyName, currentPhase, transition);
-        return transition;
       }
+      this.validateTransition(policyName, currentPhase, transition);
+      return await this.applyLoopPrevention(transition, issueId, currentPhase);
     }
 
     // Handle failure with retry logic
@@ -448,7 +457,7 @@ export class PolicyEngine {
     const retryCount = outcome.retry_count ?? 0;
 
     if (retryCount < retryConfig.max_attempts - 1) {
-      const transition = {
+      transition = {
         type: "retry" as const,
         reason: `Retry ${retryCount + 1}/${retryConfig.max_attempts}`,
       };
@@ -457,11 +466,41 @@ export class PolicyEngine {
     }
 
     // Max retries exceeded
-    const transition = {
+    transition = {
       type: "block" as const,
       reason: `Max retries exceeded (${retryConfig.max_attempts})`,
     };
     this.validateTransition(policyName, currentPhase, transition);
+    return transition;
+  }
+
+  /**
+   * Apply loop prevention checks to a transition
+   */
+  private async applyLoopPrevention(
+    transition: PhaseTransition,
+    issueId: string | undefined,
+    currentPhase: string
+  ): Promise<PhaseTransition> {
+    if (!issueId) {
+      return transition;
+    }
+
+    // Check transition limits for advance and jump_back transitions
+    const nextPhase = transition.next_phase || transition.jump_target_phase;
+    if (nextPhase && (transition.type === 'advance' || transition.type === 'jump_back')) {
+      const transitionValidation = await this.validateTransitionLimits(issueId, currentPhase, nextPhase);
+      if (!transitionValidation.valid) {
+        return { type: "block", reason: transitionValidation.reason };
+      }
+    }
+
+    // Check for oscillating cycles
+    const cycleDetection = await this.detectCycles(issueId);
+    if (cycleDetection.detected) {
+      return { type: "block", reason: cycleDetection.reason };
+    }
+
     return transition;
   }
 
@@ -533,6 +572,104 @@ export class PolicyEngine {
   requiresHITL(policyName: string): boolean {
     const policy = this.getPolicy(policyName);
     return policy?.require_hitl || false;
+  }
+
+  /**
+   * Validate phase visit limits
+   * Returns false if phase has exceeded max_visits, true otherwise
+   */
+  async validatePhaseLimits(
+    policyName: string,
+    issueId: string,
+    phaseName: string
+  ): Promise<{ valid: boolean; reason?: string }> {
+    const phaseConfig = this.getPhaseConfig(policyName, phaseName);
+    if (!phaseConfig) {
+      return { valid: false, reason: "Phase not found" };
+    }
+
+    const config = loadConfig();
+    const maxVisits = phaseConfig.max_visits || config.loop_prevention?.max_visits_default || 10;
+    const logger = getLogger();
+    const visitCount = logger.getPhaseVisitCount(issueId, phaseName);
+
+    if (visitCount >= maxVisits) {
+      return {
+        valid: false,
+        reason: `Phase '${phaseName}' exceeded max_visits (${maxVisits}) with ${visitCount} visits`,
+      };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Validate transition limits
+   * Checks if a specific transition pattern has exceeded allowed count
+   */
+  async validateTransitionLimits(
+    issueId: string,
+    fromPhase: string,
+    toPhase: string,
+    maxTransitions?: number
+  ): Promise<{ valid: boolean; reason?: string }> {
+    const config = loadConfig();
+    const maxTrans = maxTransitions || config.loop_prevention?.max_transitions_default || 5;
+    const logger = getLogger();
+    const transitionCount = logger.getTransitionCount(issueId, fromPhase, toPhase);
+
+    if (transitionCount >= maxTrans) {
+      return {
+        valid: false,
+        reason: `Transition ${fromPhase}→${toPhase} exceeded max_transitions (${maxTrans}) with ${transitionCount} occurrences`,
+      };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Detect oscillating patterns in recent transitions
+   * Looks for patterns like develop→test→develop→test
+   */
+  async detectCycles(
+    issueId: string,
+    cycleLength?: number
+  ): Promise<{ detected: boolean; reason?: string }> {
+    const config = loadConfig();
+
+    if (!config.loop_prevention?.cycle_detection_enabled) {
+      return { detected: false };
+    }
+
+    const length = cycleLength || config.loop_prevention?.cycle_detection_length || 3;
+    const logger = getLogger();
+    const recentDecisions = logger.getDecisionsForIssue(issueId, { limit: 20 });
+
+    const transitions = recentDecisions
+      .filter((d) => d.type === "phase_transition")
+      .map((d) => {
+        const fromPhase = d.metadata?.from_phase as string;
+        const toPhase = d.metadata?.to_phase as string;
+        return fromPhase && toPhase ? `${fromPhase}→${toPhase}` : null;
+      })
+      .filter((t): t is string => t !== null)
+      .slice(-10);
+
+    for (let i = 0; i <= transitions.length - length; i++) {
+      const pattern = transitions.slice(i, i + length);
+
+      const reversePattern = [...pattern].reverse();
+
+      if (pattern.join(",") === reversePattern.join(",")) {
+        return {
+          detected: true,
+          reason: `Oscillating cycle detected: ${pattern.join(" → ")}`,
+        };
+      }
+    }
+
+    return { detected: false };
   }
 
   /**
