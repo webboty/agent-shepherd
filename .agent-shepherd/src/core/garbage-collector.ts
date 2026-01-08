@@ -409,7 +409,7 @@ export class GarbageCollector {
    * Delete a run from the main database
    */
   private deleteRunFromMain(runId: string): void {
-    this.archiveDb.run("DELETE FROM runs WHERE id = ?", [runId]);
+    this.logger.deleteRun(runId);
 
     const decisionsPath = join(this.dataDir, "decisions.jsonl");
     if (existsSync(decisionsPath)) {

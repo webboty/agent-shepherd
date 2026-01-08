@@ -312,7 +312,7 @@ export class CleanupEngine {
 
     try {
       console.log("Running emergency cleanup (maximum aggression mode)...");
-      const results = await this.collector.runEmergencyCleanup();
+      const results = await this.collector.runFullCleanup();
 
       const duration = Date.now() - startTime;
       console.log(`Emergency cleanup completed in ${duration}ms`);

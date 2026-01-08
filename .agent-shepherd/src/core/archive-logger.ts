@@ -4,7 +4,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readFileSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import type { RunRecord, RunQuery, DecisionRecord } from "./logging.ts";
 

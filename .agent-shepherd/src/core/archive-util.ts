@@ -4,7 +4,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, appendFileSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { getLogger, type RunRecord } from "./logging.ts";
 import type { RetentionPolicy } from "./retention-policy.ts";

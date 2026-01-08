@@ -702,6 +702,11 @@ export class Logger {
   /**
    * Get decisions for a specific issue
    */
+  deleteRun(runId: string): void {
+    this.db.run("DELETE FROM runs WHERE id = ?", [runId]);
+    this.db.run("DELETE FROM decisions WHERE run_id = ?", [runId]);
+  }
+
   getDecisionsForIssue(issueId: string, options?: { limit?: number }): DecisionRecord[] {
     let sql = `
       SELECT d.*

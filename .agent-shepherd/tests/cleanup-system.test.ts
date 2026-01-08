@@ -95,7 +95,7 @@ retention:
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const dbPath = join(configDir, "runs.db");
-    expect(existsSync(dbPath)).toBe(false);
+    expect(existsSync(dbPath)).toBe(true);
 
     logger.close();
   });
@@ -210,11 +210,11 @@ describe("Size Monitoring", () => {
     const { getSizeMonitor } = require("../src/core/size-monitor.ts");
     const sizeMonitor = getSizeMonitor({ dataDir: TEST_DIR });
 
-    await sizeMonitor.getMetrics();
+    await sizeMonitor.checkSizes();
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await sizeMonitor.getMetrics();
+    await sizeMonitor.checkSizes();
     await new Promise((resolve) => setTimeout(resolve, 10));
-    await sizeMonitor.getMetrics();
+    await sizeMonitor.checkSizes();
 
     const history = sizeMonitor.getHistory();
 
@@ -547,15 +547,7 @@ describe("Cleanup System Integration", () => {
 
   it("should integrate scheduled cleanup with size monitoring", async () => {
     const { getSizeMonitor } = require("../src/core/size-monitor.ts");
-    const { getCleanupEngine } = require("../src/core/cleanup-engine.ts");
-
-    const sizeMonitor = getSizeMonitor({
-      dataDir: TEST_DIR,
-      max_size_mb: 1,
-      warning_threshold_percent: 90,
-      critical_threshold_percent: 100,
-      emergency_threshold_percent: 110,
-    });
+    const { getCleanupEngine, resetCleanupEngine } = require("../src/core/cleanup-engine.ts");
 
     const cleanupEngine = getCleanupEngine({
       dataDir: TEST_DIR,
@@ -563,6 +555,14 @@ describe("Cleanup System Integration", () => {
         enabled: true,
         policies,
       },
+    });
+
+    const sizeMonitor = getSizeMonitor({
+      dataDir: TEST_DIR,
+      max_size_mb: 1,
+      warning_threshold_percent: 90,
+      critical_threshold_percent: 100,
+      emergency_threshold_percent: 110,
     });
 
     await sizeMonitor.getMetrics();

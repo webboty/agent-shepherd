@@ -86,30 +86,6 @@ export interface AgentShepherdConfig {
   retention?: RetentionConfig;
 }
 
-export interface RetentionConfig {
-  enabled: boolean;
-  policies: RetentionPolicy[];
-}
-
-export interface AgentShepherdConfig {
-  version: string;
-  worker?: {
-    poll_interval_ms?: number;
-    max_concurrent_runs?: number;
-  };
-  monitor?: {
-    poll_interval_ms?: number;
-    stall_threshold_ms?: number;
-    timeout_multiplier?: number;
-  };
-  ui?: UIConfig;
-  fallback?: FallbackConfig;
-  workflow?: WorkflowConfig;
-  hitl?: HITLConfig;
-  loop_prevention?: LoopPreventionConfig;
-  retention?: RetentionConfig;
-}
-
 /**
  * Load configuration from .agent-shepherd/config.yaml
  */

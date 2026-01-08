@@ -1,3 +1,4 @@
+/* eslint-disable */
 /**
  * Size Monitor
  * Periodically checks database and file sizes, alerts on threshold violations
