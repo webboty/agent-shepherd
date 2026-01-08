@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { rmSync } from "fs";
 import { join } from "path";
-import { PhaseMessenger, type CreateMessageInput } from "../.agent-shepherd/src/core/phase-messenger.ts";
+import { PhaseMessenger, type CreateMessageInput } from "../src/core/phase-messenger.ts";
 
 describe("PhaseMessenger", () => {
   const testDataDir = join(process.cwd(), ".test-phase-messenger");
