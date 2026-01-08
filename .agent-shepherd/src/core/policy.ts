@@ -197,7 +197,7 @@ export class PolicyEngine {
       }
 
       if (typeof transition === 'string') {
-        if (!policyPhases.includes(transition)) {
+        if (!policyPhases.includes(transition) && transition !== 'close') {
           throw new Error(
             `Invalid ${key} transition in phase '${phaseName}': phase '${transition}' not found in policy`
           );
@@ -210,7 +210,7 @@ export class PolicyEngine {
         }
 
         for (const dest of transition.allowed_destinations) {
-          if (!policyPhases.includes(dest)) {
+          if (!policyPhases.includes(dest) && dest !== 'close') {
             throw new Error(
               `Invalid ${key} transition in phase '${phaseName}': destination '${dest}' not found in policy`
             );
