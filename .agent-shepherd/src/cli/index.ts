@@ -57,8 +57,11 @@ function loadPlugins(): void {
     const pluginsDir = join(agentShepherdDir, "plugins");
 
     if (!existsSync(pluginsDir)) {
+      console.log(`No plugins directory found at ${pluginsDir}`);
       return; // No plugins directory, skip
     }
+
+    console.log(`Loading plugins from: ${pluginsDir}`);
 
     const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true })
       .filter(dirent => dirent.isDirectory())

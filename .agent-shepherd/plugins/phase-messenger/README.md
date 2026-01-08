@@ -10,6 +10,8 @@ The Phase Messenger Plugin allows different phases of a workflow to communicate 
 - Communicating decisions that affect subsequent phases
 - Sharing data payloads (metrics, artifacts, references)
 
+**Important**: The plugin only works for **inter-phase transitions** (e.g., plan → implement, implement → test). It does **not** send messages to "close" or other terminal transitions, as those are not phases but issue lifecycle events.
+
 ## Installation
 
 The plugin is installed in `.agent-shepherd/plugins/phase-messenger/`.
@@ -121,41 +123,79 @@ ashep phase-msg-send agent-shepherd-alg8.1 test implement data '{"latency_ms": 4
 
 ## Integration with Worker Engine
 
-The phase messenger integrates with the Worker Engine via the `PhaseMessenger` class:
+The phase messenger provides optional integration with Worker Engine for automatic inter-phase communication.
+
+### Optional Plugin Architecture
+
+The plugin is designed to be **truly optional**:
+
+- **Plugin Directory** (`plugins/phase-messenger/`): CLI commands - fully removable
+- **Core Integration** (`src/core/phase-messenger.ts`): Worker Engine integration - optional
+- **Worker Engine**: Gracefully degrades when PhaseMessenger is unavailable
+
+### How Worker Engine Uses PhaseMessenger
+
+Worker Engine automatically:
+1. **Receives pending messages** before starting a phase
+2. **Sends result messages** when a phase completes successfully and advances
+
+If PhaseMessenger is not available, Worker Engine continues working normally - messaging is simply skipped.
+
+### Manual Integration
+
+You can also manually use PhaseMessenger in your code:
 
 ```typescript
-import { getPhaseMessenger } from "./phase-messenger.ts";
+// Optional import with error handling
+try {
+  const { getPhaseMessenger } = await import("./phase-messenger.ts");
+  const messenger = getPhaseMessenger();
 
-const messenger = getPhaseMessenger();
+  // Send a message
+  const message = messenger.sendMessage({
+    issue_id: "agent-shepherd-alg8.1",
+    from_phase: "plan",
+    to_phase: "implement",
+    message_type: "context",
+    content: "Design specs completed",
+    metadata: { priority: "high" }
+  });
 
-// Send a message
-const message = messenger.sendMessage({
-  issue_id: "agent-shepherd-alg8.1",
-  from_phase: "plan",
-  to_phase: "implement",
-  message_type: "context",
-  content: "Design specs completed",
-  metadata: { priority: "high" }
-});
+  // Receive messages
+  const messages = messenger.receiveMessages(
+    "agent-shepherd-alg8.1",
+    "implement",
+    true  // mark as read
+  );
 
-// Receive messages
-const messages = messenger.receiveMessages(
-  "agent-shepherd-alg8.1",
-  "implement",
-  true  // mark as read
-);
+  // List messages
+  const allMessages = messenger.listMessages({
+    issue_id: "agent-shepherd-alg8.1",
+    to_phase: "implement"
+  });
 
-// List messages
-const allMessages = messenger.listMessages({
-  issue_id: "agent-shepherd-alg8.1",
-  to_phase: "implement"
-});
+  // Get unread count
+  const unreadCount = messenger.getUnreadCount(
+    "agent-shepherd-alg8.1",
+    "implement"
+  );
+} catch (error) {
+  console.warn("Phase Messenger not available:", error);
+}
+```
 
-// Get unread count
-const unreadCount = messenger.getUnreadCount(
-  "agent-shepherd-alg8.1",
-  "implement"
-);
+### Removing the Plugin
+
+To remove the plugin and disable all messaging functionality:
+
+```bash
+# Remove plugin directory (CLI commands)
+rm -rf .agent-shepherd/plugins/phase-messenger
+
+# Remove core integration (Worker Engine integration)
+rm .agent-shepherd/src/core/phase-messenger.ts
+
+# Worker Engine will continue working, just without messaging
 ```
 
 ## Storage
