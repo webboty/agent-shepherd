@@ -8,18 +8,18 @@ import {
   getGarbageCollector,
   resetCollector,
 } from "./garbage-collector.ts";
+import { getHealthChecker } from "./cleanup-health-check.ts";
+import {
+  type CleanupConfig,
+  type RetentionConfig,
+} from "./config.ts";
 
 export interface CleanupEngineConfig {
   dataDir?: string;
   runOnStartup?: boolean;
   cleanupInterval?: number;
-  retentionConfig?: {
-    enabled: boolean;
-    cleanup_on_startup: boolean;
-    cleanup_interval_ms: number;
-    archive_enabled: boolean;
-    policies: any[];
-  };
+  cleanupConfig?: CleanupConfig;
+  retentionConfig?: RetentionConfig;
 }
 
 /**
@@ -35,22 +35,28 @@ export class CleanupEngine {
   constructor(config?: CleanupEngineConfig) {
     const fullConfig = loadConfig();
 
+    const cleanupIntervalMs = fullConfig.cleanup?.schedule_interval_hours
+      ? fullConfig.cleanup.schedule_interval_hours * 3600000
+      : 3600000;
+
     this.config = {
       dataDir: config?.dataDir,
       runOnStartup:
-        config?.runOnStartup ??
-        fullConfig.retention?.cleanup_on_startup ??
-        false,
+        config?.runOnStartup ?? fullConfig.cleanup?.run_on_startup ?? false,
       cleanupInterval:
-        config?.cleanupInterval ??
-        fullConfig.retention?.cleanup_interval_ms ??
-        3600000,
+        config?.cleanupInterval ?? cleanupIntervalMs,
+      cleanupConfig: fullConfig.cleanup
+        ? {
+            enabled: fullConfig.cleanup.enabled,
+            run_on_startup: fullConfig.cleanup.run_on_startup,
+            archive_on_startup: fullConfig.cleanup.archive_on_startup ?? false,
+            delete_on_startup: fullConfig.cleanup.delete_on_startup ?? false,
+            schedule_interval_hours: fullConfig.cleanup.schedule_interval_hours ?? 24,
+          }
+        : undefined,
       retentionConfig: fullConfig.retention
         ? {
             enabled: fullConfig.retention.enabled,
-            cleanup_on_startup: fullConfig.retention.cleanup_on_startup,
-            cleanup_interval_ms: fullConfig.retention.cleanup_interval_ms,
-            archive_enabled: fullConfig.retention.archive_enabled,
             policies: fullConfig.retention.policies || [],
           }
         : undefined,
@@ -64,7 +70,7 @@ export class CleanupEngine {
       this.collector = getGarbageCollector({
         dataDir: this.config.dataDir,
         policies: this.config.retentionConfig.policies,
-        archiveEnabled: this.config.retentionConfig.archive_enabled,
+        archiveEnabled: this.config.retentionConfig.policies.some(p => p.archive_enabled) ?? false,
       });
     }
   }
