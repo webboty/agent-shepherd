@@ -1,0 +1,32 @@
+# Dependencies
+bun.lock
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build outputs
+dist/
+
+# Test artifacts
+.test-*/
+test-*.js
+test-*.ts
+
+# Database files (local development)
+*.db
+*.db-shm
+*.db-wal
+
+# JSONL files (local development, but we track source)
+messages.jsonl
+runs.jsonl
+decisions.jsonl
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store

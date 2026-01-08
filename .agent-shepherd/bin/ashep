@@ -44,7 +44,7 @@ var __export = (target, all) => {
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = import.meta.require;
 
-// ../node_modules/yaml/dist/nodes/identity.js
+// node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS((exports) => {
   var ALIAS = Symbol.for("yaml.alias");
   var DOC = Symbol.for("yaml.document");
@@ -98,7 +98,7 @@ var require_identity = __commonJS((exports) => {
   exports.isSeq = isSeq;
 });
 
-// ../node_modules/yaml/dist/visit.js
+// node_modules/yaml/dist/visit.js
 var require_visit = __commonJS((exports) => {
   var identity = require_identity();
   var BREAK = Symbol("break visit");
@@ -253,7 +253,7 @@ var require_visit = __commonJS((exports) => {
   exports.visitAsync = visitAsync;
 });
 
-// ../node_modules/yaml/dist/doc/directives.js
+// node_modules/yaml/dist/doc/directives.js
 var require_directives = __commonJS((exports) => {
   var identity = require_identity();
   var visit = require_visit();
@@ -405,7 +405,7 @@ var require_directives = __commonJS((exports) => {
   exports.Directives = Directives;
 });
 
-// ../node_modules/yaml/dist/doc/anchors.js
+// node_modules/yaml/dist/doc/anchors.js
 var require_anchors = __commonJS((exports) => {
   var identity = require_identity();
   var visit = require_visit();
@@ -467,7 +467,7 @@ var require_anchors = __commonJS((exports) => {
   exports.findNewAnchor = findNewAnchor;
 });
 
-// ../node_modules/yaml/dist/doc/applyReviver.js
+// node_modules/yaml/dist/doc/applyReviver.js
 var require_applyReviver = __commonJS((exports) => {
   function applyReviver(reviver, obj, key, val) {
     if (val && typeof val === "object") {
@@ -514,7 +514,7 @@ var require_applyReviver = __commonJS((exports) => {
   exports.applyReviver = applyReviver;
 });
 
-// ../node_modules/yaml/dist/nodes/toJS.js
+// node_modules/yaml/dist/nodes/toJS.js
 var require_toJS = __commonJS((exports) => {
   var identity = require_identity();
   function toJS(value, arg, ctx) {
@@ -541,7 +541,7 @@ var require_toJS = __commonJS((exports) => {
   exports.toJS = toJS;
 });
 
-// ../node_modules/yaml/dist/nodes/Node.js
+// node_modules/yaml/dist/nodes/Node.js
 var require_Node = __commonJS((exports) => {
   var applyReviver = require_applyReviver();
   var identity = require_identity();
@@ -578,7 +578,7 @@ var require_Node = __commonJS((exports) => {
   exports.NodeBase = NodeBase;
 });
 
-// ../node_modules/yaml/dist/nodes/Alias.js
+// node_modules/yaml/dist/nodes/Alias.js
 var require_Alias = __commonJS((exports) => {
   var anchors = require_anchors();
   var visit = require_visit();
@@ -686,7 +686,7 @@ var require_Alias = __commonJS((exports) => {
   exports.Alias = Alias;
 });
 
-// ../node_modules/yaml/dist/nodes/Scalar.js
+// node_modules/yaml/dist/nodes/Scalar.js
 var require_Scalar = __commonJS((exports) => {
   var identity = require_identity();
   var Node = require_Node();
@@ -714,7 +714,7 @@ var require_Scalar = __commonJS((exports) => {
   exports.isScalarValue = isScalarValue;
 });
 
-// ../node_modules/yaml/dist/doc/createNode.js
+// node_modules/yaml/dist/doc/createNode.js
 var require_createNode = __commonJS((exports) => {
   var Alias = require_Alias();
   var identity = require_identity();
@@ -786,7 +786,7 @@ var require_createNode = __commonJS((exports) => {
   exports.createNode = createNode;
 });
 
-// ../node_modules/yaml/dist/nodes/Collection.js
+// node_modules/yaml/dist/nodes/Collection.js
 var require_Collection = __commonJS((exports) => {
   var createNode = require_createNode();
   var identity = require_identity();
@@ -901,7 +901,7 @@ var require_Collection = __commonJS((exports) => {
   exports.isEmptyPath = isEmptyPath;
 });
 
-// ../node_modules/yaml/dist/stringify/stringifyComment.js
+// node_modules/yaml/dist/stringify/stringifyComment.js
 var require_stringifyComment = __commonJS((exports) => {
   var stringifyComment = (str) => str.replace(/^(?!$)(?: $)?/gm, "#");
   function indentComment(comment, indent) {
@@ -918,7 +918,7 @@ var require_stringifyComment = __commonJS((exports) => {
   exports.stringifyComment = stringifyComment;
 });
 
-// ../node_modules/yaml/dist/stringify/foldFlowLines.js
+// node_modules/yaml/dist/stringify/foldFlowLines.js
 var require_foldFlowLines = __commonJS((exports) => {
   var FOLD_FLOW = "flow";
   var FOLD_BLOCK = "block";
@@ -1055,7 +1055,7 @@ ${indent}${text.slice(fold + 1, end2)}`;
   exports.foldFlowLines = foldFlowLines;
 });
 
-// ../node_modules/yaml/dist/stringify/stringifyString.js
+// node_modules/yaml/dist/stringify/stringifyString.js
 var require_stringifyString = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var foldFlowLines = require_foldFlowLines();
@@ -1353,7 +1353,7 @@ ${indent}`);
   exports.stringifyString = stringifyString;
 });
 
-// ../node_modules/yaml/dist/stringify/stringify.js
+// node_modules/yaml/dist/stringify/stringify.js
 var require_stringify = __commonJS((exports) => {
   var anchors = require_anchors();
   var identity = require_identity();
@@ -1473,7 +1473,7 @@ ${ctx.indent}${str}`;
   exports.stringify = stringify;
 });
 
-// ../node_modules/yaml/dist/stringify/stringifyPair.js
+// node_modules/yaml/dist/stringify/stringifyPair.js
 var require_stringifyPair = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -1609,7 +1609,7 @@ ${ctx.indent}`;
   exports.stringifyPair = stringifyPair;
 });
 
-// ../node_modules/yaml/dist/log.js
+// node_modules/yaml/dist/log.js
 var require_log = __commonJS((exports) => {
   var node_process = __require("process");
   function debug(logLevel, ...messages) {
@@ -1628,7 +1628,7 @@ var require_log = __commonJS((exports) => {
   exports.warn = warn;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/merge.js
+// node_modules/yaml/dist/schema/yaml-1.1/merge.js
 var require_merge = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -1682,7 +1682,7 @@ var require_merge = __commonJS((exports) => {
   exports.merge = merge;
 });
 
-// ../node_modules/yaml/dist/nodes/addPairToJSMap.js
+// node_modules/yaml/dist/nodes/addPairToJSMap.js
 var require_addPairToJSMap = __commonJS((exports) => {
   var log = require_log();
   var merge = require_merge();
@@ -1743,7 +1743,7 @@ var require_addPairToJSMap = __commonJS((exports) => {
   exports.addPairToJSMap = addPairToJSMap;
 });
 
-// ../node_modules/yaml/dist/nodes/Pair.js
+// node_modules/yaml/dist/nodes/Pair.js
 var require_Pair = __commonJS((exports) => {
   var createNode = require_createNode();
   var stringifyPair = require_stringifyPair();
@@ -1781,7 +1781,7 @@ var require_Pair = __commonJS((exports) => {
   exports.createPair = createPair;
 });
 
-// ../node_modules/yaml/dist/stringify/stringifyCollection.js
+// node_modules/yaml/dist/stringify/stringifyCollection.js
 var require_stringifyCollection = __commonJS((exports) => {
   var identity = require_identity();
   var stringify = require_stringify();
@@ -1926,7 +1926,7 @@ ${indent}${end}`;
   exports.stringifyCollection = stringifyCollection;
 });
 
-// ../node_modules/yaml/dist/nodes/YAMLMap.js
+// node_modules/yaml/dist/nodes/YAMLMap.js
 var require_YAMLMap = __commonJS((exports) => {
   var stringifyCollection = require_stringifyCollection();
   var addPairToJSMap = require_addPairToJSMap();
@@ -2053,7 +2053,7 @@ var require_YAMLMap = __commonJS((exports) => {
   exports.findPair = findPair;
 });
 
-// ../node_modules/yaml/dist/schema/common/map.js
+// node_modules/yaml/dist/schema/common/map.js
 var require_map = __commonJS((exports) => {
   var identity = require_identity();
   var YAMLMap = require_YAMLMap();
@@ -2072,7 +2072,7 @@ var require_map = __commonJS((exports) => {
   exports.map = map;
 });
 
-// ../node_modules/yaml/dist/nodes/YAMLSeq.js
+// node_modules/yaml/dist/nodes/YAMLSeq.js
 var require_YAMLSeq = __commonJS((exports) => {
   var createNode = require_createNode();
   var stringifyCollection = require_stringifyCollection();
@@ -2165,7 +2165,7 @@ var require_YAMLSeq = __commonJS((exports) => {
   exports.YAMLSeq = YAMLSeq;
 });
 
-// ../node_modules/yaml/dist/schema/common/seq.js
+// node_modules/yaml/dist/schema/common/seq.js
 var require_seq = __commonJS((exports) => {
   var identity = require_identity();
   var YAMLSeq = require_YAMLSeq();
@@ -2184,7 +2184,7 @@ var require_seq = __commonJS((exports) => {
   exports.seq = seq;
 });
 
-// ../node_modules/yaml/dist/schema/common/string.js
+// node_modules/yaml/dist/schema/common/string.js
 var require_string = __commonJS((exports) => {
   var stringifyString = require_stringifyString();
   var string = {
@@ -2200,7 +2200,7 @@ var require_string = __commonJS((exports) => {
   exports.string = string;
 });
 
-// ../node_modules/yaml/dist/schema/common/null.js
+// node_modules/yaml/dist/schema/common/null.js
 var require_null = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var nullTag = {
@@ -2215,7 +2215,7 @@ var require_null = __commonJS((exports) => {
   exports.nullTag = nullTag;
 });
 
-// ../node_modules/yaml/dist/schema/core/bool.js
+// node_modules/yaml/dist/schema/core/bool.js
 var require_bool = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var boolTag = {
@@ -2236,7 +2236,7 @@ var require_bool = __commonJS((exports) => {
   exports.boolTag = boolTag;
 });
 
-// ../node_modules/yaml/dist/stringify/stringifyNumber.js
+// node_modules/yaml/dist/stringify/stringifyNumber.js
 var require_stringifyNumber = __commonJS((exports) => {
   function stringifyNumber({ format, minFractionDigits, tag, value }) {
     if (typeof value === "bigint")
@@ -2260,7 +2260,7 @@ var require_stringifyNumber = __commonJS((exports) => {
   exports.stringifyNumber = stringifyNumber;
 });
 
-// ../node_modules/yaml/dist/schema/core/float.js
+// node_modules/yaml/dist/schema/core/float.js
 var require_float = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var stringifyNumber = require_stringifyNumber();
@@ -2303,7 +2303,7 @@ var require_float = __commonJS((exports) => {
   exports.floatNaN = floatNaN;
 });
 
-// ../node_modules/yaml/dist/schema/core/int.js
+// node_modules/yaml/dist/schema/core/int.js
 var require_int = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2345,7 +2345,7 @@ var require_int = __commonJS((exports) => {
   exports.intOct = intOct;
 });
 
-// ../node_modules/yaml/dist/schema/core/schema.js
+// node_modules/yaml/dist/schema/core/schema.js
 var require_schema = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -2370,7 +2370,7 @@ var require_schema = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../node_modules/yaml/dist/schema/json/schema.js
+// node_modules/yaml/dist/schema/json/schema.js
 var require_schema2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var map = require_map();
@@ -2434,7 +2434,7 @@ var require_schema2 = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/binary.js
+// node_modules/yaml/dist/schema/yaml-1.1/binary.js
 var require_binary = __commonJS((exports) => {
   var node_buffer = __require("buffer");
   var Scalar = require_Scalar();
@@ -2489,7 +2489,7 @@ var require_binary = __commonJS((exports) => {
   exports.binary = binary;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/pairs.js
+// node_modules/yaml/dist/schema/yaml-1.1/pairs.js
 var require_pairs = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -2564,7 +2564,7 @@ ${cn.comment}` : item.comment;
   exports.resolvePairs = resolvePairs;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/omap.js
+// node_modules/yaml/dist/schema/yaml-1.1/omap.js
 var require_omap = __commonJS((exports) => {
   var identity = require_identity();
   var toJS = require_toJS();
@@ -2636,7 +2636,7 @@ var require_omap = __commonJS((exports) => {
   exports.omap = omap;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/bool.js
+// node_modules/yaml/dist/schema/yaml-1.1/bool.js
 var require_bool2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   function boolStringify({ value, source }, ctx) {
@@ -2665,7 +2665,7 @@ var require_bool2 = __commonJS((exports) => {
   exports.trueTag = trueTag;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/float.js
+// node_modules/yaml/dist/schema/yaml-1.1/float.js
 var require_float2 = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var stringifyNumber = require_stringifyNumber();
@@ -2711,7 +2711,7 @@ var require_float2 = __commonJS((exports) => {
   exports.floatNaN = floatNaN;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/int.js
+// node_modules/yaml/dist/schema/yaml-1.1/int.js
 var require_int2 = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   var intIdentify = (value) => typeof value === "bigint" || Number.isInteger(value);
@@ -2787,7 +2787,7 @@ var require_int2 = __commonJS((exports) => {
   exports.intOct = intOct;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/set.js
+// node_modules/yaml/dist/schema/yaml-1.1/set.js
 var require_set = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -2870,7 +2870,7 @@ var require_set = __commonJS((exports) => {
   exports.set = set;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
+// node_modules/yaml/dist/schema/yaml-1.1/timestamp.js
 var require_timestamp = __commonJS((exports) => {
   var stringifyNumber = require_stringifyNumber();
   function parseSexagesimal(str, asBigInt) {
@@ -2952,7 +2952,7 @@ var require_timestamp = __commonJS((exports) => {
   exports.timestamp = timestamp;
 });
 
-// ../node_modules/yaml/dist/schema/yaml-1.1/schema.js
+// node_modules/yaml/dist/schema/yaml-1.1/schema.js
 var require_schema3 = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -2993,7 +2993,7 @@ var require_schema3 = __commonJS((exports) => {
   exports.schema = schema;
 });
 
-// ../node_modules/yaml/dist/schema/tags.js
+// node_modules/yaml/dist/schema/tags.js
 var require_tags = __commonJS((exports) => {
   var map = require_map();
   var _null = require_null();
@@ -3084,7 +3084,7 @@ var require_tags = __commonJS((exports) => {
   exports.getTags = getTags;
 });
 
-// ../node_modules/yaml/dist/schema/Schema.js
+// node_modules/yaml/dist/schema/Schema.js
 var require_Schema = __commonJS((exports) => {
   var identity = require_identity();
   var map = require_map();
@@ -3114,7 +3114,7 @@ var require_Schema = __commonJS((exports) => {
   exports.Schema = Schema;
 });
 
-// ../node_modules/yaml/dist/stringify/stringifyDocument.js
+// node_modules/yaml/dist/stringify/stringifyDocument.js
 var require_stringifyDocument = __commonJS((exports) => {
   var identity = require_identity();
   var stringify = require_stringify();
@@ -3194,7 +3194,7 @@ var require_stringifyDocument = __commonJS((exports) => {
   exports.stringifyDocument = stringifyDocument;
 });
 
-// ../node_modules/yaml/dist/doc/Document.js
+// node_modules/yaml/dist/doc/Document.js
 var require_Document = __commonJS((exports) => {
   var Alias = require_Alias();
   var Collection = require_Collection();
@@ -3429,7 +3429,7 @@ var require_Document = __commonJS((exports) => {
   exports.Document = Document;
 });
 
-// ../node_modules/yaml/dist/errors.js
+// node_modules/yaml/dist/errors.js
 var require_errors = __commonJS((exports) => {
   class YAMLError extends Error {
     constructor(name, pos, code, message) {
@@ -3494,7 +3494,7 @@ ${pointer}
   exports.prettifyError = prettifyError;
 });
 
-// ../node_modules/yaml/dist/compose/resolve-props.js
+// node_modules/yaml/dist/compose/resolve-props.js
 var require_resolve_props = __commonJS((exports) => {
   function resolveProps(tokens, { flow, indicator, next, offset, onError, parentIndent, startOnNewline }) {
     let spaceBefore = false;
@@ -3624,7 +3624,7 @@ var require_resolve_props = __commonJS((exports) => {
   exports.resolveProps = resolveProps;
 });
 
-// ../node_modules/yaml/dist/compose/util-contains-newline.js
+// node_modules/yaml/dist/compose/util-contains-newline.js
 var require_util_contains_newline = __commonJS((exports) => {
   function containsNewline(key) {
     if (!key)
@@ -3664,7 +3664,7 @@ var require_util_contains_newline = __commonJS((exports) => {
   exports.containsNewline = containsNewline;
 });
 
-// ../node_modules/yaml/dist/compose/util-flow-indent-check.js
+// node_modules/yaml/dist/compose/util-flow-indent-check.js
 var require_util_flow_indent_check = __commonJS((exports) => {
   var utilContainsNewline = require_util_contains_newline();
   function flowIndentCheck(indent, fc, onError) {
@@ -3679,7 +3679,7 @@ var require_util_flow_indent_check = __commonJS((exports) => {
   exports.flowIndentCheck = flowIndentCheck;
 });
 
-// ../node_modules/yaml/dist/compose/util-map-includes.js
+// node_modules/yaml/dist/compose/util-map-includes.js
 var require_util_map_includes = __commonJS((exports) => {
   var identity = require_identity();
   function mapIncludes(ctx, items, search) {
@@ -3692,7 +3692,7 @@ var require_util_map_includes = __commonJS((exports) => {
   exports.mapIncludes = mapIncludes;
 });
 
-// ../node_modules/yaml/dist/compose/resolve-block-map.js
+// node_modules/yaml/dist/compose/resolve-block-map.js
 var require_resolve_block_map = __commonJS((exports) => {
   var Pair = require_Pair();
   var YAMLMap = require_YAMLMap();
@@ -3799,7 +3799,7 @@ var require_resolve_block_map = __commonJS((exports) => {
   exports.resolveBlockMap = resolveBlockMap;
 });
 
-// ../node_modules/yaml/dist/compose/resolve-block-seq.js
+// node_modules/yaml/dist/compose/resolve-block-seq.js
 var require_resolve_block_seq = __commonJS((exports) => {
   var YAMLSeq = require_YAMLSeq();
   var resolveProps = require_resolve_props();
@@ -3847,7 +3847,7 @@ var require_resolve_block_seq = __commonJS((exports) => {
   exports.resolveBlockSeq = resolveBlockSeq;
 });
 
-// ../node_modules/yaml/dist/compose/resolve-end.js
+// node_modules/yaml/dist/compose/resolve-end.js
 var require_resolve_end = __commonJS((exports) => {
   function resolveEnd(end, offset, reqSpace, onError) {
     let comment = "";
@@ -3887,7 +3887,7 @@ var require_resolve_end = __commonJS((exports) => {
   exports.resolveEnd = resolveEnd;
 });
 
-// ../node_modules/yaml/dist/compose/resolve-flow-collection.js
+// node_modules/yaml/dist/compose/resolve-flow-collection.js
 var require_resolve_flow_collection = __commonJS((exports) => {
   var identity = require_identity();
   var Pair = require_Pair();
@@ -4078,7 +4078,7 @@ var require_resolve_flow_collection = __commonJS((exports) => {
   exports.resolveFlowCollection = resolveFlowCollection;
 });
 
-// ../node_modules/yaml/dist/compose/compose-collection.js
+// node_modules/yaml/dist/compose/compose-collection.js
 var require_compose_collection = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -4140,7 +4140,7 @@ var require_compose_collection = __commonJS((exports) => {
   exports.composeCollection = composeCollection;
 });
 
-// ../node_modules/yaml/dist/compose/resolve-block-scalar.js
+// node_modules/yaml/dist/compose/resolve-block-scalar.js
 var require_resolve_block_scalar = __commonJS((exports) => {
   var Scalar = require_Scalar();
   function resolveBlockScalar(ctx, scalar, onError) {
@@ -4333,7 +4333,7 @@ var require_resolve_block_scalar = __commonJS((exports) => {
   exports.resolveBlockScalar = resolveBlockScalar;
 });
 
-// ../node_modules/yaml/dist/compose/resolve-flow-scalar.js
+// node_modules/yaml/dist/compose/resolve-flow-scalar.js
 var require_resolve_flow_scalar = __commonJS((exports) => {
   var Scalar = require_Scalar();
   var resolveEnd = require_resolve_end();
@@ -4549,7 +4549,7 @@ var require_resolve_flow_scalar = __commonJS((exports) => {
   exports.resolveFlowScalar = resolveFlowScalar;
 });
 
-// ../node_modules/yaml/dist/compose/compose-scalar.js
+// node_modules/yaml/dist/compose/compose-scalar.js
 var require_compose_scalar = __commonJS((exports) => {
   var identity = require_identity();
   var Scalar = require_Scalar();
@@ -4627,7 +4627,7 @@ var require_compose_scalar = __commonJS((exports) => {
   exports.composeScalar = composeScalar;
 });
 
-// ../node_modules/yaml/dist/compose/util-empty-scalar-position.js
+// node_modules/yaml/dist/compose/util-empty-scalar-position.js
 var require_util_empty_scalar_position = __commonJS((exports) => {
   function emptyScalarPosition(offset, before, pos) {
     if (before) {
@@ -4654,7 +4654,7 @@ var require_util_empty_scalar_position = __commonJS((exports) => {
   exports.emptyScalarPosition = emptyScalarPosition;
 });
 
-// ../node_modules/yaml/dist/compose/compose-node.js
+// node_modules/yaml/dist/compose/compose-node.js
 var require_compose_node = __commonJS((exports) => {
   var Alias = require_Alias();
   var identity = require_identity();
@@ -4752,7 +4752,7 @@ var require_compose_node = __commonJS((exports) => {
   exports.composeNode = composeNode;
 });
 
-// ../node_modules/yaml/dist/compose/compose-doc.js
+// node_modules/yaml/dist/compose/compose-doc.js
 var require_compose_doc = __commonJS((exports) => {
   var Document = require_Document();
   var composeNode = require_compose_node();
@@ -4792,7 +4792,7 @@ var require_compose_doc = __commonJS((exports) => {
   exports.composeDoc = composeDoc;
 });
 
-// ../node_modules/yaml/dist/compose/composer.js
+// node_modules/yaml/dist/compose/composer.js
 var require_composer = __commonJS((exports) => {
   var node_process = __require("process");
   var directives = require_directives();
@@ -4981,7 +4981,7 @@ ${end.comment}` : end.comment;
   exports.Composer = Composer;
 });
 
-// ../node_modules/yaml/dist/parse/cst-scalar.js
+// node_modules/yaml/dist/parse/cst-scalar.js
 var require_cst_scalar = __commonJS((exports) => {
   var resolveBlockScalar = require_resolve_block_scalar();
   var resolveFlowScalar = require_resolve_flow_scalar();
@@ -5171,7 +5171,7 @@ var require_cst_scalar = __commonJS((exports) => {
   exports.setScalarValue = setScalarValue;
 });
 
-// ../node_modules/yaml/dist/parse/cst-stringify.js
+// node_modules/yaml/dist/parse/cst-stringify.js
 var require_cst_stringify = __commonJS((exports) => {
   var stringify = (cst) => ("type" in cst) ? stringifyToken(cst) : stringifyItem(cst);
   function stringifyToken(token) {
@@ -5229,7 +5229,7 @@ var require_cst_stringify = __commonJS((exports) => {
   exports.stringify = stringify;
 });
 
-// ../node_modules/yaml/dist/parse/cst-visit.js
+// node_modules/yaml/dist/parse/cst-visit.js
 var require_cst_visit = __commonJS((exports) => {
   var BREAK = Symbol("break visit");
   var SKIP = Symbol("skip children");
@@ -5288,7 +5288,7 @@ var require_cst_visit = __commonJS((exports) => {
   exports.visit = visit;
 });
 
-// ../node_modules/yaml/dist/parse/cst.js
+// node_modules/yaml/dist/parse/cst.js
 var require_cst = __commonJS((exports) => {
   var cstScalar = require_cst_scalar();
   var cstStringify = require_cst_stringify();
@@ -5389,7 +5389,7 @@ var require_cst = __commonJS((exports) => {
   exports.tokenType = tokenType;
 });
 
-// ../node_modules/yaml/dist/parse/lexer.js
+// node_modules/yaml/dist/parse/lexer.js
 var require_lexer = __commonJS((exports) => {
   var cst = require_cst();
   function isEmpty(ch) {
@@ -5975,7 +5975,7 @@ var require_lexer = __commonJS((exports) => {
   exports.Lexer = Lexer;
 });
 
-// ../node_modules/yaml/dist/parse/line-counter.js
+// node_modules/yaml/dist/parse/line-counter.js
 var require_line_counter = __commonJS((exports) => {
   class LineCounter {
     constructor() {
@@ -6003,7 +6003,7 @@ var require_line_counter = __commonJS((exports) => {
   exports.LineCounter = LineCounter;
 });
 
-// ../node_modules/yaml/dist/parse/parser.js
+// node_modules/yaml/dist/parse/parser.js
 var require_parser = __commonJS((exports) => {
   var node_process = __require("process");
   var cst = require_cst();
@@ -6852,7 +6852,7 @@ var require_parser = __commonJS((exports) => {
   exports.Parser = Parser;
 });
 
-// ../node_modules/yaml/dist/public-api.js
+// node_modules/yaml/dist/public-api.js
 var require_public_api = __commonJS((exports) => {
   var composer = require_composer();
   var Document = require_Document();
@@ -6946,7 +6946,7 @@ var require_public_api = __commonJS((exports) => {
   exports.stringify = stringify;
 });
 
-// ../node_modules/yaml/dist/index.js
+// node_modules/yaml/dist/index.js
 var require_dist = __commonJS((exports) => {
   var composer = require_composer();
   var Document = require_Document();
@@ -7015,10 +7015,18 @@ function getGlobalInstallDir() {
 }
 function findLocalAgentShepherdDir() {
   let currentDir = process.cwd();
+  const visited = new Set;
   while (true) {
+    if (visited.has(currentDir)) {
+      break;
+    }
+    visited.add(currentDir);
     const agentShepherdDir = join(currentDir, ".agent-shepherd");
     if (existsSync(agentShepherdDir)) {
-      return agentShepherdDir;
+      const hasSrc = existsSync(join(agentShepherdDir, "src"));
+      if (hasSrc) {
+        return agentShepherdDir;
+      }
     }
     const parentDir = dirname(currentDir);
     if (parentDir === currentDir)
@@ -8448,7 +8456,7 @@ class PolicyEngine {
         }
       }
       if (typeof transition === "string") {
-        if (!policyPhases.includes(transition)) {
+        if (!policyPhases.includes(transition) && transition !== "close") {
           throw new Error(`Invalid ${key} transition in phase '${phaseName}': phase '${transition}' not found in policy`);
         }
       } else if (typeof transition === "object" && transition !== null) {
@@ -8456,7 +8464,7 @@ class PolicyEngine {
           throw new Error(`Invalid ${key} transition in phase '${phaseName}': missing required fields (capability, prompt, allowed_destinations)`);
         }
         for (const dest of transition.allowed_destinations) {
-          if (!policyPhases.includes(dest)) {
+          if (!policyPhases.includes(dest) && dest !== "close") {
             throw new Error(`Invalid ${key} transition in phase '${phaseName}': destination '${dest}' not found in policy`);
           }
         }
@@ -8852,6 +8860,300 @@ var init_policy = __esm(() => {
   import_yaml4 = __toESM(require_dist(), 1);
 });
 
+// src/core/phase-messenger.ts
+var exports_phase_messenger = {};
+__export(exports_phase_messenger, {
+  getPhaseMessenger: () => getPhaseMessenger,
+  PhaseMessenger: () => PhaseMessenger
+});
+import { Database as Database2 } from "bun:sqlite";
+import { existsSync as existsSync4, readFileSync as readFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync2 } from "fs";
+import { join as join4 } from "path";
+function loadConfig2(dataDir) {
+  const configPath = join4(dataDir || process.cwd(), ".agent-shepherd", "config", "phase-messenger.yaml");
+  if (!existsSync4(configPath)) {
+    return DEFAULT_CONFIG;
+  }
+  try {
+    const configContent = readFileSync6(configPath, "utf-8");
+    const userConfig = import_yaml5.default.parse(configContent);
+    return {
+      size_limits: {
+        ...DEFAULT_CONFIG.size_limits,
+        ...userConfig.size_limits || {}
+      },
+      cleanup: {
+        ...DEFAULT_CONFIG.cleanup,
+        ...userConfig.cleanup || {}
+      },
+      storage: {
+        ...DEFAULT_CONFIG.storage,
+        ...userConfig.storage || {}
+      }
+    };
+  } catch (error) {
+    console.warn("Failed to load phase-messenger config, using defaults:", error);
+    return DEFAULT_CONFIG;
+  }
+}
+
+class PhaseMessenger {
+  db;
+  jsonlPath;
+  config;
+  constructor(dataDir) {
+    this.config = loadConfig2(dataDir);
+    const dir = dataDir || join4(process.cwd(), this.config.storage.data_dir);
+    if (!existsSync4(dir)) {
+      mkdirSync2(dir, { recursive: true });
+    }
+    this.jsonlPath = join4(dir, this.config.storage.jsonl_file);
+    const dbPath = join4(dir, this.config.storage.database_file);
+    this.db = new Database2(dbPath);
+    this.initializeSchema();
+    this.syncFromJSONL();
+  }
+  initializeSchema() {
+    const createTable = `
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL,
+        from_phase TEXT NOT NULL,
+        to_phase TEXT NOT NULL,
+        run_counter INTEGER NOT NULL DEFAULT 1,
+        message_type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        metadata TEXT,
+        read INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        read_at INTEGER
+      )
+    `;
+    this.db.exec(createTable);
+    const indexes = [
+      "CREATE INDEX IF NOT EXISTS idx_messages_issue_id ON messages(issue_id)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_to_phase ON messages(to_phase)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_from_phase ON messages(from_phase)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_issue_phase ON messages(issue_id, to_phase)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_issue_unread ON messages(issue_id, to_phase, read)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)",
+      "CREATE INDEX IF NOT EXISTS idx_messages_run_counter ON messages(issue_id, run_counter)"
+    ];
+    indexes.forEach((idx) => this.db.exec(idx));
+  }
+  syncFromJSONL() {
+    if (!existsSync4(this.jsonlPath)) {
+      return;
+    }
+    const content = readFileSync6(this.jsonlPath, "utf-8");
+    const lines = content.trim().split(`
+`);
+    for (const line of lines) {
+      if (!line.trim())
+        continue;
+      try {
+        const message = JSON.parse(line);
+        this.upsertToSQLite(message);
+      } catch (error) {
+        console.error("Failed to parse JSONL line:", error);
+      }
+    }
+  }
+  upsertToSQLite(message) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO messages (
+        id, issue_id, from_phase, to_phase, run_counter,
+        message_type, content, metadata, read, created_at, read_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(message.id, message.issue_id, message.from_phase, message.to_phase, message.run_counter, message.message_type, message.content, message.metadata ? JSON.stringify(message.metadata) : null, message.read ? 1 : 0, message.created_at, message.read_at || null);
+  }
+  generateMessageId() {
+    return `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  }
+  validateMessage(input) {
+    const validTypes = ["context", "result", "decision", "data"];
+    if (!input.issue_id || !input.from_phase || !input.to_phase || !input.message_type || !input.content) {
+      throw new Error("Missing required fields: issue_id, from_phase, to_phase, message_type, content");
+    }
+    if (!validTypes.includes(input.message_type)) {
+      throw new Error(`Invalid message_type. Must be one of: ${validTypes.join(", ")}`);
+    }
+    const maxContent = this.config.size_limits.max_content_length;
+    const maxMetadata = this.config.size_limits.max_metadata_length;
+    if (input.content.length > maxContent) {
+      throw new Error(`Content exceeds maximum length of ${maxContent} characters`);
+    }
+    if (input.metadata && JSON.stringify(input.metadata).length > maxMetadata) {
+      throw new Error(`Metadata exceeds maximum length of ${maxMetadata} characters`);
+    }
+  }
+  enforceSizeLimits(issueId, toPhase) {
+    const maxIssuePhase = this.config.size_limits.max_messages_per_issue_phase;
+    const maxTotal = this.config.size_limits.max_messages_per_issue;
+    const issuePhaseCount = this.db.prepare("SELECT COUNT(*) as count FROM messages WHERE issue_id = ? AND to_phase = ?").get(issueId, toPhase);
+    if (issuePhaseCount.count >= maxIssuePhase) {
+      const oldestMessage = this.db.prepare("SELECT id FROM messages WHERE issue_id = ? AND to_phase = ? AND read = 1 ORDER BY created_at ASC LIMIT 1").get(issueId, toPhase);
+      if (oldestMessage) {
+        this.db.prepare("DELETE FROM messages WHERE id = ?").run(oldestMessage.id);
+      }
+    }
+    const issueTotalCount = this.db.prepare("SELECT COUNT(*) as count FROM messages WHERE issue_id = ?").get(issueId);
+    if (issueTotalCount.count >= maxTotal) {
+      const oldestMessage = this.db.prepare("SELECT id FROM messages WHERE issue_id = ? AND read = 1 ORDER BY created_at ASC LIMIT 1").get(issueId);
+      if (oldestMessage) {
+        this.db.prepare("DELETE FROM messages WHERE id = ?").run(oldestMessage.id);
+      }
+    }
+  }
+  sendMessage(input) {
+    this.validateMessage(input);
+    this.enforceSizeLimits(input.issue_id, input.to_phase);
+    const fullMessage = {
+      id: this.generateMessageId(),
+      issue_id: input.issue_id,
+      from_phase: input.from_phase,
+      to_phase: input.to_phase,
+      run_counter: input.run_counter || 1,
+      message_type: input.message_type,
+      content: input.content,
+      metadata: input.metadata || null,
+      read: false,
+      created_at: Date.now(),
+      read_at: null
+    };
+    appendFileSync2(this.jsonlPath, JSON.stringify(fullMessage) + `
+`);
+    this.upsertToSQLite(fullMessage);
+    return fullMessage;
+  }
+  receiveMessages(issueId, phase, markAsRead = true) {
+    let sql = "SELECT * FROM messages WHERE issue_id = ? AND to_phase = ? AND read = 0";
+    const messages = this.db.prepare(sql).all(issueId, phase);
+    const result = messages.map((row) => this.rowToMessage(row));
+    if (markAsRead) {
+      result.forEach((msg) => {
+        this.markAsRead(msg.id);
+      });
+    }
+    return result;
+  }
+  listMessages(query = {}) {
+    let sql = "SELECT * FROM messages WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.to_phase) {
+      sql += " AND to_phase = ?";
+      params.push(query.to_phase);
+    }
+    if (query.from_phase) {
+      sql += " AND from_phase = ?";
+      params.push(query.from_phase);
+    }
+    if (query.message_type) {
+      sql += " AND message_type = ?";
+      params.push(query.message_type);
+    }
+    if (query.read !== undefined) {
+      sql += " AND read = ?";
+      params.push(query.read ? 1 : 0);
+    }
+    if (query.run_counter !== undefined) {
+      sql += " AND run_counter = ?";
+      params.push(query.run_counter);
+    }
+    sql += " ORDER BY created_at DESC";
+    if (query.limit) {
+      sql += " LIMIT ?";
+      params.push(query.limit);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToMessage(row));
+  }
+  markAsRead(messageId) {
+    const message = this.getMessage(messageId);
+    if (!message || message.read) {
+      return;
+    }
+    const updated = {
+      ...message,
+      read: true,
+      read_at: Date.now()
+    };
+    appendFileSync2(this.jsonlPath, JSON.stringify(updated) + `
+`);
+    this.upsertToSQLite(updated);
+  }
+  getMessage(messageId) {
+    const row = this.db.prepare("SELECT * FROM messages WHERE id = ?").get(messageId);
+    if (!row) {
+      return null;
+    }
+    return this.rowToMessage(row);
+  }
+  getUnreadCount(issueId, phase) {
+    const result = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM messages
+      WHERE issue_id = ? AND to_phase = ? AND read = 0
+    `).get(issueId, phase);
+    return result.count || 0;
+  }
+  deleteIssueMessages(issueId) {
+    this.db.prepare("DELETE FROM messages WHERE issue_id = ?").run(issueId);
+  }
+  close() {
+    this.db.close();
+  }
+  rowToMessage(row) {
+    return {
+      id: row.id,
+      issue_id: row.issue_id,
+      from_phase: row.from_phase,
+      to_phase: row.to_phase,
+      run_counter: row.run_counter,
+      message_type: row.message_type,
+      content: row.content,
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+      read: row.read === 1,
+      created_at: row.created_at,
+      read_at: row.read_at || undefined
+    };
+  }
+}
+function getPhaseMessenger(dataDir) {
+  if (!defaultMessenger) {
+    defaultMessenger = new PhaseMessenger(dataDir);
+  }
+  return defaultMessenger;
+}
+var import_yaml5, DEFAULT_CONFIG, defaultMessenger = null;
+var init_phase_messenger = __esm(() => {
+  import_yaml5 = __toESM(require_dist(), 1);
+  DEFAULT_CONFIG = {
+    size_limits: {
+      max_content_length: 1e4,
+      max_metadata_length: 5000,
+      max_messages_per_issue_phase: 100,
+      max_messages_per_issue: 500
+    },
+    cleanup: {
+      default_max_age_days: 90,
+      keep_last_n_per_phase: 10,
+      keep_last_n_runs: 1
+    },
+    storage: {
+      data_dir: ".agent-shepherd",
+      database_file: "messages.db",
+      jsonl_file: "messages.jsonl"
+    }
+  };
+});
+
 // src/core/policy-capability-validator.ts
 var exports_policy_capability_validator = {};
 __export(exports_policy_capability_validator, {
@@ -9208,20 +9510,20 @@ var exports_archive_logger = {};
 __export(exports_archive_logger, {
   ArchiveLogger: () => ArchiveLogger
 });
-import { Database as Database3 } from "bun:sqlite";
-import { existsSync as existsSync5, mkdirSync as mkdirSync3 } from "fs";
-import { join as join5 } from "path";
+import { Database as Database4 } from "bun:sqlite";
+import { existsSync as existsSync6, mkdirSync as mkdirSync4 } from "fs";
+import { join as join6 } from "path";
 
 class ArchiveLogger {
   db;
   constructor(dataDir) {
-    const dir = dataDir || join5(process.cwd(), ".agent-shepherd");
-    const archiveDir = join5(dir, "archive");
-    if (!existsSync5(archiveDir)) {
-      mkdirSync3(archiveDir, { recursive: true });
+    const dir = dataDir || join6(process.cwd(), ".agent-shepherd");
+    const archiveDir = join6(dir, "archive");
+    if (!existsSync6(archiveDir)) {
+      mkdirSync4(archiveDir, { recursive: true });
     }
-    const archiveDbPath = join5(archiveDir, "archive.db");
-    this.db = new Database3(archiveDbPath);
+    const archiveDbPath = join6(archiveDir, "archive.db");
+    this.db = new Database4(archiveDbPath);
     this.initializeArchiveSchema();
     this.db.run("PRAGMA journal_mode = WAL");
     this.db.run("PRAGMA synchronous = NORMAL");
@@ -9436,7 +9738,7 @@ class ArchiveLogger {
 }
 var init_archive_logger = () => {};
 
-// ../node_modules/ajv/dist/compile/codegen/code.js
+// node_modules/ajv/dist/compile/codegen/code.js
 var require_code = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = undefined;
@@ -9590,7 +9892,7 @@ var require_code = __commonJS((exports) => {
   exports.regexpCode = regexpCode;
 });
 
-// ../node_modules/ajv/dist/compile/codegen/scope.js
+// node_modules/ajv/dist/compile/codegen/scope.js
 var require_scope = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.ValueScope = exports.ValueScopeName = exports.Scope = exports.varKinds = exports.UsedValueState = undefined;
@@ -9736,7 +10038,7 @@ var require_scope = __commonJS((exports) => {
   exports.ValueScope = ValueScope;
 });
 
-// ../node_modules/ajv/dist/compile/codegen/index.js
+// node_modules/ajv/dist/compile/codegen/index.js
 var require_codegen = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.or = exports.and = exports.not = exports.CodeGen = exports.operators = exports.varKinds = exports.ValueScopeName = exports.ValueScope = exports.Scope = exports.Name = exports.regexpCode = exports.stringify = exports.getProperty = exports.nil = exports.strConcat = exports.str = exports._ = undefined;
@@ -10446,7 +10748,7 @@ var require_codegen = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/ajv/dist/compile/util.js
+// node_modules/ajv/dist/compile/util.js
 var require_util = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.checkStrictMode = exports.getErrorPath = exports.Type = exports.useFunc = exports.setEvaluated = exports.evaluatedPropsToName = exports.mergeEvaluated = exports.eachItem = exports.unescapeJsonPointer = exports.escapeJsonPointer = exports.escapeFragment = exports.unescapeFragment = exports.schemaRefOrVal = exports.schemaHasRulesButRef = exports.schemaHasRules = exports.checkUnknownRules = exports.alwaysValidSchema = exports.toHash = undefined;
@@ -10610,7 +10912,7 @@ var require_util = __commonJS((exports) => {
   exports.checkStrictMode = checkStrictMode;
 });
 
-// ../node_modules/ajv/dist/compile/names.js
+// node_modules/ajv/dist/compile/names.js
 var require_names = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -10635,7 +10937,7 @@ var require_names = __commonJS((exports) => {
   exports.default = names;
 });
 
-// ../node_modules/ajv/dist/compile/errors.js
+// node_modules/ajv/dist/compile/errors.js
 var require_errors2 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.extendErrors = exports.resetErrorsCount = exports.reportExtraError = exports.reportError = exports.keyword$DataError = exports.keywordError = undefined;
@@ -10753,7 +11055,7 @@ var require_errors2 = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/ajv/dist/compile/validate/boolSchema.js
+// node_modules/ajv/dist/compile/validate/boolSchema.js
 var require_boolSchema = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.boolOrEmptySchema = exports.topBoolOrEmptySchema = undefined;
@@ -10801,7 +11103,7 @@ var require_boolSchema = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/ajv/dist/compile/rules.js
+// node_modules/ajv/dist/compile/rules.js
 var require_rules = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.getRules = exports.isJSONType = undefined;
@@ -10829,7 +11131,7 @@ var require_rules = __commonJS((exports) => {
   exports.getRules = getRules;
 });
 
-// ../node_modules/ajv/dist/compile/validate/applicability.js
+// node_modules/ajv/dist/compile/validate/applicability.js
 var require_applicability = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.shouldUseRule = exports.shouldUseGroup = exports.schemaHasRulesForType = undefined;
@@ -10849,7 +11151,7 @@ var require_applicability = __commonJS((exports) => {
   exports.shouldUseRule = shouldUseRule;
 });
 
-// ../node_modules/ajv/dist/compile/validate/dataType.js
+// node_modules/ajv/dist/compile/validate/dataType.js
 var require_dataType = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.reportTypeError = exports.checkDataTypes = exports.checkDataType = exports.coerceAndCheckDataType = exports.getJSONTypes = exports.getSchemaTypes = exports.DataType = undefined;
@@ -11030,7 +11332,7 @@ var require_dataType = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/ajv/dist/compile/validate/defaults.js
+// node_modules/ajv/dist/compile/validate/defaults.js
 var require_defaults = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.assignDefaults = undefined;
@@ -11064,7 +11366,7 @@ var require_defaults = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/ajv/dist/vocabularies/code.js
+// node_modules/ajv/dist/vocabularies/code.js
 var require_code2 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.validateUnion = exports.validateArray = exports.usePattern = exports.callValidateCode = exports.schemaProperties = exports.allSchemaProperties = exports.noPropertyInData = exports.propertyInData = exports.isOwnProperty = exports.hasPropFunc = exports.reportMissingProp = exports.checkMissingProp = exports.checkReportMissingProp = undefined;
@@ -11193,7 +11495,7 @@ var require_code2 = __commonJS((exports) => {
   exports.validateUnion = validateUnion;
 });
 
-// ../node_modules/ajv/dist/compile/validate/keyword.js
+// node_modules/ajv/dist/compile/validate/keyword.js
 var require_keyword = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.validateKeywordUsage = exports.validSchemaType = exports.funcKeywordCode = exports.macroKeywordCode = undefined;
@@ -11308,7 +11610,7 @@ var require_keyword = __commonJS((exports) => {
   exports.validateKeywordUsage = validateKeywordUsage;
 });
 
-// ../node_modules/ajv/dist/compile/validate/subschema.js
+// node_modules/ajv/dist/compile/validate/subschema.js
 var require_subschema = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.extendSubschemaMode = exports.extendSubschemaData = exports.getSubschema = undefined;
@@ -11388,7 +11690,7 @@ var require_subschema = __commonJS((exports) => {
   exports.extendSubschemaMode = extendSubschemaMode;
 });
 
-// ../node_modules/fast-deep-equal/index.js
+// node_modules/fast-deep-equal/index.js
 var require_fast_deep_equal = __commonJS((exports, module) => {
   module.exports = function equal(a, b) {
     if (a === b)
@@ -11430,7 +11732,7 @@ var require_fast_deep_equal = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/json-schema-traverse/index.js
+// node_modules/json-schema-traverse/index.js
 var require_json_schema_traverse = __commonJS((exports, module) => {
   var traverse = module.exports = function(schema, opts, cb) {
     if (typeof opts == "function") {
@@ -11513,7 +11815,7 @@ var require_json_schema_traverse = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/ajv/dist/compile/resolve.js
+// node_modules/ajv/dist/compile/resolve.js
 var require_resolve = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.getSchemaRefs = exports.resolveUrl = exports.normalizeId = exports._getFullPath = exports.getFullPath = exports.inlineRef = undefined;
@@ -11666,7 +11968,7 @@ var require_resolve = __commonJS((exports) => {
   exports.getSchemaRefs = getSchemaRefs;
 });
 
-// ../node_modules/ajv/dist/compile/validate/index.js
+// node_modules/ajv/dist/compile/validate/index.js
 var require_validate = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.getData = exports.KeywordCxt = exports.validateFunctionCode = undefined;
@@ -12171,7 +12473,7 @@ var require_validate = __commonJS((exports) => {
   exports.getData = getData;
 });
 
-// ../node_modules/ajv/dist/runtime/validation_error.js
+// node_modules/ajv/dist/runtime/validation_error.js
 var require_validation_error = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
 
@@ -12185,7 +12487,7 @@ var require_validation_error = __commonJS((exports) => {
   exports.default = ValidationError;
 });
 
-// ../node_modules/ajv/dist/compile/ref_error.js
+// node_modules/ajv/dist/compile/ref_error.js
 var require_ref_error = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var resolve_1 = require_resolve();
@@ -12200,7 +12502,7 @@ var require_ref_error = __commonJS((exports) => {
   exports.default = MissingRefError;
 });
 
-// ../node_modules/ajv/dist/compile/index.js
+// node_modules/ajv/dist/compile/index.js
 var require_compile = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.resolveSchema = exports.getCompilingSchema = exports.resolveRef = exports.compileSchema = exports.SchemaEnv = undefined;
@@ -12421,7 +12723,7 @@ var require_compile = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/ajv/dist/refs/data.json
+// node_modules/ajv/dist/refs/data.json
 var require_data = __commonJS((exports, module) => {
   module.exports = {
     $id: "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#",
@@ -12438,7 +12740,7 @@ var require_data = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/fast-uri/lib/utils.js
+// node_modules/fast-uri/lib/utils.js
 var require_utils = __commonJS((exports, module) => {
   var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
   var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
@@ -12693,7 +12995,7 @@ var require_utils = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/fast-uri/lib/schemes.js
+// node_modules/fast-uri/lib/schemes.js
 var require_schemes = __commonJS((exports, module) => {
   var { isUUID } = require_utils();
   var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
@@ -12867,7 +13169,7 @@ var require_schemes = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/fast-uri/index.js
+// node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS((exports, module) => {
   var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizeComponentEncoding, isIPv4, nonSimpleDomain } = require_utils();
   var { SCHEMES, getSchemeHandler } = require_schemes();
@@ -13118,7 +13420,7 @@ var require_fast_uri = __commonJS((exports, module) => {
   module.exports.fastUri = fastUri;
 });
 
-// ../node_modules/ajv/dist/runtime/uri.js
+// node_modules/ajv/dist/runtime/uri.js
 var require_uri = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var uri = require_fast_uri();
@@ -13126,7 +13428,7 @@ var require_uri = __commonJS((exports) => {
   exports.default = uri;
 });
 
-// ../node_modules/ajv/dist/core.js
+// node_modules/ajv/dist/core.js
 var require_core = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = undefined;
@@ -13719,7 +14021,7 @@ var require_core = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/ajv/dist/vocabularies/core/id.js
+// node_modules/ajv/dist/vocabularies/core/id.js
 var require_id = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var def = {
@@ -13731,7 +14033,7 @@ var require_id = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/core/ref.js
+// node_modules/ajv/dist/vocabularies/core/ref.js
 var require_ref = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.callRef = exports.getValidate = undefined;
@@ -13850,7 +14152,7 @@ var require_ref = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/core/index.js
+// node_modules/ajv/dist/vocabularies/core/index.js
 var require_core2 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var id_1 = require_id();
@@ -13868,7 +14170,7 @@ var require_core2 = __commonJS((exports) => {
   exports.default = core;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/limitNumber.js
+// node_modules/ajv/dist/vocabularies/validation/limitNumber.js
 var require_limitNumber = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -13897,7 +14199,7 @@ var require_limitNumber = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/multipleOf.js
+// node_modules/ajv/dist/vocabularies/validation/multipleOf.js
 var require_multipleOf = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -13922,7 +14224,7 @@ var require_multipleOf = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/runtime/ucs2length.js
+// node_modules/ajv/dist/runtime/ucs2length.js
 var require_ucs2length = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   function ucs2length(str) {
@@ -13945,7 +14247,7 @@ var require_ucs2length = __commonJS((exports) => {
   ucs2length.code = 'require("ajv/dist/runtime/ucs2length").default';
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/limitLength.js
+// node_modules/ajv/dist/vocabularies/validation/limitLength.js
 var require_limitLength = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -13974,7 +14276,7 @@ var require_limitLength = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/pattern.js
+// node_modules/ajv/dist/vocabularies/validation/pattern.js
 var require_pattern = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var code_1 = require_code2();
@@ -13999,7 +14301,7 @@ var require_pattern = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/limitProperties.js
+// node_modules/ajv/dist/vocabularies/validation/limitProperties.js
 var require_limitProperties = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -14025,7 +14327,7 @@ var require_limitProperties = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/required.js
+// node_modules/ajv/dist/vocabularies/validation/required.js
 var require_required = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var code_1 = require_code2();
@@ -14104,7 +14406,7 @@ var require_required = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/limitItems.js
+// node_modules/ajv/dist/vocabularies/validation/limitItems.js
 var require_limitItems = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -14130,7 +14432,7 @@ var require_limitItems = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/runtime/equal.js
+// node_modules/ajv/dist/runtime/equal.js
 var require_equal = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var equal = require_fast_deep_equal();
@@ -14138,7 +14440,7 @@ var require_equal = __commonJS((exports) => {
   exports.default = equal;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/uniqueItems.js
+// node_modules/ajv/dist/vocabularies/validation/uniqueItems.js
 var require_uniqueItems = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var dataType_1 = require_dataType();
@@ -14202,7 +14504,7 @@ var require_uniqueItems = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/const.js
+// node_modules/ajv/dist/vocabularies/validation/const.js
 var require_const = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -14228,7 +14530,7 @@ var require_const = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/enum.js
+// node_modules/ajv/dist/vocabularies/validation/enum.js
 var require_enum = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -14274,7 +14576,7 @@ var require_enum = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/validation/index.js
+// node_modules/ajv/dist/vocabularies/validation/index.js
 var require_validation = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var limitNumber_1 = require_limitNumber();
@@ -14304,7 +14606,7 @@ var require_validation = __commonJS((exports) => {
   exports.default = validation;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/additionalItems.js
+// node_modules/ajv/dist/vocabularies/applicator/additionalItems.js
 var require_additionalItems = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.validateAdditionalItems = undefined;
@@ -14354,7 +14656,7 @@ var require_additionalItems = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/items.js
+// node_modules/ajv/dist/vocabularies/applicator/items.js
 var require_items = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.validateTuple = undefined;
@@ -14408,7 +14710,7 @@ var require_items = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/prefixItems.js
+// node_modules/ajv/dist/vocabularies/applicator/prefixItems.js
 var require_prefixItems = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var items_1 = require_items();
@@ -14422,7 +14724,7 @@ var require_prefixItems = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/items2020.js
+// node_modules/ajv/dist/vocabularies/applicator/items2020.js
 var require_items2020 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -14454,7 +14756,7 @@ var require_items2020 = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/contains.js
+// node_modules/ajv/dist/vocabularies/applicator/contains.js
 var require_contains = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -14545,7 +14847,7 @@ var require_contains = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/dependencies.js
+// node_modules/ajv/dist/vocabularies/applicator/dependencies.js
 var require_dependencies = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.validateSchemaDeps = exports.validatePropertyDeps = exports.error = undefined;
@@ -14630,7 +14932,7 @@ var require_dependencies = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/propertyNames.js
+// node_modules/ajv/dist/vocabularies/applicator/propertyNames.js
 var require_propertyNames = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -14670,7 +14972,7 @@ var require_propertyNames = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js
+// node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js
 var require_additionalProperties = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var code_1 = require_code2();
@@ -14773,7 +15075,7 @@ var require_additionalProperties = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/properties.js
+// node_modules/ajv/dist/vocabularies/applicator/properties.js
 var require_properties = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var validate_1 = require_validate();
@@ -14828,7 +15130,7 @@ var require_properties = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/patternProperties.js
+// node_modules/ajv/dist/vocabularies/applicator/patternProperties.js
 var require_patternProperties = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var code_1 = require_code2();
@@ -14899,7 +15201,7 @@ var require_patternProperties = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/not.js
+// node_modules/ajv/dist/vocabularies/applicator/not.js
 var require_not = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var util_1 = require_util();
@@ -14927,7 +15229,7 @@ var require_not = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/anyOf.js
+// node_modules/ajv/dist/vocabularies/applicator/anyOf.js
 var require_anyOf = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var code_1 = require_code2();
@@ -14941,7 +15243,7 @@ var require_anyOf = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/oneOf.js
+// node_modules/ajv/dist/vocabularies/applicator/oneOf.js
 var require_oneOf = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -14996,7 +15298,7 @@ var require_oneOf = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/allOf.js
+// node_modules/ajv/dist/vocabularies/applicator/allOf.js
 var require_allOf = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var util_1 = require_util();
@@ -15020,7 +15322,7 @@ var require_allOf = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/if.js
+// node_modules/ajv/dist/vocabularies/applicator/if.js
 var require_if = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -15086,7 +15388,7 @@ var require_if = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/thenElse.js
+// node_modules/ajv/dist/vocabularies/applicator/thenElse.js
 var require_thenElse = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var util_1 = require_util();
@@ -15101,7 +15403,7 @@ var require_thenElse = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/applicator/index.js
+// node_modules/ajv/dist/vocabularies/applicator/index.js
 var require_applicator = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var additionalItems_1 = require_additionalItems();
@@ -15144,7 +15446,7 @@ var require_applicator = __commonJS((exports) => {
   exports.default = getApplicator;
 });
 
-// ../node_modules/ajv/dist/vocabularies/format/format.js
+// node_modules/ajv/dist/vocabularies/format/format.js
 var require_format = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -15231,7 +15533,7 @@ var require_format = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/vocabularies/format/index.js
+// node_modules/ajv/dist/vocabularies/format/index.js
 var require_format2 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var format_1 = require_format();
@@ -15239,7 +15541,7 @@ var require_format2 = __commonJS((exports) => {
   exports.default = format;
 });
 
-// ../node_modules/ajv/dist/vocabularies/metadata.js
+// node_modules/ajv/dist/vocabularies/metadata.js
 var require_metadata = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.contentVocabulary = exports.metadataVocabulary = undefined;
@@ -15259,7 +15561,7 @@ var require_metadata = __commonJS((exports) => {
   ];
 });
 
-// ../node_modules/ajv/dist/vocabularies/draft7.js
+// node_modules/ajv/dist/vocabularies/draft7.js
 var require_draft7 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var core_1 = require_core2();
@@ -15278,7 +15580,7 @@ var require_draft7 = __commonJS((exports) => {
   exports.default = draft7Vocabularies;
 });
 
-// ../node_modules/ajv/dist/vocabularies/discriminator/types.js
+// node_modules/ajv/dist/vocabularies/discriminator/types.js
 var require_types = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.DiscrError = undefined;
@@ -15289,7 +15591,7 @@ var require_types = __commonJS((exports) => {
   })(DiscrError || (exports.DiscrError = DiscrError = {}));
 });
 
-// ../node_modules/ajv/dist/vocabularies/discriminator/index.js
+// node_modules/ajv/dist/vocabularies/discriminator/index.js
 var require_discriminator = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var codegen_1 = require_codegen();
@@ -15391,7 +15693,7 @@ var require_discriminator = __commonJS((exports) => {
   exports.default = def;
 });
 
-// ../node_modules/ajv/dist/refs/json-schema-draft-07.json
+// node_modules/ajv/dist/refs/json-schema-draft-07.json
 var require_json_schema_draft_07 = __commonJS((exports, module) => {
   module.exports = {
     $schema: "http://json-schema.org/draft-07/schema#",
@@ -15546,7 +15848,7 @@ var require_json_schema_draft_07 = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/ajv/dist/ajv.js
+// node_modules/ajv/dist/ajv.js
 var require_ajv = __commonJS((exports, module) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv = undefined;
@@ -15614,7 +15916,7 @@ var require_ajv = __commonJS((exports, module) => {
   } });
 });
 
-// ../node_modules/ajv-formats/dist/formats.js
+// node_modules/ajv-formats/dist/formats.js
 var require_formats = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.formatNames = exports.fastFormats = exports.fullFormats = undefined;
@@ -15791,7 +16093,7 @@ var require_formats = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/ajv-formats/dist/limit.js
+// node_modules/ajv-formats/dist/limit.js
 var require_limit = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.formatLimitDefinition = undefined;
@@ -15860,7 +16162,7 @@ var require_limit = __commonJS((exports) => {
   exports.default = formatLimitPlugin;
 });
 
-// ../node_modules/ajv-formats/dist/index.js
+// node_modules/ajv-formats/dist/index.js
 var require_dist2 = __commonJS((exports, module) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   var formats_1 = require_formats();
@@ -15906,8 +16208,8 @@ __export(exports_config_validator, {
   configValidator: () => configValidator,
   ConfigurationValidator: () => ConfigurationValidator
 });
-import { readFileSync as readFileSync7, existsSync as existsSync8 } from "fs";
-import { join as join9 } from "path";
+import { readFileSync as readFileSync8, existsSync as existsSync9 } from "fs";
+import { join as join10 } from "path";
 
 class ConfigurationValidator {
   ajv;
@@ -15921,9 +16223,9 @@ class ConfigurationValidator {
   }
   async validateConfig(configPath, schemaPath) {
     try {
-      const configContent = readFileSync7(configPath, "utf-8");
+      const configContent = readFileSync8(configPath, "utf-8");
       const config = JSON.parse(configContent);
-      const schemaContent = readFileSync7(schemaPath, "utf-8");
+      const schemaContent = readFileSync8(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const validate = this.ajv.compile(schema);
       const valid = validate(config);
@@ -15969,13 +16271,13 @@ class ConfigurationValidator {
       }
     ];
     for (const task of validationTasks) {
-      const configPath = join9(baseDir, task.config);
+      const configPath = join10(baseDir, task.config);
       const localAgentShepherdDir = (await Promise.resolve().then(() => (init_path_utils(), exports_path_utils))).findAgentShepherdDir();
-      let schemaPath = join9(localAgentShepherdDir, task.schema);
-      if (!existsSync8(schemaPath)) {
-        schemaPath = join9(installDir, task.schema);
+      let schemaPath = join10(localAgentShepherdDir, task.schema);
+      if (!existsSync9(schemaPath)) {
+        schemaPath = join10(installDir, task.schema);
       }
-      if (!existsSync8(configPath)) {
+      if (!existsSync9(configPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -15989,7 +16291,7 @@ class ConfigurationValidator {
         });
         continue;
       }
-      if (!existsSync8(schemaPath)) {
+      if (!existsSync9(schemaPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -16040,10 +16342,10 @@ class ConfigurationValidator {
   }
   async validateYAMLConfig(yamlPath, schemaPath) {
     try {
-      const yamlContent = readFileSync7(yamlPath, "utf-8");
+      const yamlContent = readFileSync8(yamlPath, "utf-8");
       const { parse } = await Promise.resolve().then(() => __toESM(require_dist(), 1));
       const config = parse(yamlContent);
-      const schemaContent = readFileSync7(schemaPath, "utf-8");
+      const schemaContent = readFileSync8(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const validate = this.ajv.compile(schema);
       const valid = validate(config);
@@ -16118,7 +16420,7 @@ var init_config_validator = __esm(() => {
   configValidator = new ConfigurationValidator;
 });
 
-// ../node_modules/ms/index.js
+// node_modules/ms/index.js
 var require_ms = __commonJS((exports, module) => {
   var s = 1000;
   var m = s * 60;
@@ -16228,7 +16530,7 @@ var require_ms = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/debug/src/common.js
+// node_modules/debug/src/common.js
 var require_common = __commonJS((exports, module) => {
   function setup(env) {
     createDebug.debug = createDebug;
@@ -16403,7 +16705,7 @@ var require_common = __commonJS((exports, module) => {
   module.exports = setup;
 });
 
-// ../node_modules/debug/src/browser.js
+// node_modules/debug/src/browser.js
 var require_browser = __commonJS((exports, module) => {
   exports.formatArgs = formatArgs;
   exports.save = save;
@@ -16563,7 +16865,7 @@ var require_browser = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/has-flag/index.js
+// node_modules/has-flag/index.js
 var require_has_flag = __commonJS((exports, module) => {
   module.exports = (flag, argv = process.argv) => {
     const prefix = flag.startsWith("-") ? "" : flag.length === 1 ? "-" : "--";
@@ -16573,7 +16875,7 @@ var require_has_flag = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/supports-color/index.js
+// node_modules/supports-color/index.js
 var require_supports_color = __commonJS((exports, module) => {
   var os = __require("os");
   var tty = __require("tty");
@@ -16672,7 +16974,7 @@ var require_supports_color = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/debug/src/node.js
+// node_modules/debug/src/node.js
 var require_node = __commonJS((exports, module) => {
   var tty = __require("tty");
   var util = __require("util");
@@ -16843,7 +17145,7 @@ var require_node = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/debug/src/index.js
+// node_modules/debug/src/index.js
 var require_src = __commonJS((exports, module) => {
   if (typeof process === "undefined" || process.type === "renderer" || false || process.__nwjs) {
     module.exports = require_browser();
@@ -16852,7 +17154,7 @@ var require_src = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/depd/index.js
+// node_modules/depd/index.js
 var require_depd = __commonJS((exports, module) => {
   /*!
    * depd
@@ -17161,7 +17463,7 @@ var require_depd = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/setprototypeof/index.js
+// node_modules/setprototypeof/index.js
 var require_setprototypeof = __commonJS((exports, module) => {
   module.exports = Object.setPrototypeOf || ({ __proto__: [] } instanceof Array ? setProtoOf : mixinProperties);
   function setProtoOf(obj, proto) {
@@ -17178,7 +17480,7 @@ var require_setprototypeof = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/statuses/codes.json
+// node_modules/statuses/codes.json
 var require_codes = __commonJS((exports, module) => {
   module.exports = {
     "100": "Continue",
@@ -17247,7 +17549,7 @@ var require_codes = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/statuses/index.js
+// node_modules/statuses/index.js
 var require_statuses = __commonJS((exports, module) => {
   /*!
    * statuses
@@ -17321,7 +17623,7 @@ var require_statuses = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/inherits/inherits_browser.js
+// node_modules/inherits/inherits_browser.js
 var require_inherits_browser = __commonJS((exports, module) => {
   if (typeof Object.create === "function") {
     module.exports = function inherits(ctor, superCtor) {
@@ -17350,7 +17652,7 @@ var require_inherits_browser = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/inherits/inherits.js
+// node_modules/inherits/inherits.js
 var require_inherits = __commonJS((exports, module) => {
   try {
     util = __require("util");
@@ -17363,7 +17665,7 @@ var require_inherits = __commonJS((exports, module) => {
   var util;
 });
 
-// ../node_modules/toidentifier/index.js
+// node_modules/toidentifier/index.js
 var require_toidentifier = __commonJS((exports, module) => {
   /*!
    * toidentifier
@@ -17378,7 +17680,7 @@ var require_toidentifier = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/http-errors/index.js
+// node_modules/http-errors/index.js
 var require_http_errors = __commonJS((exports, module) => {
   /*!
    * http-errors
@@ -17545,7 +17847,7 @@ var require_http_errors = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/bytes/index.js
+// node_modules/bytes/index.js
 var require_bytes = __commonJS((exports, module) => {
   /*!
    * bytes
@@ -17637,7 +17939,7 @@ var require_bytes = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/safer-buffer/safer.js
+// node_modules/safer-buffer/safer.js
 var require_safer = __commonJS((exports, module) => {
   var buffer = __require("buffer");
   var Buffer2 = buffer.Buffer;
@@ -17705,7 +18007,7 @@ var require_safer = __commonJS((exports, module) => {
   module.exports = safer;
 });
 
-// ../node_modules/iconv-lite/lib/bom-handling.js
+// node_modules/iconv-lite/lib/bom-handling.js
 var require_bom_handling = __commonJS((exports) => {
   var BOMChar = "\uFEFF";
   exports.PrependBOM = PrependBOMWrapper;
@@ -17748,7 +18050,7 @@ var require_bom_handling = __commonJS((exports) => {
   };
 });
 
-// ../node_modules/iconv-lite/lib/helpers/merge-exports.js
+// node_modules/iconv-lite/lib/helpers/merge-exports.js
 var require_merge_exports = __commonJS((exports, module) => {
   var hasOwn = typeof Object.hasOwn === "undefined" ? Function.call.bind(Object.prototype.hasOwnProperty) : Object.hasOwn;
   function mergeModules(target, module2) {
@@ -17761,7 +18063,7 @@ var require_merge_exports = __commonJS((exports, module) => {
   module.exports = mergeModules;
 });
 
-// ../node_modules/iconv-lite/encodings/internal.js
+// node_modules/iconv-lite/encodings/internal.js
 var require_internal = __commonJS((exports, module) => {
   var Buffer2 = require_safer().Buffer;
   module.exports = {
@@ -17934,7 +18236,7 @@ var require_internal = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/iconv-lite/encodings/utf32.js
+// node_modules/iconv-lite/encodings/utf32.js
 var require_utf32 = __commonJS((exports) => {
   var Buffer2 = require_safer().Buffer;
   exports._utf32 = Utf32Codec;
@@ -18168,7 +18470,7 @@ var require_utf32 = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/iconv-lite/encodings/utf16.js
+// node_modules/iconv-lite/encodings/utf16.js
 var require_utf16 = __commonJS((exports) => {
   var Buffer2 = require_safer().Buffer;
   exports.utf16be = Utf16BECodec;
@@ -18311,7 +18613,7 @@ var require_utf16 = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/iconv-lite/encodings/utf7.js
+// node_modules/iconv-lite/encodings/utf7.js
 var require_utf7 = __commonJS((exports) => {
   var Buffer2 = require_safer().Buffer;
   exports.utf7 = Utf7Codec;
@@ -18525,7 +18827,7 @@ var require_utf7 = __commonJS((exports) => {
   };
 });
 
-// ../node_modules/iconv-lite/encodings/sbcs-codec.js
+// node_modules/iconv-lite/encodings/sbcs-codec.js
 var require_sbcs_codec = __commonJS((exports) => {
   var Buffer2 = require_safer().Buffer;
   exports._sbcs = SBCSCodec;
@@ -18582,7 +18884,7 @@ var require_sbcs_codec = __commonJS((exports) => {
   SBCSDecoder.prototype.end = function() {};
 });
 
-// ../node_modules/iconv-lite/encodings/sbcs-data.js
+// node_modules/iconv-lite/encodings/sbcs-data.js
 var require_sbcs_data = __commonJS((exports, module) => {
   module.exports = {
     10029: "maccenteuro",
@@ -18730,7 +19032,7 @@ var require_sbcs_data = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/iconv-lite/encodings/sbcs-data-generated.js
+// node_modules/iconv-lite/encodings/sbcs-data-generated.js
 var require_sbcs_data_generated = __commonJS((exports, module) => {
   module.exports = {
     "437": "cp437",
@@ -19187,7 +19489,7 @@ var require_sbcs_data_generated = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/iconv-lite/encodings/dbcs-codec.js
+// node_modules/iconv-lite/encodings/dbcs-codec.js
 var require_dbcs_codec = __commonJS((exports) => {
   var Buffer2 = require_safer().Buffer;
   exports._dbcs = DBCSCodec;
@@ -19645,7 +19947,7 @@ var require_dbcs_codec = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/iconv-lite/encodings/tables/shiftjis.json
+// node_modules/iconv-lite/encodings/tables/shiftjis.json
 var require_shiftjis = __commonJS((exports, module) => {
   module.exports = [
     ["0", "\x00", 128],
@@ -19774,7 +20076,7 @@ var require_shiftjis = __commonJS((exports, module) => {
   ];
 });
 
-// ../node_modules/iconv-lite/encodings/tables/eucjp.json
+// node_modules/iconv-lite/encodings/tables/eucjp.json
 var require_eucjp = __commonJS((exports, module) => {
   module.exports = [
     ["0", "\x00", 127],
@@ -19960,7 +20262,7 @@ var require_eucjp = __commonJS((exports, module) => {
   ];
 });
 
-// ../node_modules/iconv-lite/encodings/tables/cp936.json
+// node_modules/iconv-lite/encodings/tables/cp936.json
 var require_cp936 = __commonJS((exports, module) => {
   module.exports = [
     ["0", "\x00", 127, "\u20AC"],
@@ -20228,7 +20530,7 @@ var require_cp936 = __commonJS((exports, module) => {
   ];
 });
 
-// ../node_modules/iconv-lite/encodings/tables/gbk-added.json
+// node_modules/iconv-lite/encodings/tables/gbk-added.json
 var require_gbk_added = __commonJS((exports, module) => {
   module.exports = [
     ["a140", "\uE4C6", 62],
@@ -20288,12 +20590,12 @@ var require_gbk_added = __commonJS((exports, module) => {
   ];
 });
 
-// ../node_modules/iconv-lite/encodings/tables/gb18030-ranges.json
+// node_modules/iconv-lite/encodings/tables/gb18030-ranges.json
 var require_gb18030_ranges = __commonJS((exports, module) => {
   module.exports = { uChars: [128, 165, 169, 178, 184, 216, 226, 235, 238, 244, 248, 251, 253, 258, 276, 284, 300, 325, 329, 334, 364, 463, 465, 467, 469, 471, 473, 475, 477, 506, 594, 610, 712, 716, 730, 930, 938, 962, 970, 1026, 1104, 1106, 8209, 8215, 8218, 8222, 8231, 8241, 8244, 8246, 8252, 8365, 8452, 8454, 8458, 8471, 8482, 8556, 8570, 8596, 8602, 8713, 8720, 8722, 8726, 8731, 8737, 8740, 8742, 8748, 8751, 8760, 8766, 8777, 8781, 8787, 8802, 8808, 8816, 8854, 8858, 8870, 8896, 8979, 9322, 9372, 9548, 9588, 9616, 9622, 9634, 9652, 9662, 9672, 9676, 9680, 9702, 9735, 9738, 9793, 9795, 11906, 11909, 11913, 11917, 11928, 11944, 11947, 11951, 11956, 11960, 11964, 11979, 12284, 12292, 12312, 12319, 12330, 12351, 12436, 12447, 12535, 12543, 12586, 12842, 12850, 12964, 13200, 13215, 13218, 13253, 13263, 13267, 13270, 13384, 13428, 13727, 13839, 13851, 14617, 14703, 14801, 14816, 14964, 15183, 15471, 15585, 16471, 16736, 17208, 17325, 17330, 17374, 17623, 17997, 18018, 18212, 18218, 18301, 18318, 18760, 18811, 18814, 18820, 18823, 18844, 18848, 18872, 19576, 19620, 19738, 19887, 40870, 59244, 59336, 59367, 59413, 59417, 59423, 59431, 59437, 59443, 59452, 59460, 59478, 59493, 63789, 63866, 63894, 63976, 63986, 64016, 64018, 64021, 64025, 64034, 64037, 64042, 65074, 65093, 65107, 65112, 65127, 65132, 65375, 65510, 65536], gbChars: [0, 36, 38, 45, 50, 81, 89, 95, 96, 100, 103, 104, 105, 109, 126, 133, 148, 172, 175, 179, 208, 306, 307, 308, 309, 310, 311, 312, 313, 341, 428, 443, 544, 545, 558, 741, 742, 749, 750, 805, 819, 820, 7922, 7924, 7925, 7927, 7934, 7943, 7944, 7945, 7950, 8062, 8148, 8149, 8152, 8164, 8174, 8236, 8240, 8262, 8264, 8374, 8380, 8381, 8384, 8388, 8390, 8392, 8393, 8394, 8396, 8401, 8406, 8416, 8419, 8424, 8437, 8439, 8445, 8482, 8485, 8496, 8521, 8603, 8936, 8946, 9046, 9050, 9063, 9066, 9076, 9092, 9100, 9108, 9111, 9113, 9131, 9162, 9164, 9218, 9219, 11329, 11331, 11334, 11336, 11346, 11361, 11363, 11366, 11370, 11372, 11375, 11389, 11682, 11686, 11687, 11692, 11694, 11714, 11716, 11723, 11725, 11730, 11736, 11982, 11989, 12102, 12336, 12348, 12350, 12384, 12393, 12395, 12397, 12510, 12553, 12851, 12962, 12973, 13738, 13823, 13919, 13933, 14080, 14298, 14585, 14698, 15583, 15847, 16318, 16434, 16438, 16481, 16729, 17102, 17122, 17315, 17320, 17402, 17418, 17859, 17909, 17911, 17915, 17916, 17936, 17939, 17961, 18664, 18703, 18814, 18962, 19043, 33469, 33470, 33471, 33484, 33485, 33490, 33497, 33501, 33505, 33513, 33520, 33536, 33550, 37845, 37921, 37948, 38029, 38038, 38064, 38065, 38066, 38069, 38075, 38076, 38078, 39108, 39109, 39113, 39114, 39115, 39116, 39265, 39394, 189000] };
 });
 
-// ../node_modules/iconv-lite/encodings/tables/cp949.json
+// node_modules/iconv-lite/encodings/tables/cp949.json
 var require_cp949 = __commonJS((exports, module) => {
   module.exports = [
     ["0", "\x00", 127],
@@ -20570,7 +20872,7 @@ var require_cp949 = __commonJS((exports, module) => {
   ];
 });
 
-// ../node_modules/iconv-lite/encodings/tables/cp950.json
+// node_modules/iconv-lite/encodings/tables/cp950.json
 var require_cp950 = __commonJS((exports, module) => {
   module.exports = [
     ["0", "\x00", 127],
@@ -20751,7 +21053,7 @@ var require_cp950 = __commonJS((exports, module) => {
   ];
 });
 
-// ../node_modules/iconv-lite/encodings/tables/big5-added.json
+// node_modules/iconv-lite/encodings/tables/big5-added.json
 var require_big5_added = __commonJS((exports, module) => {
   module.exports = [
     ["8740", "\u43F0\u4C32\u4603\u45A6\u4578\uD85C\uDE67\u4D77\u45B3\uD85F\uDCB1\u4CE2\uD85F\uDCC5\u3B95\u4736\u4744\u4C47\u4C40\uD850\uDEBF\uD84D\uDE17\uD85C\uDF52\uD85B\uDE8B\uD85C\uDCD2\u4C57\uD868\uDF51\u474F\u45DA\u4C85\uD85F\uDC6C\u4D07\u4AA4\u46A1\uD85A\uDF23\u7225\uD856\uDE54\uD846\uDE63\uD84F\uDE06\uD84F\uDF61\u664D\u56FB"],
@@ -20877,7 +21179,7 @@ var require_big5_added = __commonJS((exports, module) => {
   ];
 });
 
-// ../node_modules/iconv-lite/encodings/dbcs-data.js
+// node_modules/iconv-lite/encodings/dbcs-data.js
 var require_dbcs_data = __commonJS((exports, module) => {
   module.exports = {
     shiftjis: {
@@ -21048,7 +21350,7 @@ var require_dbcs_data = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/iconv-lite/encodings/index.js
+// node_modules/iconv-lite/encodings/index.js
 var require_encodings = __commonJS((exports, module) => {
   var mergeModules = require_merge_exports();
   var modules = [
@@ -21070,7 +21372,7 @@ var require_encodings = __commonJS((exports, module) => {
   var i;
 });
 
-// ../node_modules/iconv-lite/lib/streams.js
+// node_modules/iconv-lite/lib/streams.js
 var require_streams = __commonJS((exports, module) => {
   var Buffer2 = require_safer().Buffer;
   module.exports = function(streamModule) {
@@ -21168,7 +21470,7 @@ var require_streams = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/iconv-lite/lib/index.js
+// node_modules/iconv-lite/lib/index.js
 var require_lib = __commonJS((exports, module) => {
   var Buffer2 = require_safer().Buffer;
   var bomHandling = require_bom_handling();
@@ -21295,7 +21597,7 @@ var require_lib = __commonJS((exports, module) => {
   if (false) {}
 });
 
-// ../node_modules/unpipe/index.js
+// node_modules/unpipe/index.js
 var require_unpipe = __commonJS((exports, module) => {
   /*!
    * unpipe
@@ -21335,7 +21637,7 @@ var require_unpipe = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/raw-body/index.js
+// node_modules/raw-body/index.js
 var require_raw_body = __commonJS((exports, module) => {
   /*!
    * raw-body
@@ -21534,7 +21836,7 @@ var require_raw_body = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/ee-first/index.js
+// node_modules/ee-first/index.js
 var require_ee_first = __commonJS((exports, module) => {
   /*!
    * ee-first
@@ -21592,7 +21894,7 @@ var require_ee_first = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/on-finished/index.js
+// node_modules/on-finished/index.js
 var require_on_finished = __commonJS((exports, module) => {
   /*!
    * on-finished
@@ -21704,7 +22006,7 @@ var require_on_finished = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/content-type/index.js
+// node_modules/content-type/index.js
 var require_content_type = __commonJS((exports) => {
   /*!
    * content-type
@@ -21810,7 +22112,7 @@ var require_content_type = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/mime-db/db.json
+// node_modules/mime-db/db.json
 var require_db = __commonJS((exports, module) => {
   module.exports = {
     "application/1d-interleaved-parityfec": {
@@ -31156,7 +31458,7 @@ var require_db = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/mime-db/index.js
+// node_modules/mime-db/index.js
 var require_mime_db = __commonJS((exports, module) => {
   /*!
    * mime-db
@@ -31167,7 +31469,7 @@ var require_mime_db = __commonJS((exports, module) => {
   module.exports = require_db();
 });
 
-// ../node_modules/mime-types/mimeScore.js
+// node_modules/mime-types/mimeScore.js
 var require_mimeScore = __commonJS((exports, module) => {
   var FACET_SCORES = {
     "prs.": 100,
@@ -31203,7 +31505,7 @@ var require_mimeScore = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/mime-types/index.js
+// node_modules/mime-types/index.js
 var require_mime_types = __commonJS((exports) => {
   /*!
    * mime-types
@@ -31309,7 +31611,7 @@ var require_mime_types = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/media-typer/index.js
+// node_modules/media-typer/index.js
 var require_media_typer = __commonJS((exports) => {
   /*!
    * media-typer
@@ -31381,7 +31683,7 @@ var require_media_typer = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/type-is/index.js
+// node_modules/type-is/index.js
 var require_type_is = __commonJS((exports, module) => {
   /*!
    * type-is
@@ -31479,7 +31781,7 @@ var require_type_is = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/body-parser/lib/utils.js
+// node_modules/body-parser/lib/utils.js
 var require_utils2 = __commonJS((exports, module) => {
   var bytes = require_bytes();
   var contentType = require_content_type();
@@ -31527,7 +31829,7 @@ var require_utils2 = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/body-parser/lib/read.js
+// node_modules/body-parser/lib/read.js
 var require_read = __commonJS((exports, module) => {
   /*!
    * body-parser
@@ -31687,7 +31989,7 @@ var require_read = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/body-parser/lib/types/json.js
+// node_modules/body-parser/lib/types/json.js
 var require_json = __commonJS((exports, module) => {
   /*!
    * body-parser
@@ -31739,10 +32041,7 @@ var require_json = __commonJS((exports, module) => {
     var index = str.indexOf(char);
     var partial = "";
     if (index !== -1) {
-      partial = str.substring(0, index) + JSON_SYNTAX_CHAR;
-      for (var i = index + 1;i < str.length; i++) {
-        partial += JSON_SYNTAX_CHAR;
-      }
+      partial = str.substring(0, index) + JSON_SYNTAX_CHAR.repeat(str.length - index);
     }
     try {
       JSON.parse(partial);
@@ -31774,7 +32073,7 @@ var require_json = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/body-parser/lib/types/raw.js
+// node_modules/body-parser/lib/types/raw.js
 var require_raw = __commonJS((exports, module) => {
   /*!
    * body-parser
@@ -31797,7 +32096,7 @@ var require_raw = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/body-parser/lib/types/text.js
+// node_modules/body-parser/lib/types/text.js
 var require_text = __commonJS((exports, module) => {
   /*!
    * body-parser
@@ -31816,17 +32115,17 @@ var require_text = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/es-errors/type.js
+// node_modules/es-errors/type.js
 var require_type = __commonJS((exports, module) => {
   module.exports = TypeError;
 });
 
-// ../node_modules/object-inspect/util.inspect.js
+// node_modules/object-inspect/util.inspect.js
 var require_util_inspect = __commonJS((exports, module) => {
   module.exports = __require("util").inspect;
 });
 
-// ../node_modules/object-inspect/index.js
+// node_modules/object-inspect/index.js
 var require_object_inspect = __commonJS((exports, module) => {
   var hasMap = typeof Map === "function" && Map.prototype;
   var mapSizeDescriptor = Object.getOwnPropertyDescriptor && hasMap ? Object.getOwnPropertyDescriptor(Map.prototype, "size") : null;
@@ -32351,7 +32650,7 @@ var require_object_inspect = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/side-channel-list/index.js
+// node_modules/side-channel-list/index.js
 var require_side_channel_list = __commonJS((exports, module) => {
   var inspect = require_object_inspect();
   var $TypeError = require_type();
@@ -32434,79 +32733,79 @@ var require_side_channel_list = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/es-object-atoms/index.js
+// node_modules/es-object-atoms/index.js
 var require_es_object_atoms = __commonJS((exports, module) => {
   module.exports = Object;
 });
 
-// ../node_modules/es-errors/index.js
+// node_modules/es-errors/index.js
 var require_es_errors = __commonJS((exports, module) => {
   module.exports = Error;
 });
 
-// ../node_modules/es-errors/eval.js
+// node_modules/es-errors/eval.js
 var require_eval = __commonJS((exports, module) => {
   module.exports = EvalError;
 });
 
-// ../node_modules/es-errors/range.js
+// node_modules/es-errors/range.js
 var require_range = __commonJS((exports, module) => {
   module.exports = RangeError;
 });
 
-// ../node_modules/es-errors/ref.js
+// node_modules/es-errors/ref.js
 var require_ref2 = __commonJS((exports, module) => {
   module.exports = ReferenceError;
 });
 
-// ../node_modules/es-errors/syntax.js
+// node_modules/es-errors/syntax.js
 var require_syntax = __commonJS((exports, module) => {
   module.exports = SyntaxError;
 });
 
-// ../node_modules/es-errors/uri.js
+// node_modules/es-errors/uri.js
 var require_uri2 = __commonJS((exports, module) => {
   module.exports = URIError;
 });
 
-// ../node_modules/math-intrinsics/abs.js
+// node_modules/math-intrinsics/abs.js
 var require_abs = __commonJS((exports, module) => {
   module.exports = Math.abs;
 });
 
-// ../node_modules/math-intrinsics/floor.js
+// node_modules/math-intrinsics/floor.js
 var require_floor = __commonJS((exports, module) => {
   module.exports = Math.floor;
 });
 
-// ../node_modules/math-intrinsics/max.js
+// node_modules/math-intrinsics/max.js
 var require_max = __commonJS((exports, module) => {
   module.exports = Math.max;
 });
 
-// ../node_modules/math-intrinsics/min.js
+// node_modules/math-intrinsics/min.js
 var require_min = __commonJS((exports, module) => {
   module.exports = Math.min;
 });
 
-// ../node_modules/math-intrinsics/pow.js
+// node_modules/math-intrinsics/pow.js
 var require_pow = __commonJS((exports, module) => {
   module.exports = Math.pow;
 });
 
-// ../node_modules/math-intrinsics/round.js
+// node_modules/math-intrinsics/round.js
 var require_round = __commonJS((exports, module) => {
   module.exports = Math.round;
 });
 
-// ../node_modules/math-intrinsics/isNaN.js
+// node_modules/math-intrinsics/isNaN.js
 var require_isNaN = __commonJS((exports, module) => {
   module.exports = Number.isNaN || function isNaN(a) {
     return a !== a;
   };
 });
 
-// ../node_modules/math-intrinsics/sign.js
+// node_modules/math-intrinsics/sign.js
 var require_sign = __commonJS((exports, module) => {
   var $isNaN = require_isNaN();
   module.exports = function sign(number) {
@@ -32517,12 +32816,12 @@ var require_sign = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/gopd/gOPD.js
+// node_modules/gopd/gOPD.js
 var require_gOPD = __commonJS((exports, module) => {
   module.exports = Object.getOwnPropertyDescriptor;
 });
 
-// ../node_modules/gopd/index.js
+// node_modules/gopd/index.js
 var require_gopd = __commonJS((exports, module) => {
   var $gOPD = require_gOPD();
   if ($gOPD) {
@@ -32535,7 +32834,7 @@ var require_gopd = __commonJS((exports, module) => {
   module.exports = $gOPD;
 });
 
-// ../node_modules/es-define-property/index.js
+// node_modules/es-define-property/index.js
 var require_es_define_property = __commonJS((exports, module) => {
   var $defineProperty = Object.defineProperty || false;
   if ($defineProperty) {
@@ -32548,7 +32847,7 @@ var require_es_define_property = __commonJS((exports, module) => {
   module.exports = $defineProperty;
 });
 
-// ../node_modules/has-symbols/shams.js
+// node_modules/has-symbols/shams.js
 var require_shams = __commonJS((exports, module) => {
   module.exports = function hasSymbols() {
     if (typeof Symbol !== "function" || typeof Object.getOwnPropertySymbols !== "function") {
@@ -32597,7 +32896,7 @@ var require_shams = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/has-symbols/index.js
+// node_modules/has-symbols/index.js
 var require_has_symbols = __commonJS((exports, module) => {
   var origSymbol = typeof Symbol !== "undefined" && Symbol;
   var hasSymbolSham = require_shams();
@@ -32618,18 +32917,18 @@ var require_has_symbols = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/get-proto/Reflect.getPrototypeOf.js
+// node_modules/get-proto/Reflect.getPrototypeOf.js
 var require_Reflect_getPrototypeOf = __commonJS((exports, module) => {
   module.exports = typeof Reflect !== "undefined" && Reflect.getPrototypeOf || null;
 });
 
-// ../node_modules/get-proto/Object.getPrototypeOf.js
+// node_modules/get-proto/Object.getPrototypeOf.js
 var require_Object_getPrototypeOf = __commonJS((exports, module) => {
   var $Object = require_es_object_atoms();
   module.exports = $Object.getPrototypeOf || null;
 });
 
-// ../node_modules/function-bind/implementation.js
+// node_modules/function-bind/implementation.js
 var require_implementation = __commonJS((exports, module) => {
   var ERROR_MESSAGE = "Function.prototype.bind called on incompatible ";
   var toStr = Object.prototype.toString;
@@ -32695,28 +32994,28 @@ var require_implementation = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/function-bind/index.js
+// node_modules/function-bind/index.js
 var require_function_bind = __commonJS((exports, module) => {
   var implementation = require_implementation();
   module.exports = Function.prototype.bind || implementation;
 });
 
-// ../node_modules/call-bind-apply-helpers/functionCall.js
+// node_modules/call-bind-apply-helpers/functionCall.js
 var require_functionCall = __commonJS((exports, module) => {
   module.exports = Function.prototype.call;
 });
 
-// ../node_modules/call-bind-apply-helpers/functionApply.js
+// node_modules/call-bind-apply-helpers/functionApply.js
 var require_functionApply = __commonJS((exports, module) => {
   module.exports = Function.prototype.apply;
 });
 
-// ../node_modules/call-bind-apply-helpers/reflectApply.js
+// node_modules/call-bind-apply-helpers/reflectApply.js
 var require_reflectApply = __commonJS((exports, module) => {
   module.exports = typeof Reflect !== "undefined" && Reflect && Reflect.apply;
 });
 
-// ../node_modules/call-bind-apply-helpers/actualApply.js
+// node_modules/call-bind-apply-helpers/actualApply.js
 var require_actualApply = __commonJS((exports, module) => {
   var bind = require_function_bind();
   var $apply = require_functionApply();
@@ -32725,7 +33024,7 @@ var require_actualApply = __commonJS((exports, module) => {
   module.exports = $reflectApply || bind.call($call, $apply);
 });
 
-// ../node_modules/call-bind-apply-helpers/index.js
+// node_modules/call-bind-apply-helpers/index.js
 var require_call_bind_apply_helpers = __commonJS((exports, module) => {
   var bind = require_function_bind();
   var $TypeError = require_type();
@@ -32739,7 +33038,7 @@ var require_call_bind_apply_helpers = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/dunder-proto/get.js
+// node_modules/dunder-proto/get.js
 var require_get = __commonJS((exports, module) => {
   var callBind = require_call_bind_apply_helpers();
   var gOPD = require_gopd();
@@ -32759,7 +33058,7 @@ var require_get = __commonJS((exports, module) => {
   } : false;
 });
 
-// ../node_modules/get-proto/index.js
+// node_modules/get-proto/index.js
 var require_get_proto = __commonJS((exports, module) => {
   var reflectGetProto = require_Reflect_getPrototypeOf();
   var originalGetProto = require_Object_getPrototypeOf();
@@ -32776,7 +33075,7 @@ var require_get_proto = __commonJS((exports, module) => {
   } : null;
 });
 
-// ../node_modules/hasown/index.js
+// node_modules/hasown/index.js
 var require_hasown = __commonJS((exports, module) => {
   var call = Function.prototype.call;
   var $hasOwn = Object.prototype.hasOwnProperty;
@@ -32784,7 +33083,7 @@ var require_hasown = __commonJS((exports, module) => {
   module.exports = bind.call(call, $hasOwn);
 });
 
-// ../node_modules/get-intrinsic/index.js
+// node_modules/get-intrinsic/index.js
 var require_get_intrinsic = __commonJS((exports, module) => {
   var undefined2;
   var $Object = require_es_object_atoms();
@@ -33110,7 +33409,7 @@ var require_get_intrinsic = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/call-bound/index.js
+// node_modules/call-bound/index.js
 var require_call_bound = __commonJS((exports, module) => {
   var GetIntrinsic = require_get_intrinsic();
   var callBindBasic = require_call_bind_apply_helpers();
@@ -33124,7 +33423,7 @@ var require_call_bound = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/side-channel-map/index.js
+// node_modules/side-channel-map/index.js
 var require_side_channel_map = __commonJS((exports, module) => {
   var GetIntrinsic = require_get_intrinsic();
   var callBound = require_call_bound();
@@ -33176,7 +33475,7 @@ var require_side_channel_map = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/side-channel-weakmap/index.js
+// node_modules/side-channel-weakmap/index.js
 var require_side_channel_weakmap = __commonJS((exports, module) => {
   var GetIntrinsic = require_get_intrinsic();
   var callBound = require_call_bound();
@@ -33243,7 +33542,7 @@ var require_side_channel_weakmap = __commonJS((exports, module) => {
   } : getSideChannelMap;
 });
 
-// ../node_modules/side-channel/index.js
+// node_modules/side-channel/index.js
 var require_side_channel = __commonJS((exports, module) => {
   var $TypeError = require_type();
   var inspect = require_object_inspect();
@@ -33279,7 +33578,7 @@ var require_side_channel = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/qs/lib/formats.js
+// node_modules/qs/lib/formats.js
 var require_formats2 = __commonJS((exports, module) => {
   var replace = String.prototype.replace;
   var percentTwenties = /%20/g;
@@ -33302,11 +33601,26 @@ var require_formats2 = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/qs/lib/utils.js
+// node_modules/qs/lib/utils.js
 var require_utils3 = __commonJS((exports, module) => {
   var formats = require_formats2();
+  var getSideChannel = require_side_channel();
   var has = Object.prototype.hasOwnProperty;
   var isArray = Array.isArray;
+  var overflowChannel = getSideChannel();
+  var markOverflow = function markOverflow(obj, maxIndex) {
+    overflowChannel.set(obj, maxIndex);
+    return obj;
+  };
+  var isOverflow = function isOverflow(obj) {
+    return overflowChannel.has(obj);
+  };
+  var getMaxIndex = function getMaxIndex(obj) {
+    return overflowChannel.get(obj);
+  };
+  var setMaxIndex = function setMaxIndex(obj, maxIndex) {
+    overflowChannel.set(obj, maxIndex);
+  };
   var hexTable = function() {
     var array = [];
     for (var i = 0;i < 256; ++i) {
@@ -33346,7 +33660,11 @@ var require_utils3 = __commonJS((exports, module) => {
       if (isArray(target)) {
         target.push(source);
       } else if (target && typeof target === "object") {
-        if (options && (options.plainObjects || options.allowPrototypes) || !has.call(Object.prototype, source)) {
+        if (isOverflow(target)) {
+          var newIndex = getMaxIndex(target) + 1;
+          target[newIndex] = source;
+          setMaxIndex(target, newIndex);
+        } else if (options && (options.plainObjects || options.allowPrototypes) || !has.call(Object.prototype, source)) {
           target[source] = true;
         }
       } else {
@@ -33355,6 +33673,15 @@ var require_utils3 = __commonJS((exports, module) => {
       return target;
     }
     if (!target || typeof target !== "object") {
+      if (isOverflow(source)) {
+        var sourceKeys = Object.keys(source);
+        var result = options && options.plainObjects ? { __proto__: null, 0: target } : { 0: target };
+        for (var m = 0;m < sourceKeys.length; m++) {
+          var oldKey = parseInt(sourceKeys[m], 10);
+          result[oldKey + 1] = source[sourceKeys[m]];
+        }
+        return markOverflow(result, getMaxIndex(source) + 1);
+      }
       return [target].concat(source);
     }
     var mergeTarget = target;
@@ -33477,8 +33804,18 @@ var require_utils3 = __commonJS((exports, module) => {
     }
     return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
   };
-  var combine = function combine(a, b) {
-    return [].concat(a, b);
+  var combine = function combine(a, b, arrayLimit, plainObjects) {
+    if (isOverflow(a)) {
+      var newIndex = getMaxIndex(a) + 1;
+      a[newIndex] = b;
+      setMaxIndex(a, newIndex);
+      return a;
+    }
+    var result = [].concat(a, b);
+    if (result.length > arrayLimit) {
+      return markOverflow(arrayToObject(result, { plainObjects }), result.length - 1);
+    }
+    return result;
   };
   var maybeMap = function maybeMap(val, fn) {
     if (isArray(val)) {
@@ -33498,13 +33835,14 @@ var require_utils3 = __commonJS((exports, module) => {
     decode,
     encode,
     isBuffer,
+    isOverflow,
     isRegExp,
     maybeMap,
     merge
   };
 });
 
-// ../node_modules/qs/lib/stringify.js
+// node_modules/qs/lib/stringify.js
 var require_stringify2 = __commonJS((exports, module) => {
   var getSideChannel = require_side_channel();
   var utils = require_utils3();
@@ -33745,7 +34083,7 @@ var require_stringify2 = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/qs/lib/parse.js
+// node_modules/qs/lib/parse.js
 var require_parse = __commonJS((exports, module) => {
   var utils = require_utils3();
   var has = Object.prototype.hasOwnProperty;
@@ -33828,9 +34166,11 @@ var require_parse = __commonJS((exports, module) => {
         val = options.strictNullHandling ? null : "";
       } else {
         key = options.decoder(part.slice(0, pos), defaults.decoder, charset, "key");
-        val = utils.maybeMap(parseArrayValue(part.slice(pos + 1), options, isArray(obj[key]) ? obj[key].length : 0), function(encodedVal) {
-          return options.decoder(encodedVal, defaults.decoder, charset, "value");
-        });
+        if (key !== null) {
+          val = utils.maybeMap(parseArrayValue(part.slice(pos + 1), options, isArray(obj[key]) ? obj[key].length : 0), function(encodedVal) {
+            return options.decoder(encodedVal, defaults.decoder, charset, "value");
+          });
+        }
       }
       if (val && options.interpretNumericEntities && charset === "iso-8859-1") {
         val = interpretNumericEntities(String(val));
@@ -33838,11 +34178,13 @@ var require_parse = __commonJS((exports, module) => {
       if (part.indexOf("[]=") > -1) {
         val = isArray(val) ? [val] : val;
       }
-      var existing = has.call(obj, key);
-      if (existing && options.duplicates === "combine") {
-        obj[key] = utils.combine(obj[key], val);
-      } else if (!existing || options.duplicates === "last") {
-        obj[key] = val;
+      if (key !== null) {
+        var existing = has.call(obj, key);
+        if (existing && options.duplicates === "combine") {
+          obj[key] = utils.combine(obj[key], val, options.arrayLimit, options.plainObjects);
+        } else if (!existing || options.duplicates === "last") {
+          obj[key] = val;
+        }
       }
     }
     return obj;
@@ -33858,7 +34200,11 @@ var require_parse = __commonJS((exports, module) => {
       var obj;
       var root = chain[i];
       if (root === "[]" && options.parseArrays) {
-        obj = options.allowEmptyArrays && (leaf === "" || options.strictNullHandling && leaf === null) ? [] : utils.combine([], leaf);
+        if (utils.isOverflow(leaf)) {
+          obj = leaf;
+        } else {
+          obj = options.allowEmptyArrays && (leaf === "" || options.strictNullHandling && leaf === null) ? [] : utils.combine([], leaf, options.arrayLimit, options.plainObjects);
+        }
       } else {
         obj = options.plainObjects ? { __proto__: null } : {};
         var cleanRoot = root.charAt(0) === "[" && root.charAt(root.length - 1) === "]" ? root.slice(1, -1) : root;
@@ -33877,14 +34223,19 @@ var require_parse = __commonJS((exports, module) => {
     }
     return leaf;
   };
-  var parseKeys = function parseQueryStringKeys(givenKey, val, options, valuesParsed) {
-    if (!givenKey) {
-      return;
-    }
+  var splitKeyIntoSegments = function splitKeyIntoSegments(givenKey, options) {
     var key = options.allowDots ? givenKey.replace(/\.([^.[]+)/g, "[$1]") : givenKey;
+    if (options.depth <= 0) {
+      if (!options.plainObjects && has.call(Object.prototype, key)) {
+        if (!options.allowPrototypes) {
+          return;
+        }
+      }
+      return [key];
+    }
     var brackets = /(\[[^[\]]*])/;
     var child = /(\[[^[\]]*])/g;
-    var segment = options.depth > 0 && brackets.exec(key);
+    var segment = brackets.exec(key);
     var parent = segment ? key.slice(0, segment.index) : key;
     var keys = [];
     if (parent) {
@@ -33896,9 +34247,10 @@ var require_parse = __commonJS((exports, module) => {
       keys.push(parent);
     }
     var i = 0;
-    while (options.depth > 0 && (segment = child.exec(key)) !== null && i < options.depth) {
+    while ((segment = child.exec(key)) !== null && i < options.depth) {
       i += 1;
-      if (!options.plainObjects && has.call(Object.prototype, segment[1].slice(1, -1))) {
+      var segmentContent = segment[1].slice(1, -1);
+      if (!options.plainObjects && has.call(Object.prototype, segmentContent)) {
         if (!options.allowPrototypes) {
           return;
         }
@@ -33910,6 +34262,16 @@ var require_parse = __commonJS((exports, module) => {
         throw new RangeError("Input depth exceeded depth option of " + options.depth + " and strictDepth is true");
       }
       keys.push("[" + key.slice(segment.index) + "]");
+    }
+    return keys;
+  };
+  var parseKeys = function parseQueryStringKeys(givenKey, val, options, valuesParsed) {
+    if (!givenKey) {
+      return;
+    }
+    var keys = splitKeyIntoSegments(givenKey, options);
+    if (!keys) {
+      return;
     }
     return parseObject(keys, val, options, valuesParsed);
   };
@@ -33982,7 +34344,7 @@ var require_parse = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/qs/lib/index.js
+// node_modules/qs/lib/index.js
 var require_lib2 = __commonJS((exports, module) => {
   var stringify = require_stringify2();
   var parse = require_parse();
@@ -33994,7 +34356,7 @@ var require_lib2 = __commonJS((exports, module) => {
   };
 });
 
-// ../node_modules/body-parser/lib/types/urlencoded.js
+// node_modules/body-parser/lib/types/urlencoded.js
 var require_urlencoded = __commonJS((exports, module) => {
   /*!
    * body-parser
@@ -34048,7 +34410,7 @@ var require_urlencoded = __commonJS((exports, module) => {
           type: "parameters.too.many"
         });
       }
-      var arrayLimit = extended ? Math.max(100, paramCount) : 0;
+      var arrayLimit = extended ? Math.max(100, paramCount) : paramCount;
       debug("parse " + (extended ? "extended " : "") + "urlencoding");
       try {
         return qs.parse(body, {
@@ -34085,7 +34447,7 @@ var require_urlencoded = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/body-parser/index.js
+// node_modules/body-parser/index.js
 var require_body_parser = __commonJS((exports, module) => {
   /*!
    * body-parser
@@ -34118,7 +34480,7 @@ var require_body_parser = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/merge-descriptors/index.js
+// node_modules/merge-descriptors/index.js
 var require_merge_descriptors = __commonJS((exports, module) => {
   function mergeDescriptors(destination, source, overwrite = true) {
     if (!destination) {
@@ -34139,7 +34501,7 @@ var require_merge_descriptors = __commonJS((exports, module) => {
   module.exports = mergeDescriptors;
 });
 
-// ../node_modules/encodeurl/index.js
+// node_modules/encodeurl/index.js
 var require_encodeurl = __commonJS((exports, module) => {
   /*!
    * encodeurl
@@ -34155,7 +34517,7 @@ var require_encodeurl = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/escape-html/index.js
+// node_modules/escape-html/index.js
 var require_escape_html = __commonJS((exports, module) => {
   /*!
    * escape-html
@@ -34206,7 +34568,7 @@ var require_escape_html = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/parseurl/index.js
+// node_modules/parseurl/index.js
 var require_parseurl = __commonJS((exports, module) => {
   /*!
    * parseurl
@@ -34287,7 +34649,7 @@ var require_parseurl = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/finalhandler/index.js
+// node_modules/finalhandler/index.js
 var require_finalhandler = __commonJS((exports, module) => {
   /*!
    * finalhandler
@@ -34427,7 +34789,7 @@ var require_finalhandler = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/express/lib/view.js
+// node_modules/express/lib/view.js
 var require_view = __commonJS((exports, module) => {
   /*!
    * express
@@ -34442,7 +34804,7 @@ var require_view = __commonJS((exports, module) => {
   var dirname2 = path.dirname;
   var basename = path.basename;
   var extname = path.extname;
-  var join10 = path.join;
+  var join11 = path.join;
   var resolve = path.resolve;
   module.exports = View;
   function View(name, options) {
@@ -34504,12 +34866,12 @@ var require_view = __commonJS((exports, module) => {
   };
   View.prototype.resolve = function resolve(dir, file) {
     var ext = this.ext;
-    var path2 = join10(dir, file);
+    var path2 = join11(dir, file);
     var stat = tryStat(path2);
     if (stat && stat.isFile()) {
       return path2;
     }
-    path2 = join10(dir, basename(file, ext), "index" + ext);
+    path2 = join11(dir, basename(file, ext), "index" + ext);
     stat = tryStat(path2);
     if (stat && stat.isFile()) {
       return path2;
@@ -34525,7 +34887,7 @@ var require_view = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/etag/index.js
+// node_modules/etag/index.js
 var require_etag = __commonJS((exports, module) => {
   /*!
    * etag
@@ -34569,7 +34931,7 @@ var require_etag = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/forwarded/index.js
+// node_modules/forwarded/index.js
 var require_forwarded = __commonJS((exports, module) => {
   /*!
    * forwarded
@@ -34618,7 +34980,7 @@ var require_forwarded = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/ipaddr.js/lib/ipaddr.js
+// node_modules/ipaddr.js/lib/ipaddr.js
 var require_ipaddr = __commonJS((exports, module) => {
   (function() {
     var expandIPv6, ipaddr, ipv4Part, ipv4Regexes, ipv6Part, ipv6Regexes, matchCIDR, root, zoneIndex;
@@ -35238,7 +35600,7 @@ var require_ipaddr = __commonJS((exports, module) => {
   }).call(exports);
 });
 
-// ../node_modules/proxy-addr/index.js
+// node_modules/proxy-addr/index.js
 var require_proxy_addr = __commonJS((exports, module) => {
   /*!
    * proxy-addr
@@ -35402,7 +35764,7 @@ var require_proxy_addr = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/express/lib/utils.js
+// node_modules/express/lib/utils.js
 var require_utils4 = __commonJS((exports) => {
   /*!
    * express
@@ -35534,7 +35896,7 @@ var require_utils4 = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/wrappy/wrappy.js
+// node_modules/wrappy/wrappy.js
 var require_wrappy = __commonJS((exports, module) => {
   module.exports = wrappy;
   function wrappy(fn, cb) {
@@ -35563,7 +35925,7 @@ var require_wrappy = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/once/once.js
+// node_modules/once/once.js
 var require_once = __commonJS((exports, module) => {
   var wrappy = require_wrappy();
   module.exports = wrappy(once);
@@ -35606,7 +35968,7 @@ var require_once = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/is-promise/index.js
+// node_modules/is-promise/index.js
 var require_is_promise = __commonJS((exports, module) => {
   module.exports = isPromise;
   module.exports.default = isPromise;
@@ -35615,7 +35977,7 @@ var require_is_promise = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/path-to-regexp/dist/index.js
+// node_modules/path-to-regexp/dist/index.js
 var require_dist3 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.PathError = exports.TokenData = undefined;
@@ -35967,7 +36329,7 @@ var require_dist3 = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/router/lib/layer.js
+// node_modules/router/lib/layer.js
 var require_layer = __commonJS((exports, module) => {
   /*!
    * router
@@ -36120,7 +36482,7 @@ var require_layer = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/router/lib/route.js
+// node_modules/router/lib/route.js
 var require_route = __commonJS((exports, module) => {
   /*!
    * router
@@ -36243,7 +36605,7 @@ var require_route = __commonJS((exports, module) => {
   });
 });
 
-// ../node_modules/router/index.js
+// node_modules/router/index.js
 var require_router = __commonJS((exports, module) => {
   /*!
    * router
@@ -36644,7 +37006,7 @@ var require_router = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/express/lib/application.js
+// node_modules/express/lib/application.js
 var require_application = __commonJS((exports, module) => {
   /*!
    * express
@@ -36910,7 +37272,7 @@ var require_application = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/negotiator/lib/charset.js
+// node_modules/negotiator/lib/charset.js
 var require_charset = __commonJS((exports, module) => {
   module.exports = preferredCharsets;
   module.exports.preferredCharsets = preferredCharsets;
@@ -36995,7 +37357,7 @@ var require_charset = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/negotiator/lib/encoding.js
+// node_modules/negotiator/lib/encoding.js
 var require_encoding = __commonJS((exports, module) => {
   module.exports = preferredEncodings;
   module.exports.preferredEncodings = preferredEncodings;
@@ -37106,7 +37468,7 @@ var require_encoding = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/negotiator/lib/language.js
+// node_modules/negotiator/lib/language.js
 var require_language = __commonJS((exports, module) => {
   module.exports = preferredLanguages;
   module.exports.preferredLanguages = preferredLanguages;
@@ -37202,7 +37564,7 @@ var require_language = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/negotiator/lib/mediaType.js
+// node_modules/negotiator/lib/mediaType.js
 var require_mediaType = __commonJS((exports, module) => {
   module.exports = preferredMediaTypes;
   module.exports.preferredMediaTypes = preferredMediaTypes;
@@ -37362,7 +37724,7 @@ var require_mediaType = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/negotiator/index.js
+// node_modules/negotiator/index.js
 var require_negotiator = __commonJS((exports, module) => {
   /*!
    * negotiator
@@ -37422,7 +37784,7 @@ var require_negotiator = __commonJS((exports, module) => {
   Negotiator.prototype.preferredMediaTypes = Negotiator.prototype.mediaTypes;
 });
 
-// ../node_modules/accepts/index.js
+// node_modules/accepts/index.js
 var require_accepts = __commonJS((exports, module) => {
   /*!
    * accepts
@@ -37506,7 +37868,7 @@ var require_accepts = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/fresh/index.js
+// node_modules/fresh/index.js
 var require_fresh = __commonJS((exports, module) => {
   /*!
    * fresh
@@ -37581,7 +37943,7 @@ var require_fresh = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/range-parser/index.js
+// node_modules/range-parser/index.js
 var require_range_parser = __commonJS((exports, module) => {
   /*!
    * range-parser
@@ -37665,7 +38027,7 @@ var require_range_parser = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/express/lib/request.js
+// node_modules/express/lib/request.js
 var require_request = __commonJS((exports, module) => {
   /*!
    * express
@@ -37821,7 +38183,7 @@ var require_request = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/content-disposition/index.js
+// node_modules/content-disposition/index.js
 var require_content_disposition = __commonJS((exports, module) => {
   /*!
    * content-disposition
@@ -37986,7 +38348,7 @@ var require_content_disposition = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/cookie-signature/index.js
+// node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS((exports) => {
   var crypto = __require("crypto");
   exports.sign = function(val, secret) {
@@ -38006,7 +38368,7 @@ var require_cookie_signature = __commonJS((exports) => {
   };
 });
 
-// ../node_modules/cookie/index.js
+// node_modules/cookie/index.js
 var require_cookie = __commonJS((exports) => {
   /*!
    * cookie
@@ -38180,7 +38542,7 @@ var require_cookie = __commonJS((exports) => {
   }
 });
 
-// ../node_modules/send/index.js
+// node_modules/send/index.js
 var require_send = __commonJS((exports, module) => {
   /*!
    * send
@@ -38204,7 +38566,7 @@ var require_send = __commonJS((exports, module) => {
   var Stream = __require("stream");
   var util = __require("util");
   var extname = path.extname;
-  var join10 = path.join;
+  var join11 = path.join;
   var normalize = path.normalize;
   var resolve = path.resolve;
   var sep = path.sep;
@@ -38376,7 +38738,7 @@ var require_send = __commonJS((exports, module) => {
         return res;
       }
       parts = path2.split(sep);
-      path2 = normalize(join10(root, path2));
+      path2 = normalize(join11(root, path2));
     } else {
       if (UP_PATH_REGEXP.test(path2)) {
         debug('malicious path "%s"', path2);
@@ -38516,7 +38878,7 @@ var require_send = __commonJS((exports, module) => {
           return self.onStatError(err);
         return self.error(404);
       }
-      var p = join10(path2, self._index[i]);
+      var p = join11(path2, self._index[i]);
       debug('stat "%s"', p);
       fs.stat(p, function(err2, stat) {
         if (err2)
@@ -38686,7 +39048,7 @@ var require_send = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/vary/index.js
+// node_modules/vary/index.js
 var require_vary = __commonJS((exports, module) => {
   /*!
    * vary
@@ -38761,7 +39123,7 @@ var require_vary = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/express/lib/response.js
+// node_modules/express/lib/response.js
 var require_response = __commonJS((exports, module) => {
   /*!
    * express
@@ -39245,7 +39607,7 @@ var require_response = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/serve-static/index.js
+// node_modules/serve-static/index.js
 var require_serve_static = __commonJS((exports, module) => {
   /*!
    * serve-static
@@ -39363,7 +39725,7 @@ var require_serve_static = __commonJS((exports, module) => {
   }
 });
 
-// ../node_modules/express/lib/express.js
+// node_modules/express/lib/express.js
 var require_express = __commonJS((exports, module) => {
   /*!
    * express
@@ -39407,7 +39769,7 @@ var require_express = __commonJS((exports, module) => {
   exports.urlencoded = bodyParser.urlencoded;
 });
 
-// ../node_modules/express/index.js
+// node_modules/express/index.js
 var require_express2 = __commonJS((exports, module) => {
   /*!
    * express
@@ -39424,8 +39786,8 @@ var exports_ui_server = {};
 __export(exports_ui_server, {
   UIServer: () => UIServer
 });
-import { join as join10, dirname as dirname2, resolve } from "path";
-import { readFileSync as readFileSync8, existsSync as existsSync9 } from "fs";
+import { join as join11, dirname as dirname2, resolve } from "path";
+import { readFileSync as readFileSync9, existsSync as existsSync10 } from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
@@ -39439,8 +39801,8 @@ class UIServer {
     this.setupRoutes();
   }
   async ensureUIBuilt() {
-    const distDir = join10(PROJECT_ROOT, "dist");
-    if (!existsSync9(join10(distDir, "AgentShepherdFlow.js"))) {
+    const distDir = join11(PROJECT_ROOT, "dist");
+    if (!existsSync10(join11(distDir, "AgentShepherdFlow.js"))) {
       console.log("Building UI...");
       return new Promise((resolve2, reject) => {
         const build = spawn("bun", ["run", "build:ui"], {
@@ -39465,7 +39827,7 @@ class UIServer {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
       next();
     });
-    const isDev = existsSync9(join10(PROJECT_ROOT, "package.json"));
+    const isDev = existsSync10(join11(PROJECT_ROOT, "package.json"));
     if (isDev) {
       this.ensureUIBuilt().catch((err) => {
         console.error("Failed to build UI:", err);
@@ -39533,14 +39895,14 @@ class UIServer {
     });
     this.app.get("/", (_req, res) => {
       try {
-        const filePath = join10(UI_DIR, "index.html");
+        const filePath = join11(UI_DIR, "index.html");
         console.log("Serving dashboard from:", filePath);
-        if (!existsSync9(filePath)) {
+        if (!existsSync10(filePath)) {
           console.error("index.html not found at:", filePath);
           res.status(404).send("index.html not found");
           return;
         }
-        const content = readFileSync8(filePath, "utf8");
+        const content = readFileSync9(filePath, "utf8");
         res.setHeader("Content-Type", "text/html");
         res.send(content);
       } catch (error) {
@@ -39594,8 +39956,8 @@ var init_ui_server = __esm(() => {
     resolve(process.cwd(), ".agent-shepherd"),
     process.cwd()
   ];
-  PROJECT_ROOT = possibleRoots.find((root) => existsSync9(join10(root, "src", "ui", "index.html"))) || possibleRoots[0];
-  UI_DIR = join10(PROJECT_ROOT, "src", "ui");
+  PROJECT_ROOT = possibleRoots.find((root) => existsSync10(join11(root, "src", "ui", "index.html"))) || possibleRoots[0];
+  UI_DIR = join11(PROJECT_ROOT, "src", "ui");
 });
 
 // src/core/policy-tree-visualizer.ts
@@ -40426,6 +40788,27 @@ class WorkerEngine {
       }
     });
     await updateIssue(issue.id, { status: "in_progress" });
+    try {
+      const { getPhaseMessenger: getPhaseMessenger2 } = await Promise.resolve().then(() => (init_phase_messenger(), exports_phase_messenger));
+      const phaseMessenger = getPhaseMessenger2();
+      const pendingMessages = phaseMessenger.receiveMessages(issue.id, phase, true);
+      if (pendingMessages.length > 0) {
+        console.log(`Received ${pendingMessages.length} pending message(s) for phase '${phase}'`);
+        this.logger.logDecision({
+          run_id: runId,
+          type: "message_receipt",
+          decision: "messages_received",
+          reasoning: `Received ${pendingMessages.length} message(s) for phase ${phase}`,
+          metadata: {
+            issue_id: issue.id,
+            phase,
+            message_count: pendingMessages.length
+          }
+        });
+      }
+    } catch (error) {
+      console.debug(`Phase messenger not available: ${error}`);
+    }
     let outcome;
     let sessionId;
     try {
@@ -40483,6 +40866,38 @@ class WorkerEngine {
         outcome
       }
     });
+    if (outcome.success && transition.type === "advance" && transition.next_phase && transition.next_phase !== phase) {
+      try {
+        const { getPhaseMessenger: getPhaseMessenger2 } = await Promise.resolve().then(() => (init_phase_messenger(), exports_phase_messenger));
+        const phaseMessenger = getPhaseMessenger2();
+        const resultMessage = phaseMessenger.sendMessage({
+          issue_id: issue.id,
+          from_phase: phase,
+          to_phase: transition.next_phase,
+          message_type: "result",
+          content: outcome.message || "Phase completed successfully",
+          metadata: {
+            status: "completed",
+            artifacts: outcome.artifacts?.length || 0,
+            duration_ms: outcome.metrics?.duration_ms
+          }
+        });
+        console.log(`Sent result message from '${phase}' to '${transition.next_phase}': ${resultMessage.id}`);
+        this.logger.logDecision({
+          run_id: runId,
+          type: "message_send",
+          decision: "result_message_sent",
+          reasoning: `Sent result message from ${phase} to ${transition.next_phase}`,
+          metadata: {
+            message_id: resultMessage.id,
+            from_phase: phase,
+            to_phase: transition.next_phase
+          }
+        });
+      } catch (error) {
+        console.warn(`Failed to send phase message: ${error}`);
+      }
+    }
     await this.applyTransition(issue.id, transition);
     return {
       issue_id: issue.id,
@@ -40965,8 +41380,8 @@ function getMonitorEngine(config) {
 // src/cli/index.ts
 init_path_utils();
 init_policy_capability_validator();
-import { existsSync as existsSync10, mkdirSync as mkdirSync4, writeFileSync as writeFileSync3, readdirSync, readFileSync as readFileSync9, cpSync, rmSync } from "fs";
-import { join as join11 } from "path";
+import { existsSync as existsSync11, mkdirSync as mkdirSync5, writeFileSync as writeFileSync3, readdirSync, readFileSync as readFileSync10, cpSync, rmSync } from "fs";
+import { join as join12 } from "path";
 import path from "path";
 import { execSync } from "child_process";
 import { homedir as homedir2, platform } from "os";
@@ -40976,9 +41391,9 @@ init_config();
 
 // src/core/garbage-collector.ts
 init_logging();
-import { Database as Database2 } from "bun:sqlite";
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync6, writeFileSync as writeFileSync2 } from "fs";
-import { join as join4 } from "path";
+import { Database as Database3 } from "bun:sqlite";
+import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync7, writeFileSync as writeFileSync2 } from "fs";
+import { join as join5 } from "path";
 
 // src/core/retention-policy.ts
 init_logging();
@@ -41152,16 +41567,16 @@ class GarbageCollector {
   policyManager;
   isClosed = false;
   constructor(config) {
-    this.dataDir = config.dataDir || join4(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || join5(process.cwd(), ".agent-shepherd");
     this.policyManager = getRetentionPolicyManager(config.policies);
-    const archiveDir = join4(this.dataDir, "archive");
-    if (!existsSync4(archiveDir)) {
-      mkdirSync2(archiveDir, { recursive: true });
+    const archiveDir = join5(this.dataDir, "archive");
+    if (!existsSync5(archiveDir)) {
+      mkdirSync3(archiveDir, { recursive: true });
     }
-    const archiveDbPath = join4(archiveDir, "archive.db");
-    this.archiveDb = new Database2(archiveDbPath);
+    const archiveDbPath = join5(archiveDir, "archive.db");
+    this.archiveDb = new Database3(archiveDbPath);
     this.initializeArchiveSchema();
-    this.archiveJsonlPath = join4(archiveDir, "archive.jsonl");
+    this.archiveJsonlPath = join5(archiveDir, "archive.jsonl");
   }
   initializeArchiveSchema() {
     this.archiveDb.run(`
@@ -41427,9 +41842,9 @@ class GarbageCollector {
   }
   deleteRunFromMain(runId) {
     this.logger.deleteRun(runId);
-    const decisionsPath = join4(this.dataDir, "decisions.jsonl");
-    if (existsSync4(decisionsPath)) {
-      const content = readFileSync6(decisionsPath, "utf-8");
+    const decisionsPath = join5(this.dataDir, "decisions.jsonl");
+    if (existsSync5(decisionsPath)) {
+      const content = readFileSync7(decisionsPath, "utf-8");
       const lines = content.trim().split(`
 `);
       const filteredLines = lines.filter((line) => {
@@ -41558,16 +41973,16 @@ function resetCollector() {
 
 // src/core/cleanup-health-check.ts
 init_logging();
-import { Database as Database4 } from "bun:sqlite";
-import { existsSync as existsSync6, statSync } from "fs";
-import { join as join6 } from "path";
+import { Database as Database5 } from "bun:sqlite";
+import { existsSync as existsSync7, statSync } from "fs";
+import { join as join7 } from "path";
 
 class CleanupHealthChecker {
   dataDir;
   logger;
   config;
   constructor(config = {}) {
-    this.dataDir = config.dataDir || join6(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || join7(process.cwd(), ".agent-shepherd");
     this.logger = getLogger(this.dataDir);
     this.config = {
       run_vacuum: config.run_vacuum ?? true,
@@ -41617,8 +42032,8 @@ class CleanupHealthChecker {
     return report;
   }
   async checkDatabaseIntegrity() {
-    const dbPath = join6(this.dataDir, "runs.db");
-    if (!existsSync6(dbPath)) {
+    const dbPath = join7(this.dataDir, "runs.db");
+    if (!existsSync7(dbPath)) {
       return {
         check_name: "Database Integrity",
         passed: true,
@@ -41626,7 +42041,7 @@ class CleanupHealthChecker {
         timestamp: Date.now()
       };
     }
-    const db = new Database4(dbPath);
+    const db = new Database5(dbPath);
     try {
       const integrityResult = db.prepare("PRAGMA integrity_check").get();
       db.close();
@@ -41699,8 +42114,8 @@ class CleanupHealthChecker {
     const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
     try {
       const archiveLogger = new ArchiveLogger2(this.dataDir);
-      const dbPath = join6(this.dataDir, "archive", "archive.db");
-      if (!existsSync6(dbPath)) {
+      const dbPath = join7(this.dataDir, "archive", "archive.db");
+      if (!existsSync7(dbPath)) {
         archiveLogger.close();
         return {
           check_name: "Archive Consistency",
@@ -41709,7 +42124,7 @@ class CleanupHealthChecker {
           timestamp: Date.now()
         };
       }
-      const db = new Database4(dbPath);
+      const db = new Database5(dbPath);
       const integrityResult = db.prepare("PRAGMA integrity_check").get();
       const foreignKeyCheck = db.prepare("PRAGMA foreign_key_check").get();
       db.close();
@@ -41739,8 +42154,8 @@ class CleanupHealthChecker {
     }
   }
   async checkSizeReduction() {
-    const dbPath = join6(this.dataDir, "runs.db");
-    if (!existsSync6(dbPath)) {
+    const dbPath = join7(this.dataDir, "runs.db");
+    if (!existsSync7(dbPath)) {
       return {
         check_name: "Size Reduction",
         passed: true,
@@ -41751,7 +42166,7 @@ class CleanupHealthChecker {
     try {
       const fileSize = statSync(dbPath).size;
       const fileSizeMb = fileSize / 1048576;
-      const db = new Database4(dbPath);
+      const db = new Database5(dbPath);
       const pageCountResult = db.prepare("PRAGMA page_count").get();
       const pageSizeResult = db.prepare("PRAGMA page_size").get();
       const pageCount = pageCountResult.page_count;
@@ -41791,8 +42206,8 @@ class CleanupHealthChecker {
     }
   }
   async checkIndexHealth() {
-    const dbPath = join6(this.dataDir, "runs.db");
-    if (!existsSync6(dbPath)) {
+    const dbPath = join7(this.dataDir, "runs.db");
+    if (!existsSync7(dbPath)) {
       return {
         check_name: "Index Health",
         passed: true,
@@ -41801,7 +42216,7 @@ class CleanupHealthChecker {
       };
     }
     try {
-      const db = new Database4(dbPath);
+      const db = new Database5(dbPath);
       const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'").all();
       const indexStats = [];
       for (const index of indexes) {
@@ -41834,8 +42249,8 @@ class CleanupHealthChecker {
     }
   }
   async runVacuumOptimization() {
-    const dbPath = join6(this.dataDir, "runs.db");
-    if (!existsSync6(dbPath)) {
+    const dbPath = join7(this.dataDir, "runs.db");
+    if (!existsSync7(dbPath)) {
       return {
         check_name: "Vacuum Optimization",
         passed: true,
@@ -41845,7 +42260,7 @@ class CleanupHealthChecker {
     }
     try {
       const sizeBefore = statSync(dbPath).size;
-      const db = new Database4(dbPath);
+      const db = new Database5(dbPath);
       db.run("VACUUM");
       db.close();
       const sizeAfter = statSync(dbPath).size;
@@ -41885,7 +42300,7 @@ function resetHealthChecker() {
 }
 
 // src/core/cleanup-engine.ts
-import { join as join7 } from "path";
+import { join as join8 } from "path";
 
 class CleanupEngine {
   config;
@@ -41914,7 +42329,7 @@ class CleanupEngine {
       } : undefined,
       ...config
     };
-    this.dataDir = this.config.dataDir || join7(process.cwd(), ".agent-shepherd");
+    this.dataDir = this.config.dataDir || join8(process.cwd(), ".agent-shepherd");
     if (this.config.retentionConfig?.enabled && this.config.retentionConfig.policies.length > 0) {
       this.collector = getGarbageCollector({
         dataDir: this.config.dataDir,
@@ -42165,8 +42580,8 @@ function resetCleanupEngine() {
 
 // src/core/size-monitor.ts
 init_logging();
-import { existsSync as existsSync7, statSync as statSync2 } from "fs";
-import { join as join8 } from "path";
+import { existsSync as existsSync8, statSync as statSync2 } from "fs";
+import { join as join9 } from "path";
 class SizeMonitor {
   config;
   logger;
@@ -42179,7 +42594,7 @@ class SizeMonitor {
     this.logger = getLogger(config.dataDir);
     this.cleanupEngine = getCleanupEngine({ dataDir: config.dataDir });
     const fullConfig = {
-      dataDir: config.dataDir || join8(process.cwd(), ".agent-shepherd"),
+      dataDir: config.dataDir || join9(process.cwd(), ".agent-shepherd"),
       check_interval_ms: config.check_interval_ms || 3600000,
       warning_threshold_percent: config.warning_threshold_percent || 90,
       critical_threshold_percent: config.critical_threshold_percent || 100,
@@ -42224,16 +42639,16 @@ class SizeMonitor {
   }
   async collectSizeMetrics() {
     const dataDir = this.config.dataDir;
-    const activeDbPath = join8(dataDir, "runs.db");
-    const jsonlPath = join8(dataDir, "runs.jsonl");
-    const decisionsPath = join8(dataDir, "decisions.jsonl");
-    const archiveDbPath = join8(dataDir, "archive", "archive.db");
-    const archiveJsonlPath = join8(dataDir, "archive", "archive.jsonl");
-    const activeDbSize = existsSync7(activeDbPath) ? statSync2(activeDbPath).size : 0;
-    const jsonlSize = existsSync7(jsonlPath) ? statSync2(jsonlPath).size : 0;
-    const decisionsSize = existsSync7(decisionsPath) ? statSync2(decisionsPath).size : 0;
-    const archiveDbSize = existsSync7(archiveDbPath) ? statSync2(archiveDbPath).size : 0;
-    const archiveJsonlSize = existsSync7(archiveJsonlPath) ? statSync2(archiveJsonlPath).size : 0;
+    const activeDbPath = join9(dataDir, "runs.db");
+    const jsonlPath = join9(dataDir, "runs.jsonl");
+    const decisionsPath = join9(dataDir, "decisions.jsonl");
+    const archiveDbPath = join9(dataDir, "archive", "archive.db");
+    const archiveJsonlPath = join9(dataDir, "archive", "archive.jsonl");
+    const activeDbSize = existsSync8(activeDbPath) ? statSync2(activeDbPath).size : 0;
+    const jsonlSize = existsSync8(jsonlPath) ? statSync2(jsonlPath).size : 0;
+    const decisionsSize = existsSync8(decisionsPath) ? statSync2(decisionsPath).size : 0;
+    const archiveDbSize = existsSync8(archiveDbPath) ? statSync2(archiveDbPath).size : 0;
+    const archiveJsonlSize = existsSync8(archiveJsonlPath) ? statSync2(archiveJsonlPath).size : 0;
     const totalSizeBytes = activeDbSize + jsonlSize + decisionsSize + archiveDbSize + archiveJsonlSize;
     const runCount = this.logger.queryRuns({}).length;
     const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
@@ -42428,27 +42843,29 @@ var LOADED_PLUGINS = [];
 function loadPlugins() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join11(agentShepherdDir, "plugins");
-    if (!existsSync10(pluginsDir)) {
+    const pluginsDir = join12(agentShepherdDir, "plugins");
+    if (!existsSync11(pluginsDir)) {
+      console.log(`No plugins directory found at ${pluginsDir}`);
       return;
     }
+    console.log(`Loading plugins from: ${pluginsDir}`);
     const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     for (const pluginName of pluginDirs) {
-      const pluginPath = join11(pluginsDir, pluginName);
-      const manifestPath = join11(pluginPath, "manifest.json");
-      if (!existsSync10(manifestPath)) {
+      const pluginPath = join12(pluginsDir, pluginName);
+      const manifestPath = join12(pluginPath, "manifest.json");
+      if (!existsSync11(manifestPath)) {
         console.warn(`Plugin ${pluginName}: manifest.json not found, skipping`);
         continue;
       }
       try {
-        const manifestContent = readFileSync9(manifestPath, "utf-8");
+        const manifestContent = readFileSync10(manifestPath, "utf-8");
         const manifest = JSON.parse(manifestContent);
         if (!manifest.name || !manifest.commands || !Array.isArray(manifest.commands)) {
           console.warn(`Plugin ${pluginName}: invalid manifest.json, skipping`);
           continue;
         }
-        const indexPath = join11(pluginPath, "index.js");
-        if (!existsSync10(indexPath)) {
+        const indexPath = join12(pluginPath, "index.js");
+        if (!existsSync11(indexPath)) {
           console.warn(`Plugin ${pluginName}: index.js not found, skipping`);
           continue;
         }
@@ -42564,48 +42981,48 @@ Result:`);
 }
 function cmdInit() {
   console.log("Initializing Agent Shepherd configuration...");
-  const configDir = join11(process.cwd(), ".agent-shepherd");
-  const configSubDir = join11(configDir, "config");
-  const pluginsDir = join11(configDir, "plugins");
-  const configExists = existsSync10(configSubDir);
+  const configDir = join12(process.cwd(), ".agent-shepherd");
+  const configSubDir = join12(configDir, "config");
+  const pluginsDir = join12(configDir, "plugins");
+  const configExists = existsSync11(configSubDir);
   if (!configExists) {
-    mkdirSync4(configSubDir, { recursive: true });
+    mkdirSync5(configSubDir, { recursive: true });
     console.log(`\u2705 Created directory: ${configSubDir}`);
   } else {
     console.log(`\u2139\uFE0F  Configuration directory already exists: ${configSubDir}`);
   }
-  if (!existsSync10(pluginsDir)) {
-    mkdirSync4(pluginsDir, { recursive: true });
+  if (!existsSync11(pluginsDir)) {
+    mkdirSync5(pluginsDir, { recursive: true });
     console.log(`\u2705 Created directory: ${pluginsDir}`);
   }
   try {
     const installDir = findInstallDir();
-    const schemasSource = join11(installDir, "schemas");
-    const schemasDest = join11(configDir, "schemas");
-    if (existsSync10(schemasSource) && !existsSync10(schemasDest)) {
+    const schemasSource = join12(installDir, "schemas");
+    const schemasDest = join12(configDir, "schemas");
+    if (existsSync11(schemasSource) && !existsSync11(schemasDest)) {
       cpSync(schemasSource, schemasDest, { recursive: true });
       console.log(`\u2705 Created directory: ${schemasDest}`);
-    } else if (!existsSync10(schemasSource)) {
+    } else if (!existsSync11(schemasSource)) {
       console.log(`\u26A0\uFE0F  Warning: Schemas directory not found in installation`);
     }
   } catch {}
   try {
     const installDir = findInstallDir();
-    const pluginsSource = join11(installDir, "plugins");
-    if (existsSync10(pluginsSource)) {
+    const pluginsSource = join12(installDir, "plugins");
+    if (existsSync11(pluginsSource)) {
       const pluginDirs = readdirSync(pluginsSource, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
       for (const pluginName of pluginDirs) {
-        const sourcePath = join11(pluginsSource, pluginName);
-        const destPath = join11(pluginsDir, pluginName);
-        if (!existsSync10(destPath)) {
+        const sourcePath = join12(pluginsSource, pluginName);
+        const destPath = join12(pluginsDir, pluginName);
+        if (!existsSync11(destPath)) {
           cpSync(sourcePath, destPath, { recursive: true });
           console.log(`\u2705 Copied plugin: ${pluginName}`);
         }
       }
     }
   } catch {}
-  const policiesPath = join11(configSubDir, "policies.yaml");
-  if (!existsSync10(policiesPath)) {
+  const policiesPath = join12(configSubDir, "policies.yaml");
+  if (!existsSync11(policiesPath)) {
     const defaultPolicies = `policies:
   # Simple beginner workflow - works out-of-the-box with basic OpenCode agents
   simple:
@@ -42692,8 +43109,8 @@ default_policy: simple
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${policiesPath}`);
   }
-  const agentsPath = join11(configSubDir, "agents.yaml");
-  if (!existsSync10(agentsPath)) {
+  const agentsPath = join12(configSubDir, "agents.yaml");
+  if (!existsSync11(agentsPath)) {
     const defaultAgents = `version: "1.0"
 agents:
   - id: default-coder
@@ -42739,8 +43156,8 @@ agents:
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${agentsPath}`);
   }
-  const configPath = join11(configSubDir, "config.yaml");
-  if (!existsSync10(configPath)) {
+  const configPath = join12(configSubDir, "config.yaml");
+  if (!existsSync11(configPath)) {
     const defaultConfig = `version: "1.0"
 
 worker:
@@ -42860,8 +43277,8 @@ async function cmdUI(port, host) {
   try {
     const { validateStartup: validateStartup2 } = await Promise.resolve().then(() => (init_config_validator(), exports_config_validator));
     await validateStartup2();
-    const { loadConfig: loadConfig2 } = await Promise.resolve().then(() => (init_config(), exports_config));
-    const config = loadConfig2();
+    const { loadConfig: loadConfig3 } = await Promise.resolve().then(() => (init_config(), exports_config));
+    const config = loadConfig3();
     const { UIServer: UIServer2 } = await Promise.resolve().then(() => (init_ui_server(), exports_ui_server));
     const uiServer = new UIServer2({
       port: port || config.ui?.port || 3000,
@@ -43008,28 +43425,28 @@ async function cmdPluginInstall(source) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join11(agentShepherdDir, "plugins");
-    if (!existsSync10(pluginsDir)) {
-      mkdirSync4(pluginsDir, { recursive: true });
+    const pluginsDir = join12(agentShepherdDir, "plugins");
+    if (!existsSync11(pluginsDir)) {
+      mkdirSync5(pluginsDir, { recursive: true });
     }
     if (source.startsWith("http")) {
       console.log(`Cloning plugin from ${source}...`);
       const pluginName = source.split("/").pop()?.replace(".git", "") || "plugin";
-      const pluginPath = join11(pluginsDir, pluginName);
-      if (existsSync10(pluginPath)) {
+      const pluginPath = join12(pluginsDir, pluginName);
+      if (existsSync11(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
       execSync(`git clone "${source}" "${pluginPath}"`, { stdio: "inherit" });
     } else {
       const sourcePath = path.resolve(source);
-      if (!existsSync10(sourcePath)) {
+      if (!existsSync11(sourcePath)) {
         console.error(`Source path does not exist: ${sourcePath}`);
         process.exit(1);
       }
       const pluginName = path.basename(sourcePath);
-      const pluginPath = join11(pluginsDir, pluginName);
-      if (existsSync10(pluginPath)) {
+      const pluginPath = join12(pluginsDir, pluginName);
+      if (existsSync11(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
@@ -43048,14 +43465,14 @@ function cmdPluginActivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join11(agentShepherdDir, "plugins");
-    const pluginPath = join11(pluginsDir, name);
-    if (!existsSync10(pluginPath)) {
+    const pluginsDir = join12(agentShepherdDir, "plugins");
+    const pluginPath = join12(pluginsDir, name);
+    if (!existsSync11(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
-    const manifestPath = join11(pluginPath, "manifest.json");
-    if (!existsSync10(manifestPath)) {
+    const manifestPath = join12(pluginPath, "manifest.json");
+    if (!existsSync11(manifestPath)) {
       console.error(`Plugin ${name} has no manifest.json`);
       process.exit(1);
     }
@@ -43072,9 +43489,9 @@ function cmdPluginDeactivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join11(agentShepherdDir, "plugins");
-    const pluginPath = join11(pluginsDir, name);
-    if (!existsSync10(pluginPath)) {
+    const pluginsDir = join12(agentShepherdDir, "plugins");
+    const pluginPath = join12(pluginsDir, name);
+    if (!existsSync11(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -43091,9 +43508,9 @@ function cmdPluginRemove(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join11(agentShepherdDir, "plugins");
-    const pluginPath = join11(pluginsDir, name);
-    if (!existsSync10(pluginPath)) {
+    const pluginsDir = join12(agentShepherdDir, "plugins");
+    const pluginPath = join12(pluginsDir, name);
+    if (!existsSync11(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -43220,13 +43637,13 @@ You can try running individual commands:`);
 function getCurrentVersion() {
   try {
     const installDir = findInstallDir();
-    const versionFile = join11(installDir, "VERSION");
-    if (existsSync10(versionFile)) {
-      return readFileSync9(versionFile, "utf-8").trim();
+    const versionFile = join12(installDir, "VERSION");
+    if (existsSync11(versionFile)) {
+      return readFileSync10(versionFile, "utf-8").trim();
     }
-    const packageJsonPath = join11(installDir, "package.json");
-    if (existsSync10(packageJsonPath)) {
-      const packageJson = JSON.parse(readFileSync9(packageJsonPath, "utf-8"));
+    const packageJsonPath = join12(installDir, "package.json");
+    if (existsSync11(packageJsonPath)) {
+      const packageJson = JSON.parse(readFileSync10(packageJsonPath, "utf-8"));
       return packageJson.version || "unknown";
     }
   } catch {}
@@ -43251,18 +43668,18 @@ async function cmdUpdate(version) {
   console.log(`Updating Agent Shepherd to ${targetVersion}...`);
   try {
     const installDir = findInstallDir();
-    const tempDir = join11(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
-    mkdirSync4(tempDir, { recursive: true });
-    const configDir = join11(installDir, "config");
-    const pluginsDir = join11(installDir, "plugins");
-    if (existsSync10(configDir)) {
-      cpSync(configDir, join11(tempDir, "config"), { recursive: true });
+    const tempDir = join12(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
+    mkdirSync5(tempDir, { recursive: true });
+    const configDir = join12(installDir, "config");
+    const pluginsDir = join12(installDir, "plugins");
+    if (existsSync11(configDir)) {
+      cpSync(configDir, join12(tempDir, "config"), { recursive: true });
     }
-    if (existsSync10(pluginsDir)) {
-      cpSync(pluginsDir, join11(tempDir, "plugins"), { recursive: true });
+    if (existsSync11(pluginsDir)) {
+      cpSync(pluginsDir, join12(tempDir, "plugins"), { recursive: true });
     }
     const repoUrl = "https://github.com/USER/agent-shepherd.git";
-    const cloneDir = join11(tempDir, "clone");
+    const cloneDir = join12(tempDir, "clone");
     if (targetVersion === "latest") {
       execSync(`git clone --depth 1 "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
     } else {
@@ -43271,26 +43688,26 @@ async function cmdUpdate(version) {
     const items = readdirSync(installDir);
     for (const item of items) {
       if (item !== "logs" && item !== "config" && item !== "plugins") {
-        const itemPath = join11(installDir, item);
-        if (existsSync10(itemPath)) {
+        const itemPath = join12(installDir, item);
+        if (existsSync11(itemPath)) {
           rmSync(itemPath, { recursive: true, force: true });
         }
       }
     }
-    const sourceDir = join11(cloneDir, ".agent-shepherd");
+    const sourceDir = join12(cloneDir, ".agent-shepherd");
     const sourceItems = readdirSync(sourceDir);
     for (const item of sourceItems) {
-      const srcPath = join11(sourceDir, item);
-      const destPath = join11(installDir, item);
+      const srcPath = join12(sourceDir, item);
+      const destPath = join12(installDir, item);
       cpSync(srcPath, destPath, { recursive: true });
     }
-    if (existsSync10(join11(tempDir, "config"))) {
-      cpSync(join11(tempDir, "config"), configDir, { recursive: true });
+    if (existsSync11(join12(tempDir, "config"))) {
+      cpSync(join12(tempDir, "config"), configDir, { recursive: true });
     }
-    if (existsSync10(join11(tempDir, "plugins"))) {
-      cpSync(join11(tempDir, "plugins"), pluginsDir, { recursive: true });
+    if (existsSync11(join12(tempDir, "plugins"))) {
+      cpSync(join12(tempDir, "plugins"), pluginsDir, { recursive: true });
     }
-    writeFileSync3(join11(installDir, "VERSION"), targetVersion);
+    writeFileSync3(join12(installDir, "VERSION"), targetVersion);
     console.log("Installing dependencies...");
     execSync("bun install", { cwd: installDir, stdio: "inherit" });
     rmSync(tempDir, { recursive: true, force: true });
@@ -43379,8 +43796,8 @@ async function cmdCleanupStatus() {
 function cmdPluginList() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join11(agentShepherdDir, "plugins");
-    if (!existsSync10(pluginsDir)) {
+    const pluginsDir = join12(agentShepherdDir, "plugins");
+    if (!existsSync11(pluginsDir)) {
       console.log("No plugins directory found");
       return;
     }
@@ -43391,13 +43808,13 @@ function cmdPluginList() {
     }
     console.log("Installed plugins:");
     for (const pluginName of pluginDirs) {
-      const pluginPath = join11(pluginsDir, pluginName);
-      const manifestPath = join11(pluginPath, "manifest.json");
+      const pluginPath = join12(pluginsDir, pluginName);
+      const manifestPath = join12(pluginPath, "manifest.json");
       let status = "\u274C Invalid";
       let description = "";
-      if (existsSync10(manifestPath)) {
+      if (existsSync11(manifestPath)) {
         try {
-          const manifest = JSON.parse(readFileSync9(manifestPath, "utf-8"));
+          const manifest = JSON.parse(readFileSync10(manifestPath, "utf-8"));
           status = "\u2705 Active";
           description = manifest.description || "";
         } catch {
