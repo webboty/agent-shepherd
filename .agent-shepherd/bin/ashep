@@ -7087,6 +7087,7 @@ var init_path_utils = () => {};
 // src/core/config.ts
 var exports_config = {};
 __export(exports_config, {
+  loadRetentionConfig: () => loadRetentionConfig,
   loadConfig: () => loadConfig
 });
 import { readFileSync, existsSync as existsSync2 } from "fs";
@@ -7132,264 +7133,87 @@ function loadConfig(configDir) {
           allow_custom: config.hitl.allowed_reasons?.allow_custom ?? true,
           custom_validation: config.hitl.allowed_reasons?.custom_validation ?? "alphanumeric-dash-underscore"
         }
-      } : undefined
+      } : undefined,
+      loop_prevention: config.loop_prevention ? {
+        enabled: config.loop_prevention.enabled ?? true,
+        max_visits_default: config.loop_prevention.max_visits_default ?? 10,
+        max_transitions_default: config.loop_prevention.max_transitions_default ?? 5,
+        cycle_detection_enabled: config.loop_prevention.cycle_detection_enabled ?? true,
+        cycle_detection_length: config.loop_prevention.cycle_detection_length ?? 3,
+        trigger_hitl: config.loop_prevention.trigger_hitl ?? true
+      } : {
+        enabled: true,
+        max_visits_default: 10,
+        max_transitions_default: 5,
+        cycle_detection_enabled: true,
+        cycle_detection_length: 3,
+        trigger_hitl: true
+      },
+      cleanup: config.cleanup ? {
+        enabled: config.cleanup.enabled ?? true,
+        run_on_startup: config.cleanup.run_on_startup ?? false,
+        archive_on_startup: config.cleanup.archive_on_startup ?? false,
+        delete_on_startup: config.cleanup.delete_on_startup ?? false,
+        schedule_interval_hours: config.cleanup.schedule_interval_hours ?? 24
+      } : {
+        enabled: true,
+        run_on_startup: false,
+        archive_on_startup: false,
+        delete_on_startup: false,
+        schedule_interval_hours: 24
+      },
+      retention: config.retention ? {
+        enabled: config.retention.enabled ?? true,
+        policies: config.retention.policies ?? []
+      } : {
+        enabled: true,
+        policies: []
+      }
     };
   } catch (error) {
     throw new Error(`Failed to load configuration from ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+function loadRetentionConfig(configDir) {
+  const fullConfig = loadConfig(configDir);
+  if (!fullConfig.retention) {
+    throw new Error("Retention configuration not found");
+  }
+  const retention = fullConfig.retention;
+  if (!retention.policies || !Array.isArray(retention.policies)) {
+    throw new Error("Retention policies must be an array");
+  }
+  const policyNames = new Set;
+  for (const policy of retention.policies) {
+    if (policyNames.has(policy.name)) {
+      throw new Error(`Duplicate retention policy name: ${policy.name}`);
+    }
+    policyNames.add(policy.name);
+    if (!policy.age_days || policy.age_days <= 0) {
+      throw new Error(`Policy '${policy.name}': age_days must be greater than 0`);
+    }
+    if (policy.archive_after_days !== undefined && policy.archive_after_days <= policy.age_days) {
+      throw new Error(`Policy '${policy.name}': archive_after_days must be greater than age_days`);
+    }
+    if (policy.delete_after_days !== undefined && policy.archive_after_days !== undefined && policy.delete_after_days <= policy.archive_after_days) {
+      throw new Error(`Policy '${policy.name}': delete_after_days must be greater than archive_after_days`);
+    }
+    if (policy.delete_after_days !== undefined && policy.archive_after_days === undefined && policy.delete_after_days <= policy.age_days) {
+      throw new Error(`Policy '${policy.name}': delete_after_days must be greater than age_days`);
+    }
+    if (policy.max_runs !== undefined && policy.max_runs < 0) {
+      throw new Error(`Policy '${policy.name}': max_runs must be >= 0`);
+    }
+    if (policy.max_size_mb !== undefined && policy.max_size_mb < 0) {
+      throw new Error(`Policy '${policy.name}': max_size_mb must be >= 0`);
+    }
+  }
+  return retention;
+}
 var import_yaml;
 var init_config = __esm(() => {
   init_path_utils();
   import_yaml = __toESM(require_dist(), 1);
-});
-
-// src/core/policy.ts
-import { readFileSync as readFileSync2 } from "fs";
-
-class PolicyEngine {
-  policies;
-  defaultPolicy;
-  constructor(configPath) {
-    this.policies = new Map;
-    this.defaultPolicy = "default";
-    if (configPath) {
-      this.loadPolicies(configPath);
-    }
-  }
-  loadPolicies(filePath) {
-    try {
-      const content = readFileSync2(filePath, "utf-8");
-      const config = import_yaml2.parse(content);
-      if (!config.policies) {
-        throw new Error("Invalid policies file: missing 'policies' key");
-      }
-      this.policies.clear();
-      for (const [name, policy] of Object.entries(config.policies)) {
-        this.validatePolicy(name, policy);
-        this.policies.set(name, policy);
-      }
-      if (config.default_policy) {
-        if (!this.policies.has(config.default_policy)) {
-          throw new Error(`Default policy '${config.default_policy}' not found`);
-        }
-        this.defaultPolicy = config.default_policy;
-      }
-    } catch (error) {
-      throw new Error(`Failed to load policies from ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  validatePolicy(name, policy) {
-    if (!policy.phases || policy.phases.length === 0) {
-      throw new Error(`Policy '${name}' must have at least one phase`);
-    }
-    for (const phase of policy.phases) {
-      if (!phase.name) {
-        throw new Error(`Policy '${name}' has a phase without a name`);
-      }
-    }
-  }
-  getPolicy(name) {
-    const policyName = name || this.defaultPolicy;
-    return this.policies.get(policyName) || null;
-  }
-  getPolicyNames() {
-    return Array.from(this.policies.keys());
-  }
-  getDefaultPolicyName() {
-    return this.defaultPolicy;
-  }
-  matchPolicy(issue) {
-    const labels = issue.labels || [];
-    const workflowLabel = labels.find((label) => label.startsWith("ashep-workflow:"));
-    if (workflowLabel) {
-      const workflowName = workflowLabel.replace("ashep-workflow:", "");
-      if (this.policies.has(workflowName)) {
-        return workflowName;
-      } else {
-        const strategy = this.getInvalidLabelStrategy();
-        if (strategy === "error") {
-          throw new Error(`Invalid workflow label: ${workflowLabel}. Policy '${workflowName}' does not exist.`);
-        } else if (strategy === "warning") {
-          console.warn(`Invalid workflow label: ${workflowLabel}. Policy '${workflowName}' does not exist. Falling back to default.`);
-        }
-      }
-    }
-    if (issue.issue_type) {
-      const matchingPolicies = [];
-      for (const [name, policy] of this.policies.entries()) {
-        if (policy.issue_types && policy.issue_types.includes(issue.issue_type)) {
-          const priority = policy.priority || 50;
-          const index = Array.from(this.policies.keys()).indexOf(name);
-          matchingPolicies.push({ name, priority, index });
-        }
-      }
-      if (matchingPolicies.length > 0) {
-        matchingPolicies.sort((a, b) => {
-          if (b.priority !== a.priority) {
-            return b.priority - a.priority;
-          }
-          return a.index - b.index;
-        });
-        return matchingPolicies[0].name;
-      }
-    }
-    return this.defaultPolicy;
-  }
-  getInvalidLabelStrategy() {
-    try {
-      const { loadConfig: loadConfig2 } = (init_config(), __toCommonJS(exports_config));
-      const config = loadConfig2();
-      return config.workflow?.invalid_label_strategy || "error";
-    } catch {
-      return "error";
-    }
-  }
-  getPhaseSequence(policyName) {
-    const policy = this.getPolicy(policyName);
-    if (!policy) {
-      return [];
-    }
-    return policy.phases.map((p) => p.name);
-  }
-  getPhaseConfig(policyName, phaseName) {
-    const policy = this.getPolicy(policyName);
-    if (!policy) {
-      return null;
-    }
-    return policy.phases.find((p) => p.name === phaseName) || null;
-  }
-  getNextPhase(policyName, currentPhase) {
-    const sequence = this.getPhaseSequence(policyName);
-    const currentIndex = sequence.indexOf(currentPhase);
-    if (currentIndex === -1 || currentIndex === sequence.length - 1) {
-      return null;
-    }
-    return sequence[currentIndex + 1];
-  }
-  determineTransition(policyName, currentPhase, outcome) {
-    const policy = this.getPolicy(policyName);
-    if (!policy) {
-      return { type: "block", reason: "Policy not found" };
-    }
-    const phaseConfig = this.getPhaseConfig(policyName, currentPhase);
-    if (!phaseConfig) {
-      return { type: "block", reason: "Phase not found" };
-    }
-    if (outcome.requires_approval || phaseConfig.require_approval) {
-      return {
-        type: "block",
-        reason: "Human approval required"
-      };
-    }
-    if (outcome.success) {
-      const nextPhase = this.getNextPhase(policyName, currentPhase);
-      if (nextPhase) {
-        return {
-          type: "advance",
-          next_phase: nextPhase,
-          reason: "Phase completed successfully"
-        };
-      } else {
-        return {
-          type: "close",
-          reason: "All phases completed"
-        };
-      }
-    }
-    const retryConfig = policy.retry || {
-      max_attempts: 3,
-      backoff_strategy: "exponential"
-    };
-    const retryCount = outcome.retry_count ?? 0;
-    if (retryCount < retryConfig.max_attempts - 1) {
-      return {
-        type: "retry",
-        reason: `Retry ${retryCount + 1}/${retryConfig.max_attempts}`
-      };
-    }
-    return {
-      type: "block",
-      reason: `Max retries exceeded (${retryConfig.max_attempts})`
-    };
-  }
-  calculateRetryDelay(policyName, attemptNumber) {
-    const policy = this.getPolicy(policyName);
-    if (!policy || !policy.retry) {
-      return 5000;
-    }
-    const retry = policy.retry;
-    const initialDelay = retry.initial_delay_ms || 5000;
-    const maxDelay = retry.max_delay_ms || 300000;
-    let delay;
-    switch (retry.backoff_strategy) {
-      case "exponential":
-        delay = initialDelay * Math.pow(2, attemptNumber);
-        break;
-      case "linear":
-        delay = initialDelay * (attemptNumber + 1);
-        break;
-      case "fixed":
-        delay = initialDelay;
-        break;
-      default:
-        delay = initialDelay;
-    }
-    return Math.min(delay, maxDelay);
-  }
-  calculateTimeout(policyName, phaseName) {
-    const policy = this.getPolicy(policyName);
-    if (!policy) {
-      return 300000;
-    }
-    const baseTimeout = policy.timeout_base_ms || 300000;
-    const phaseConfig = this.getPhaseConfig(policyName, phaseName);
-    const multiplier = phaseConfig?.timeout_multiplier || 1;
-    return baseTimeout * multiplier;
-  }
-  getStallThreshold(policyName) {
-    const policy = this.getPolicy(policyName);
-    return policy?.stall_threshold_ms || 60000;
-  }
-  requiresHITL(policyName) {
-    const policy = this.getPolicy(policyName);
-    return policy?.require_hitl || false;
-  }
-}
-function getPolicyEngine(configPath) {
-  if (!defaultPolicyEngine) {
-    const defaultPath = configPath || getConfigPath("policies.yaml");
-    defaultPolicyEngine = new PolicyEngine(defaultPath);
-  }
-  return defaultPolicyEngine;
-}
-function validateHITLReason(reason, config) {
-  const hitlConfig = config || loadConfig().hitl;
-  if (!hitlConfig) {
-    return true;
-  }
-  const { predefined, allow_custom, custom_validation } = hitlConfig.allowed_reasons;
-  if (predefined.includes(reason)) {
-    return true;
-  }
-  if (allow_custom) {
-    switch (custom_validation) {
-      case "none":
-        return true;
-      case "alphanumeric":
-        return /^[a-z0-9]+$/i.test(reason);
-      case "alphanumeric-dash-underscore":
-      default:
-        return /^[a-z][a-z0-9_-]*$/i.test(reason);
-    }
-  }
-  return false;
-}
-var import_yaml2, defaultPolicyEngine = null;
-var init_policy = __esm(() => {
-  init_path_utils();
-  init_config();
-  import_yaml2 = __toESM(require_dist(), 1);
 });
 
 // src/core/agent-registry.ts
@@ -7398,7 +7222,7 @@ __export(exports_agent_registry, {
   getAgentRegistry: () => getAgentRegistry,
   AgentRegistry: () => AgentRegistry
 });
-import { readFileSync as readFileSync3, writeFileSync } from "fs";
+import { readFileSync as readFileSync2, writeFileSync } from "fs";
 
 class AgentRegistry {
   agents;
@@ -7413,8 +7237,8 @@ class AgentRegistry {
   }
   loadAgents(filePath) {
     try {
-      const content = readFileSync3(filePath, "utf-8");
-      const config = import_yaml3.parse(content);
+      const content = readFileSync2(filePath, "utf-8");
+      const config = import_yaml2.parse(content);
       if (!config.agents) {
         throw new Error("Invalid agents file: missing 'agents' key");
       }
@@ -7432,7 +7256,7 @@ class AgentRegistry {
       version: "1.0",
       agents: Array.from(this.agents.values())
     };
-    const yaml = import_yaml3.stringify(config);
+    const yaml = import_yaml2.stringify(config);
     writeFileSync(this.configPath, yaml, "utf-8");
   }
   validateAgent(agent) {
@@ -7783,11 +7607,1249 @@ function getAgentRegistry(configPath) {
   }
   return defaultAgentRegistry;
 }
-var import_yaml3, defaultAgentRegistry = null;
+var import_yaml2, defaultAgentRegistry = null;
 var init_agent_registry = __esm(() => {
   init_path_utils();
   init_config();
+  import_yaml2 = __toESM(require_dist(), 1);
+});
+
+// src/core/logging.ts
+import { Database } from "bun:sqlite";
+import { appendFileSync, existsSync as existsSync3, mkdirSync, readFileSync as readFileSync3 } from "fs";
+import { join as join3 } from "path";
+
+class Logger {
+  db;
+  jsonlPath;
+  decisionsPath;
+  constructor(dataDir) {
+    const dir = dataDir || join3(process.cwd(), ".agent-shepherd");
+    if (!existsSync3(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    this.jsonlPath = join3(dir, "runs.jsonl");
+    this.decisionsPath = join3(dir, "decisions.jsonl");
+    const dbPath = join3(dir, "runs.db");
+    this.db = new Database(dbPath);
+    this.initializeSchema();
+    this.syncFromJSONL();
+  }
+  initializeSchema() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        policy_name TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        outcome TEXT,
+        metadata TEXT
+      )
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_id ON runs(issue_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_agent_id ON runs(agent_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase_status ON runs(issue_id, phase, status)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_phase_completed ON runs(phase, completed_at)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase ON runs(issue_id, phase)
+    `);
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS decisions (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reasoning TEXT,
+        metadata TEXT,
+        FOREIGN KEY (run_id) REFERENCES runs(id)
+      )
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_run_id ON decisions(run_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(type)
+    `);
+  }
+  syncFromJSONL() {
+    if (!existsSync3(this.jsonlPath)) {
+      return;
+    }
+    const content = readFileSync3(this.jsonlPath, "utf-8");
+    const lines = content.trim().split(`
+`);
+    for (const line of lines) {
+      if (!line.trim())
+        continue;
+      try {
+        const record = JSON.parse(line);
+        this.upsertToSQLite(record);
+      } catch (error) {
+        console.error("Failed to parse JSONL line:", error);
+      }
+    }
+    if (existsSync3(this.decisionsPath)) {
+      const decisionsContent = readFileSync3(this.decisionsPath, "utf-8");
+      const decisionLines = decisionsContent.trim().split(`
+`);
+      for (const line of decisionLines) {
+        if (!line.trim())
+          continue;
+        try {
+          const decision = JSON.parse(line);
+          this.upsertDecisionToSQLite(decision);
+        } catch (error) {
+          console.error("Failed to parse decision JSONL line:", error);
+        }
+      }
+    }
+  }
+  upsertToSQLite(record) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO runs (
+        id, issue_id, session_id, agent_id, policy_name, phase,
+        status, created_at, updated_at, completed_at, outcome, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(record.id, record.issue_id, record.session_id, record.agent_id, record.policy_name, record.phase, record.status, record.created_at, record.updated_at, record.completed_at || null, record.outcome ? JSON.stringify(record.outcome) : null, record.metadata ? JSON.stringify(record.metadata) : null);
+  }
+  upsertDecisionToSQLite(decision) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO decisions (
+        id, run_id, timestamp, type, decision, reasoning, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(decision.id, decision.run_id, decision.timestamp, decision.type, decision.decision, decision.reasoning || null, decision.metadata ? JSON.stringify(decision.metadata) : null);
+  }
+  createRun(record) {
+    const now = Date.now();
+    const fullRecord = {
+      ...record,
+      created_at: now,
+      updated_at: now
+    };
+    appendFileSync(this.jsonlPath, JSON.stringify(fullRecord) + `
+`);
+    this.upsertToSQLite(fullRecord);
+    return fullRecord;
+  }
+  updateRun(runId, updates) {
+    const existing = this.getRun(runId);
+    if (!existing) {
+      return null;
+    }
+    const updated = {
+      ...existing,
+      ...updates,
+      updated_at: Date.now()
+    };
+    appendFileSync(this.jsonlPath, JSON.stringify(updated) + `
+`);
+    this.upsertToSQLite(updated);
+    return updated;
+  }
+  getRun(runId) {
+    const stmt = this.db.prepare("SELECT * FROM runs WHERE id = ?");
+    const row = stmt.get(runId);
+    if (!row) {
+      return null;
+    }
+    return this.rowToRunRecord(row);
+  }
+  queryRuns(query) {
+    let sql = "SELECT * FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    sql += " ORDER BY created_at DESC";
+    if (query.limit) {
+      sql += " LIMIT ?";
+      params.push(query.limit);
+    }
+    if (query.offset) {
+      sql += " OFFSET ?";
+      params.push(query.offset);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToRunRecord(row));
+  }
+  getPhaseRetryCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ? AND status = 'failed'
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
+  getPhaseVisitCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ?
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
+  getTotalDuration(query) {
+    let sql = "SELECT SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return result?.total || 0;
+  }
+  getAverageDuration(query) {
+    let sql = "SELECT AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return result?.avg || 0;
+  }
+  getMinDuration(query) {
+    let sql = "SELECT MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return result?.min || null;
+  }
+  getMaxDuration(query) {
+    let sql = "SELECT MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return result?.max || null;
+  }
+  getDurationStats(query) {
+    let sql = `
+      SELECT 
+        SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total,
+        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg,
+        MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min,
+        MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max,
+        COUNT(*) as count
+      FROM runs
+      WHERE 1=1
+    `;
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return {
+      total: result?.total || 0,
+      average: result?.avg || 0,
+      min: result?.min || null,
+      max: result?.max || null,
+      count: result?.count || 0
+    };
+  }
+  getPhaseTotalDuration(issueId, phaseName) {
+    return this.getTotalDuration({ issue_id: issueId, phase: phaseName });
+  }
+  getPhaseAverageDuration(issueId, phaseName) {
+    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
+  }
+  async getAveragePhaseDuration(issueId, phaseName) {
+    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
+  }
+  async getTotalIssueDuration(issueId) {
+    const total = this.getTotalDuration({ issue_id: issueId });
+    return total;
+  }
+  async getSlowestPhases(issueId, limit = 10) {
+    const stmt = this.db.prepare(`
+      SELECT 
+        phase,
+        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg_duration_ms
+      FROM runs
+      WHERE issue_id = ? 
+        AND outcome IS NOT NULL 
+        AND json_extract(outcome, '$.metrics.duration_ms') IS NOT NULL
+      GROUP BY phase
+      ORDER BY avg_duration_ms DESC
+      LIMIT ?
+    `);
+    const rows = stmt.all(issueId, limit);
+    return rows.map((row) => ({
+      phase: row.phase,
+      avg_duration_ms: row.avg_duration_ms || 0
+    }));
+  }
+  logDecision(decision) {
+    const fullDecision = {
+      ...decision,
+      id: `decision-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      timestamp: Date.now()
+    };
+    appendFileSync(this.decisionsPath, JSON.stringify(fullDecision) + `
+`);
+    this.upsertDecisionToSQLite(fullDecision);
+    return fullDecision;
+  }
+  getDecisions(runId) {
+    const stmt = this.db.prepare("SELECT * FROM decisions WHERE run_id = ? ORDER BY timestamp ASC");
+    const rows = stmt.all(runId);
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+  deleteRun(runId) {
+    this.db.run("DELETE FROM runs WHERE id = ?", [runId]);
+    this.db.run("DELETE FROM decisions WHERE run_id = ?", [runId]);
+  }
+  getDecisionsForIssue(issueId, options) {
+    let sql = `
+      SELECT d.*
+      FROM decisions d
+      INNER JOIN runs r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+      ORDER BY d.timestamp DESC
+    `;
+    const params = [issueId];
+    if (options?.limit) {
+      sql += " LIMIT ?";
+      params.push(options.limit);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+  getTransitionCount(issueId, fromPhase, toPhase) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM decisions d
+      INNER JOIN runs r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+        AND d.type = 'phase_transition'
+        AND json_extract(d.metadata, '$.from_phase') = ?
+        AND json_extract(d.metadata, '$.to_phase') = ?
+    `);
+    const result = stmt.get(issueId, fromPhase, toPhase);
+    return result?.count || 0;
+  }
+  rowToRunRecord(row) {
+    return {
+      id: row.id,
+      issue_id: row.issue_id,
+      session_id: row.session_id,
+      agent_id: row.agent_id,
+      policy_name: row.policy_name,
+      phase: row.phase,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at || undefined,
+      outcome: row.outcome ? JSON.parse(row.outcome) : undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    };
+  }
+  rowToDecisionRecord(row) {
+    return {
+      id: row.id,
+      run_id: row.run_id,
+      timestamp: row.timestamp,
+      type: row.type,
+      decision: row.decision,
+      reasoning: row.reasoning || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    };
+  }
+  close() {
+    this.db.close();
+  }
+  static resetInstance() {
+    defaultLogger = null;
+  }
+}
+function getLogger(dataDir) {
+  if (!defaultLogger) {
+    defaultLogger = new Logger(dataDir);
+  }
+  return defaultLogger;
+}
+var defaultLogger = null;
+var init_logging = () => {};
+
+// src/core/decision-builder.ts
+import { readFileSync as readFileSync4 } from "fs";
+
+class DecisionPromptBuilder {
+  config = null;
+  configPath;
+  analytics;
+  constructor(configPath) {
+    this.configPath = configPath || getConfigPath("decision-prompts.yaml");
+    this.analytics = this.initAnalytics();
+    this.loadConfig();
+  }
+  initAnalytics() {
+    return {
+      total_decisions: 0,
+      decisions_by_type: {},
+      confidence_distribution: {
+        high: 0,
+        medium: 0,
+        low: 0
+      },
+      most_common_targets: [],
+      approval_rate_by_confidence: {
+        high_approved: 0,
+        high_total: 0,
+        medium_approved: 0,
+        medium_total: 0,
+        low_approved: 0,
+        low_total: 0
+      }
+    };
+  }
+  loadConfig() {
+    try {
+      const content = readFileSync4(this.configPath, "utf-8");
+      this.config = import_yaml3.parse(content);
+    } catch (error) {
+      console.warn(`Failed to load decision prompts config: ${error instanceof Error ? error.message : String(error)}`);
+      this.config = null;
+    }
+  }
+  reloadConfig() {
+    this.loadConfig();
+  }
+  substituteVariables(template, context) {
+    let result = template;
+    const substitute = (pattern, value) => {
+      const regex = new RegExp(pattern, "g");
+      result = result.replace(regex, (match) => {
+        if (value === undefined || value === null) {
+          return match;
+        }
+        return String(value);
+      });
+    };
+    substitute("{{issue\\.id}}", context.issue.id);
+    substitute("{{issue\\.title}}", context.issue.title);
+    substitute("{{issue\\.description}}", context.issue.description);
+    substitute("{{issue\\.issue_type}}", context.issue.issue_type);
+    substitute("{{issue\\.priority}}", context.issue.priority);
+    substitute("{{issue\\.status}}", context.issue.status);
+    substitute("{{current_phase}}", context.current_phase);
+    substitute("{{custom_instructions}}", context.custom_instructions);
+    substitute("{{outcome\\.success}}", context.outcome.success);
+    substitute("{{outcome\\.message}}", context.outcome.message);
+    substitute("{{outcome\\.error}}", context.outcome.error);
+    substitute("{{outcome\\.metrics\\.duration_ms}}", context.outcome.metrics?.duration_ms);
+    if (context.issue.labels && context.issue.labels.length > 0) {
+      const labelsSection = context.issue.labels.map((l) => `- ${l}`).join(`
+`);
+      result = result.replace(/{{#each issue\.labels}}[\s\S]*?{{\/each}}/g, labelsSection);
+    } else {
+      result = result.replace(/{{#each issue\.labels}}[\s\S]*?{{\/each}}/g, "");
+    }
+    if (context.recent_decisions && context.recent_decisions.length > 0) {
+      const decisionsSection = context.recent_decisions.map((d) => `- ${new Date(d.timestamp).toISOString()}: ${d.decision} (${d.reasoning})`).join(`
+`);
+      result = result.replace(/{{#each recent_decisions}}[\s\S]*?{{\/each}}/g, decisionsSection);
+    } else {
+      result = result.replace(/{{#each recent_decisions}}[\s\S]*?{{\/each}}/g, "");
+    }
+    if (context.phase_history && context.phase_history.length > 0) {
+      const historySection = context.phase_history.map((h) => {
+        const base = `- ${h.phase} (Attempt ${h.attempt_number}): ${h.status} (${h.duration_ms}ms)`;
+        return h.error ? `${base}
+    Error: ${h.error}` : base;
+      }).join(`
+`);
+      result = result.replace(/{{#each phase_history}}[\s\S]*?{{\/each}}/g, historySection);
+    } else {
+      result = result.replace(/{{#each phase_history}}[\s\S]*?{{\/each}}/g, "");
+    }
+    if (context.performance_context) {
+      const perfSection = `- Average phase duration: ${context.performance_context.average_duration_ms}ms
+- Total time spent: ${context.performance_context.total_duration_ms}ms
+- Visits to current phase: ${context.performance_context.phase_visit_count}`;
+      result = result.replace(/{{#performance_context}}[\s\S]*?{{\/performance_context}}/g, perfSection);
+    } else {
+      result = result.replace(/{{#performance_context}}[\s\S]*?{{\/performance_context}}/g, "");
+    }
+    if (context.outcome.warnings && context.outcome.warnings.length > 0) {
+      const warningsSection = context.outcome.warnings.map((w) => `  - ${w}`).join(`
+`);
+      result = result.replace(/{{#each outcome\.warnings}}[\s\S]*?{{\/each}}/g, warningsSection);
+    } else {
+      result = result.replace(/{{#each outcome\.warnings}}[\s\S]*?{{\/each}}/g, "");
+    }
+    if (context.allowed_destinations && context.allowed_destinations.length > 0) {
+      const destSection = context.allowed_destinations.map((d) => `- **${d}**`).join(`
+`);
+      result = result.replace(/{{#each allowed_destinations}}[\s\S]*?{{\/each}}/g, destSection);
+    } else {
+      result = result.replace(/{{#each allowed_destinations}}[\s\S]*?{{\/each}}/g, "");
+    }
+    return result;
+  }
+  buildPrompt(templateName, context) {
+    if (!this.config) {
+      console.warn("Decision prompts config not loaded");
+      return null;
+    }
+    const template = this.config.templates[templateName];
+    if (!template) {
+      console.warn(`Template '${templateName}' not found`);
+      return null;
+    }
+    const userPrompt = this.substituteVariables(template.prompt_template, context);
+    return {
+      system_prompt: template.system_prompt,
+      user_prompt: userPrompt
+    };
+  }
+  getTemplate(templateName) {
+    if (!this.config) {
+      return null;
+    }
+    if (templateName && this.config.templates[templateName]) {
+      return this.config.templates[templateName];
+    }
+    const defaultName = this.config.default_template || "fallback-template";
+    return this.config.templates[defaultName] || null;
+  }
+  getAvailableTemplates() {
+    if (!this.config) {
+      return [];
+    }
+    return Object.keys(this.config.templates);
+  }
+  sanitizeResponse(response) {
+    let sanitized = response.trim();
+    sanitized = sanitized.replace(/^```json\s*/, "");
+    sanitized = sanitized.replace(/^```\s*/, "");
+    sanitized = sanitized.replace(/\s*```$/, "");
+    sanitized = sanitized.replace(/\\"/g, '"');
+    sanitized = sanitized.replace(/\\'/g, "'");
+    sanitized = Array.from(sanitized).filter((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 32 && code !== 127;
+    }).join("");
+    sanitized = sanitized.trim();
+    return sanitized;
+  }
+  validateResponse(response, allowedDestinations, confidenceThresholds) {
+    const result = {
+      valid: true,
+      errors: [],
+      warnings: []
+    };
+    let parsed;
+    try {
+      const sanitized = this.sanitizeResponse(response);
+      parsed = JSON.parse(sanitized);
+    } catch (error) {
+      result.valid = false;
+      result.errors.push(`Failed to parse JSON: ${error instanceof Error ? error.message : String(error)}`);
+      return result;
+    }
+    if (!parsed.decision) {
+      result.valid = false;
+      result.errors.push("Missing required field: decision");
+    }
+    if (!parsed.reasoning) {
+      result.valid = false;
+      result.errors.push("Missing required field: reasoning");
+    }
+    if (typeof parsed.confidence !== "number" || parsed.confidence < 0 || parsed.confidence > 1) {
+      result.valid = false;
+      result.errors.push("Invalid confidence value: must be a number between 0.0 and 1.0");
+    }
+    if (parsed.decision) {
+      const validActions = ["jump_to_", "advance_to_", "require_approval"];
+      const isValidAction = parsed.decision === "require_approval" || validActions.some((action) => parsed.decision.startsWith(action));
+      if (!isValidAction) {
+        result.valid = false;
+        result.errors.push(`Invalid decision action: ${parsed.decision}. Must start with 'jump_to_', 'advance_to_', or be 'require_approval'`);
+      }
+      if (parsed.decision.startsWith("jump_to_") || parsed.decision.startsWith("advance_to_")) {
+        const targetPhase = parsed.decision.replace(/^(jump_to_|advance_to_)/, "");
+        if (!allowedDestinations.includes(targetPhase)) {
+          result.valid = false;
+          result.errors.push(`Target phase '${targetPhase}' not in allowed destinations: ${allowedDestinations.join(", ")}`);
+        }
+      }
+    }
+    if (parsed.recommendations && !Array.isArray(parsed.recommendations)) {
+      result.valid = false;
+      result.errors.push("Invalid recommendations: must be an array");
+    }
+    const thresholds = confidenceThresholds || { auto_advance: 0.8, require_approval: 0.6 };
+    if (parsed.confidence !== undefined && parsed.confidence < thresholds.require_approval) {
+      result.warnings.push(`Confidence ${parsed.confidence} below require_approval threshold ${thresholds.require_approval}`);
+    }
+    result.response = parsed;
+    return result;
+  }
+  parseDecisionResponse(response, allowedDestinations, confidenceThresholds) {
+    const validation = this.validateResponse(response, allowedDestinations, confidenceThresholds);
+    if (!validation.valid || !validation.response) {
+      console.error("Invalid decision response:", validation.errors.join(", "));
+      return null;
+    }
+    this.trackDecision(validation.response);
+    return validation.response;
+  }
+  trackDecision(response) {
+    this.analytics.total_decisions++;
+    const decisionType = response.decision.split("_")[0];
+    this.analytics.decisions_by_type[decisionType] = (this.analytics.decisions_by_type[decisionType] || 0) + 1;
+    if (response.confidence >= 0.8) {
+      this.analytics.confidence_distribution.high++;
+      this.analytics.approval_rate_by_confidence.high_total++;
+      if (!response.decision.includes("approval")) {
+        this.analytics.approval_rate_by_confidence.high_approved++;
+      }
+    } else if (response.confidence >= 0.5) {
+      this.analytics.confidence_distribution.medium++;
+      this.analytics.approval_rate_by_confidence.medium_total++;
+      if (!response.decision.includes("approval")) {
+        this.analytics.approval_rate_by_confidence.medium_approved++;
+      }
+    } else {
+      this.analytics.confidence_distribution.low++;
+      this.analytics.approval_rate_by_confidence.low_total++;
+      if (!response.decision.includes("approval")) {
+        this.analytics.approval_rate_by_confidence.low_approved++;
+      }
+    }
+    const targetMatch = response.decision.match(/(jump_to_|advance_to_)(.+)/);
+    if (targetMatch) {
+      const target = targetMatch[2];
+      const existing = this.analytics.most_common_targets.find((t) => t.target === target);
+      if (existing) {
+        existing.count++;
+      } else {
+        this.analytics.most_common_targets.push({ target, count: 1 });
+      }
+    }
+  }
+  getAnalytics() {
+    this.analytics.most_common_targets.sort((a, b) => b.count - a.count);
+    return this.analytics;
+  }
+  resetAnalytics() {
+    this.analytics = this.initAnalytics();
+  }
+  buildDecisionInstructions(issue, capability, previousOutcome, currentPhase, customInstructions, allowedDestinations, context) {
+    const fullContext = {
+      issue,
+      outcome: previousOutcome,
+      current_phase: currentPhase,
+      custom_instructions: customInstructions,
+      allowed_destinations: allowedDestinations,
+      ...context
+    };
+    const promptData = this.buildPrompt(capability, fullContext);
+    if (promptData) {
+      return promptData.user_prompt;
+    }
+    const fallbackContext = {
+      issue,
+      outcome: previousOutcome,
+      current_phase: currentPhase,
+      custom_instructions: customInstructions,
+      allowed_destinations: allowedDestinations,
+      ...context
+    };
+    const fallbackData = this.buildPrompt("fallback-template", fallbackContext);
+    return fallbackData?.user_prompt || "";
+  }
+  getSystemPrompt(capability) {
+    const template = this.getTemplate(capability);
+    return template?.system_prompt || "";
+  }
+}
+function getDecisionPromptBuilder(configPath) {
+  if (!defaultDecisionPromptBuilder) {
+    defaultDecisionPromptBuilder = new DecisionPromptBuilder(configPath);
+  }
+  return defaultDecisionPromptBuilder;
+}
+var import_yaml3, defaultDecisionPromptBuilder = null;
+var init_decision_builder = __esm(() => {
+  init_path_utils();
   import_yaml3 = __toESM(require_dist(), 1);
+});
+
+// src/core/policy.ts
+import { readFileSync as readFileSync5 } from "fs";
+function getTransitionKey(outcome) {
+  if (outcome.result_type) {
+    return `on_${outcome.result_type}`;
+  }
+  return outcome.success ? "on_success" : "on_failure";
+}
+
+class PolicyEngine {
+  policies;
+  defaultPolicy;
+  constructor(configPath) {
+    this.policies = new Map;
+    this.defaultPolicy = "default";
+    if (configPath) {
+      this.loadPolicies(configPath);
+    }
+  }
+  loadPolicies(filePath) {
+    try {
+      const content = readFileSync5(filePath, "utf-8");
+      const config = import_yaml4.parse(content);
+      if (!config.policies) {
+        throw new Error("Invalid policies file: missing 'policies' key");
+      }
+      this.policies.clear();
+      for (const [name, policy] of Object.entries(config.policies)) {
+        this.validatePolicy(name, policy);
+        this.policies.set(name, policy);
+      }
+      if (config.default_policy) {
+        if (!this.policies.has(config.default_policy)) {
+          throw new Error(`Default policy '${config.default_policy}' not found`);
+        }
+        this.defaultPolicy = config.default_policy;
+      }
+    } catch (error) {
+      throw new Error(`Failed to load policies from ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  validatePolicy(name, policy) {
+    if (!policy.phases || policy.phases.length === 0) {
+      throw new Error(`Policy '${name}' must have at least one phase`);
+    }
+    const phaseNames = policy.phases.map((p) => p.name);
+    for (const phase of policy.phases) {
+      if (!phase.name) {
+        throw new Error(`Policy '${name}' has a phase without a name`);
+      }
+      if (phase.transitions) {
+        this.validateTransitionBlock(phase.name, phase.transitions, phaseNames);
+      }
+    }
+  }
+  validateTransitionBlock(phaseName, transitions, policyPhases) {
+    for (const [key, transition] of Object.entries(transitions)) {
+      if (key === "on_partial_success" || key === "on_unclear") {
+        if (typeof transition === "string") {
+          throw new Error(`Invalid ${key} transition in phase '${phaseName}': must be object, not string`);
+        }
+      }
+      if (typeof transition === "string") {
+        if (!policyPhases.includes(transition)) {
+          throw new Error(`Invalid ${key} transition in phase '${phaseName}': phase '${transition}' not found in policy`);
+        }
+      } else if (typeof transition === "object" && transition !== null) {
+        if (!transition.capability || !transition.prompt || !transition.allowed_destinations) {
+          throw new Error(`Invalid ${key} transition in phase '${phaseName}': missing required fields (capability, prompt, allowed_destinations)`);
+        }
+        for (const dest of transition.allowed_destinations) {
+          if (!policyPhases.includes(dest)) {
+            throw new Error(`Invalid ${key} transition in phase '${phaseName}': destination '${dest}' not found in policy`);
+          }
+        }
+        if (transition.confidence_thresholds) {
+          const { auto_advance, require_approval } = transition.confidence_thresholds;
+          if (auto_advance !== undefined && (auto_advance < 0 || auto_advance > 1)) {
+            throw new Error(`Invalid auto_advance threshold in ${key} transition for phase '${phaseName}': must be 0.0-1.0`);
+          }
+          if (require_approval !== undefined && (require_approval < 0 || require_approval > 1)) {
+            throw new Error(`Invalid require_approval threshold in ${key} transition for phase '${phaseName}': must be 0.0-1.0`);
+          }
+        }
+      }
+    }
+  }
+  getPolicy(name) {
+    const policyName = name || this.defaultPolicy;
+    return this.policies.get(policyName) || null;
+  }
+  getPolicyNames() {
+    return Array.from(this.policies.keys());
+  }
+  getDefaultPolicyName() {
+    return this.defaultPolicy;
+  }
+  matchPolicy(issue) {
+    const labels = issue.labels || [];
+    const workflowLabel = labels.find((label) => label.startsWith("ashep-workflow:"));
+    if (workflowLabel) {
+      const workflowName = workflowLabel.replace("ashep-workflow:", "");
+      if (this.policies.has(workflowName)) {
+        return workflowName;
+      } else {
+        const strategy = this.getInvalidLabelStrategy();
+        if (strategy === "error") {
+          throw new Error(`Invalid workflow label: ${workflowLabel}. Policy '${workflowName}' does not exist.`);
+        } else if (strategy === "warning") {
+          console.warn(`Invalid workflow label: ${workflowLabel}. Policy '${workflowName}' does not exist. Falling back to default.`);
+        }
+      }
+    }
+    if (issue.issue_type) {
+      const matchingPolicies = [];
+      for (const [name, policy] of this.policies.entries()) {
+        if (policy.issue_types && policy.issue_types.includes(issue.issue_type)) {
+          const priority = policy.priority || 50;
+          const index = Array.from(this.policies.keys()).indexOf(name);
+          matchingPolicies.push({ name, priority, index });
+        }
+      }
+      if (matchingPolicies.length > 0) {
+        matchingPolicies.sort((a, b) => {
+          if (b.priority !== a.priority) {
+            return b.priority - a.priority;
+          }
+          return a.index - b.index;
+        });
+        return matchingPolicies[0].name;
+      }
+    }
+    return this.defaultPolicy;
+  }
+  getInvalidLabelStrategy() {
+    try {
+      const { loadConfig: loadConfig2 } = (init_config(), __toCommonJS(exports_config));
+      const config = loadConfig2();
+      return config.workflow?.invalid_label_strategy || "error";
+    } catch {
+      return "error";
+    }
+  }
+  getPhaseSequence(policyName) {
+    const policy = this.getPolicy(policyName);
+    if (!policy) {
+      return [];
+    }
+    return policy.phases.map((p) => p.name);
+  }
+  getPhaseConfig(policyName, phaseName) {
+    const policy = this.getPolicy(policyName);
+    if (!policy) {
+      return null;
+    }
+    return policy.phases.find((p) => p.name === phaseName) || null;
+  }
+  getNextPhase(policyName, currentPhase) {
+    const sequence = this.getPhaseSequence(policyName);
+    const currentIndex = sequence.indexOf(currentPhase);
+    if (currentIndex === -1 || currentIndex === sequence.length - 1) {
+      return null;
+    }
+    return sequence[currentIndex + 1];
+  }
+  async determineTransition(policyName, currentPhase, outcome, issueId) {
+    const policy = this.getPolicy(policyName);
+    if (!policy) {
+      return { type: "block", reason: "Policy not found" };
+    }
+    const phaseConfig = this.getPhaseConfig(policyName, currentPhase);
+    if (!phaseConfig) {
+      return { type: "block", reason: "Phase not found" };
+    }
+    if (issueId) {
+      const phaseValidation = await this.validatePhaseLimits(policyName, issueId, currentPhase);
+      if (!phaseValidation.valid) {
+        return { type: "block", reason: phaseValidation.reason };
+      }
+    }
+    let transition;
+    if (phaseConfig.transitions) {
+      const transitionKey = getTransitionKey(outcome);
+      const transitionConfig = phaseConfig.transitions[transitionKey];
+      if (transitionConfig !== undefined) {
+        if (typeof transitionConfig === "string") {
+          transition = {
+            type: "advance",
+            next_phase: transitionConfig,
+            reason: `Direct transition to ${transitionConfig}`
+          };
+        } else {
+          transition = {
+            type: "dynamic_decision",
+            dynamic_agent: transitionConfig.capability,
+            decision_config: transitionConfig,
+            reason: `AI routing for ${transitionKey}`
+          };
+        }
+        this.validateTransition(policyName, currentPhase, transition);
+        return await this.applyLoopPrevention(transition, issueId, currentPhase);
+      }
+    }
+    if (outcome.requires_approval || phaseConfig.require_approval) {
+      transition = {
+        type: "block",
+        reason: "Human approval required"
+      };
+      this.validateTransition(policyName, currentPhase, transition);
+      return transition;
+    }
+    if (outcome.success) {
+      const nextPhase = this.getNextPhase(policyName, currentPhase);
+      if (nextPhase) {
+        transition = {
+          type: "advance",
+          next_phase: nextPhase,
+          reason: "Phase completed successfully"
+        };
+      } else {
+        transition = {
+          type: "close",
+          reason: "All phases completed"
+        };
+      }
+      this.validateTransition(policyName, currentPhase, transition);
+      return await this.applyLoopPrevention(transition, issueId, currentPhase);
+    }
+    const retryConfig = policy.retry || {
+      max_attempts: 3,
+      backoff_strategy: "exponential"
+    };
+    const retryCount = outcome.retry_count ?? 0;
+    if (retryCount < retryConfig.max_attempts - 1) {
+      transition = {
+        type: "retry",
+        reason: `Retry ${retryCount + 1}/${retryConfig.max_attempts}`
+      };
+      this.validateTransition(policyName, currentPhase, transition);
+      return transition;
+    }
+    transition = {
+      type: "block",
+      reason: `Max retries exceeded (${retryConfig.max_attempts})`
+    };
+    this.validateTransition(policyName, currentPhase, transition);
+    return transition;
+  }
+  async applyLoopPrevention(transition, issueId, currentPhase) {
+    if (!issueId) {
+      return transition;
+    }
+    const nextPhase = transition.next_phase || transition.jump_target_phase;
+    if (nextPhase && (transition.type === "advance" || transition.type === "jump_back")) {
+      const transitionValidation = await this.validateTransitionLimits(issueId, currentPhase, nextPhase);
+      if (!transitionValidation.valid) {
+        return { type: "block", reason: transitionValidation.reason };
+      }
+    }
+    const cycleDetection = await this.detectCycles(issueId);
+    if (cycleDetection.detected) {
+      return { type: "block", reason: cycleDetection.reason };
+    }
+    return transition;
+  }
+  calculateRetryDelay(policyName, attemptNumber) {
+    const policy = this.getPolicy(policyName);
+    if (!policy || !policy.retry) {
+      return 5000;
+    }
+    const retry = policy.retry;
+    const initialDelay = retry.initial_delay_ms || 5000;
+    const maxDelay = retry.max_delay_ms || 300000;
+    let delay;
+    switch (retry.backoff_strategy) {
+      case "exponential":
+        delay = initialDelay * Math.pow(2, attemptNumber);
+        break;
+      case "linear":
+        delay = initialDelay * (attemptNumber + 1);
+        break;
+      case "fixed":
+        delay = initialDelay;
+        break;
+      default:
+        delay = initialDelay;
+    }
+    return Math.min(delay, maxDelay);
+  }
+  calculateTimeout(policyName, phaseName) {
+    const policy = this.getPolicy(policyName);
+    if (!policy) {
+      return 300000;
+    }
+    const baseTimeout = policy.timeout_base_ms || 300000;
+    const phaseConfig = this.getPhaseConfig(policyName, phaseName);
+    const multiplier = phaseConfig?.timeout_multiplier || 1;
+    return baseTimeout * multiplier;
+  }
+  getStallThreshold(policyName) {
+    const policy = this.getPolicy(policyName);
+    return policy?.stall_threshold_ms || 60000;
+  }
+  requiresHITL(policyName) {
+    const policy = this.getPolicy(policyName);
+    return policy?.require_hitl || false;
+  }
+  async validatePhaseLimits(policyName, issueId, phaseName) {
+    const phaseConfig = this.getPhaseConfig(policyName, phaseName);
+    if (!phaseConfig) {
+      return { valid: false, reason: "Phase not found" };
+    }
+    const config = loadConfig();
+    const maxVisits = phaseConfig.max_visits || config.loop_prevention?.max_visits_default || 10;
+    const logger = getLogger();
+    const visitCount = logger.getPhaseVisitCount(issueId, phaseName);
+    if (visitCount >= maxVisits) {
+      return {
+        valid: false,
+        reason: `Phase '${phaseName}' exceeded max_visits (${maxVisits}) with ${visitCount} visits`
+      };
+    }
+    return { valid: true };
+  }
+  async validateTransitionLimits(issueId, fromPhase, toPhase, maxTransitions) {
+    const config = loadConfig();
+    const maxTrans = maxTransitions || config.loop_prevention?.max_transitions_default || 5;
+    const logger = getLogger();
+    const transitionCount = logger.getTransitionCount(issueId, fromPhase, toPhase);
+    if (transitionCount >= maxTrans) {
+      return {
+        valid: false,
+        reason: `Transition ${fromPhase}\u2192${toPhase} exceeded max_transitions (${maxTrans}) with ${transitionCount} occurrences`
+      };
+    }
+    return { valid: true };
+  }
+  async detectCycles(issueId, cycleLength) {
+    const config = loadConfig();
+    if (!config.loop_prevention?.cycle_detection_enabled) {
+      return { detected: false };
+    }
+    const length = cycleLength || config.loop_prevention?.cycle_detection_length || 3;
+    const logger = getLogger();
+    const recentDecisions = logger.getDecisionsForIssue(issueId, { limit: 20 });
+    const transitions = recentDecisions.filter((d) => d.type === "phase_transition").map((d) => {
+      const fromPhase = d.metadata?.from_phase;
+      const toPhase = d.metadata?.to_phase;
+      return fromPhase && toPhase ? `${fromPhase}\u2192${toPhase}` : null;
+    }).filter((t) => t !== null).slice(-10);
+    for (let i = 0;i <= transitions.length - length; i++) {
+      const pattern = transitions.slice(i, i + length);
+      const reversePattern = [...pattern].reverse();
+      if (pattern.join(",") === reversePattern.join(",")) {
+        return {
+          detected: true,
+          reason: `Oscillating cycle detected: ${pattern.join(" \u2192 ")}`
+        };
+      }
+    }
+    return { detected: false };
+  }
+  buildDecisionInstructions(issue, transitionConfig, previousOutcome, currentPhase, context) {
+    const builder = getDecisionPromptBuilder();
+    return builder.buildDecisionInstructions(issue, transitionConfig.capability, previousOutcome, currentPhase, transitionConfig.prompt, transitionConfig.allowed_destinations, context);
+  }
+  parseDecisionResponse(response, transitionConfig) {
+    const builder = getDecisionPromptBuilder();
+    const parsedResponse = builder.parseDecisionResponse(response, transitionConfig.allowed_destinations, transitionConfig.confidence_thresholds);
+    if (!parsedResponse) {
+      console.error("Failed to parse decision response");
+      return {
+        action: "require_approval",
+        reasoning: "Failed to parse AI decision response",
+        confidence: 0,
+        requires_approval: true
+      };
+    }
+    const validation = builder.validateResponse(response, transitionConfig.allowed_destinations, transitionConfig.confidence_thresholds);
+    if (validation.warnings && validation.warnings.length > 0) {
+      console.warn("Decision response warnings:", validation.warnings.join(", "));
+    }
+    let targetPhase;
+    if (parsedResponse.decision.startsWith("jump_to_")) {
+      targetPhase = parsedResponse.decision.replace("jump_to_", "");
+    } else if (parsedResponse.decision.startsWith("advance_to_")) {
+      targetPhase = parsedResponse.decision.replace("advance_to_", "");
+    }
+    return {
+      action: parsedResponse.decision,
+      target_phase: targetPhase,
+      reasoning: parsedResponse.reasoning,
+      confidence: parsedResponse.confidence,
+      requires_approval: parsedResponse.decision === "require_approval" || parsedResponse.confidence < (transitionConfig.confidence_thresholds?.require_approval || 0.6),
+      recommendations: parsedResponse.recommendations
+    };
+  }
+  validateTransition(policyName, currentPhase, transition) {
+    if (transition.type === "jump_back") {
+      const targetPhase = transition.jump_target_phase || transition.next_phase;
+      if (!targetPhase) {
+        throw new Error("jump_back transition requires jump_target_phase or next_phase");
+      }
+      const policy = this.getPolicy(policyName);
+      if (!policy) {
+        throw new Error(`Policy '${policyName}' not found`);
+      }
+      const phaseExists = policy.phases.some((p) => p.name === targetPhase);
+      if (!phaseExists) {
+        throw new Error(`Target phase '${targetPhase}' not found in policy '${policyName}'`);
+      }
+      if (targetPhase === currentPhase) {
+        throw new Error(`Cannot jump from phase '${currentPhase}' to itself`);
+      }
+    }
+    if (transition.type === "dynamic_decision") {
+      if (!transition.dynamic_agent) {
+        throw new Error("dynamic_decision transition requires dynamic_agent");
+      }
+      const agentRegistry = getAgentRegistry();
+      const agents = agentRegistry.getAgentsByCapability(transition.dynamic_agent);
+      const activeAgents = agents.filter((agent) => agent.active !== false);
+      if (activeAgents.length === 0) {
+        throw new Error(`No active agents found with capability '${transition.dynamic_agent}'`);
+      }
+    }
+  }
+}
+function getPolicyEngine(configPath) {
+  if (!defaultPolicyEngine) {
+    const defaultPath = configPath || getConfigPath("policies.yaml");
+    defaultPolicyEngine = new PolicyEngine(defaultPath);
+  }
+  return defaultPolicyEngine;
+}
+function validateHITLReason(reason, config) {
+  const hitlConfig = config || loadConfig().hitl;
+  if (!hitlConfig) {
+    return true;
+  }
+  const { predefined, allow_custom, custom_validation } = hitlConfig.allowed_reasons;
+  if (predefined.includes(reason)) {
+    return true;
+  }
+  if (allow_custom) {
+    switch (custom_validation) {
+      case "none":
+        return true;
+      case "alphanumeric":
+        return /^[a-z0-9]+$/i.test(reason);
+      case "alphanumeric-dash-underscore":
+      default:
+        return /^[a-z][a-z0-9_-]*$/i.test(reason);
+    }
+  }
+  return false;
+}
+var import_yaml4, defaultPolicyEngine = null;
+var init_policy = __esm(() => {
+  init_path_utils();
+  init_config();
+  init_agent_registry();
+  init_logging();
+  init_decision_builder();
+  import_yaml4 = __toESM(require_dist(), 1);
 });
 
 // src/core/policy-capability-validator.ts
@@ -8140,6 +9202,239 @@ var init_policy_capability_validator = __esm(() => {
   init_config();
   policyCapabilityValidator = new PolicyCapabilityValidator;
 });
+
+// src/core/archive-logger.ts
+var exports_archive_logger = {};
+__export(exports_archive_logger, {
+  ArchiveLogger: () => ArchiveLogger
+});
+import { Database as Database3 } from "bun:sqlite";
+import { existsSync as existsSync5, mkdirSync as mkdirSync3 } from "fs";
+import { join as join5 } from "path";
+
+class ArchiveLogger {
+  db;
+  constructor(dataDir) {
+    const dir = dataDir || join5(process.cwd(), ".agent-shepherd");
+    const archiveDir = join5(dir, "archive");
+    if (!existsSync5(archiveDir)) {
+      mkdirSync3(archiveDir, { recursive: true });
+    }
+    const archiveDbPath = join5(archiveDir, "archive.db");
+    this.db = new Database3(archiveDbPath);
+    this.initializeArchiveSchema();
+    this.db.run("PRAGMA journal_mode = WAL");
+    this.db.run("PRAGMA synchronous = NORMAL");
+    this.db.run("PRAGMA cache_size = -2000");
+    this.db.run("PRAGMA temp_store = MEMORY");
+    this.db.run("PRAGMA mmap_size = 268435456");
+  }
+  initializeArchiveSchema() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS runs_archive (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        policy_name TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        outcome TEXT,
+        metadata TEXT,
+        archived_at INTEGER NOT NULL,
+        retention_policy TEXT NOT NULL,
+        scheduled_delete_at INTEGER
+      )
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_id ON runs_archive(issue_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_agent_id ON runs_archive(agent_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_status ON runs_archive(status)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_phase_status ON runs_archive(issue_id, phase, status)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_phase_completed ON runs_archive(phase, completed_at)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_phase ON runs_archive(issue_id, phase)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_archived_at ON runs_archive(archived_at)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_scheduled_delete ON runs_archive(scheduled_delete_at)
+    `);
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS decisions_archive (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reasoning TEXT,
+        metadata TEXT,
+        FOREIGN KEY (run_id) REFERENCES runs_archive(id)
+      )
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_archive_run_id ON decisions_archive(run_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_archive_type ON decisions_archive(type)
+    `);
+  }
+  rowToRunRecord(row) {
+    return {
+      id: row.id,
+      issue_id: row.issue_id,
+      session_id: row.session_id,
+      agent_id: row.agent_id,
+      policy_name: row.policy_name,
+      phase: row.phase,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at || undefined,
+      outcome: row.outcome ? JSON.parse(row.outcome) : undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    };
+  }
+  rowToDecisionRecord(row) {
+    return {
+      id: row.id,
+      run_id: row.run_id,
+      timestamp: row.timestamp,
+      type: row.type,
+      decision: row.decision,
+      reasoning: row.reasoning || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    };
+  }
+  getRun(runId) {
+    const stmt = this.db.prepare("SELECT * FROM runs_archive WHERE id = ?");
+    const row = stmt.get(runId);
+    if (!row) {
+      return null;
+    }
+    return this.rowToRunRecord(row);
+  }
+  queryRuns(query) {
+    let sql = "SELECT * FROM runs_archive WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    sql += " ORDER BY created_at DESC";
+    if (query.limit) {
+      sql += " LIMIT ?";
+      params.push(query.limit);
+    }
+    if (query.offset) {
+      sql += " OFFSET ?";
+      params.push(query.offset);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToRunRecord(row));
+  }
+  getDecisions(runId) {
+    const stmt = this.db.prepare("SELECT * FROM decisions_archive WHERE run_id = ? ORDER BY timestamp ASC");
+    const rows = stmt.all(runId);
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+  getDecisionsForIssue(issueId, options) {
+    let sql = `
+      SELECT d.*
+      FROM decisions_archive d
+      INNER JOIN runs_archive r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+      ORDER BY d.timestamp DESC
+    `;
+    const params = [issueId];
+    if (options?.limit) {
+      sql += " LIMIT ?";
+      params.push(options.limit);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+  getPhaseRetryCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs_archive
+      WHERE issue_id = ? AND phase = ? AND status = 'failed'
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
+  getPhaseVisitCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs_archive
+      WHERE issue_id = ? AND phase = ?
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
+  getArchivedRuns() {
+    const stmt = this.db.prepare("SELECT * FROM runs_archive ORDER BY archived_at DESC");
+    const rows = stmt.all();
+    return rows.map((row) => this.rowToRunRecord(row));
+  }
+  getArchivedRunCount() {
+    const stmt = this.db.prepare("SELECT COUNT(*) as count FROM runs_archive");
+    const result = stmt.get();
+    return result?.count || 0;
+  }
+  getArchiveSize() {
+    const stmt = this.db.prepare("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()");
+    const result = stmt.get();
+    return result?.size || 0;
+  }
+  cleanupArchive(retentionDays) {
+    const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const stmt = this.db.prepare(`
+      SELECT id FROM runs_archive
+      WHERE scheduled_delete_at IS NOT NULL AND scheduled_delete_at <= ?
+    `);
+    const toDelete = stmt.all(cutoffTime);
+    let deletedCount = 0;
+    for (const row of toDelete) {
+      this.db.run("DELETE FROM decisions_archive WHERE run_id = ?", [row.id]);
+      this.db.run("DELETE FROM runs_archive WHERE id = ?", [row.id]);
+      deletedCount++;
+    }
+    this.db.run("VACUUM");
+    return deletedCount;
+  }
+  close() {
+    this.db.close();
+  }
+}
+var init_archive_logger = () => {};
 
 // ../node_modules/ajv/dist/compile/codegen/code.js
 var require_code = __commonJS((exports) => {
@@ -14611,8 +15906,8 @@ __export(exports_config_validator, {
   configValidator: () => configValidator,
   ConfigurationValidator: () => ConfigurationValidator
 });
-import { readFileSync as readFileSync5, existsSync as existsSync4 } from "fs";
-import { join as join4 } from "path";
+import { readFileSync as readFileSync7, existsSync as existsSync8 } from "fs";
+import { join as join9 } from "path";
 
 class ConfigurationValidator {
   ajv;
@@ -14626,9 +15921,9 @@ class ConfigurationValidator {
   }
   async validateConfig(configPath, schemaPath) {
     try {
-      const configContent = readFileSync5(configPath, "utf-8");
+      const configContent = readFileSync7(configPath, "utf-8");
       const config = JSON.parse(configContent);
-      const schemaContent = readFileSync5(schemaPath, "utf-8");
+      const schemaContent = readFileSync7(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const validate = this.ajv.compile(schema);
       const valid = validate(config);
@@ -14674,13 +15969,13 @@ class ConfigurationValidator {
       }
     ];
     for (const task of validationTasks) {
-      const configPath = join4(baseDir, task.config);
+      const configPath = join9(baseDir, task.config);
       const localAgentShepherdDir = (await Promise.resolve().then(() => (init_path_utils(), exports_path_utils))).findAgentShepherdDir();
-      let schemaPath = join4(localAgentShepherdDir, task.schema);
-      if (!existsSync4(schemaPath)) {
-        schemaPath = join4(installDir, task.schema);
+      let schemaPath = join9(localAgentShepherdDir, task.schema);
+      if (!existsSync8(schemaPath)) {
+        schemaPath = join9(installDir, task.schema);
       }
-      if (!existsSync4(configPath)) {
+      if (!existsSync8(configPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -14694,7 +15989,7 @@ class ConfigurationValidator {
         });
         continue;
       }
-      if (!existsSync4(schemaPath)) {
+      if (!existsSync8(schemaPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -14745,10 +16040,10 @@ class ConfigurationValidator {
   }
   async validateYAMLConfig(yamlPath, schemaPath) {
     try {
-      const yamlContent = readFileSync5(yamlPath, "utf-8");
+      const yamlContent = readFileSync7(yamlPath, "utf-8");
       const { parse } = await Promise.resolve().then(() => __toESM(require_dist(), 1));
       const config = parse(yamlContent);
-      const schemaContent = readFileSync5(schemaPath, "utf-8");
+      const schemaContent = readFileSync7(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const validate = this.ajv.compile(schema);
       const valid = validate(config);
@@ -33147,7 +34442,7 @@ var require_view = __commonJS((exports, module) => {
   var dirname2 = path.dirname;
   var basename = path.basename;
   var extname = path.extname;
-  var join5 = path.join;
+  var join10 = path.join;
   var resolve = path.resolve;
   module.exports = View;
   function View(name, options) {
@@ -33209,12 +34504,12 @@ var require_view = __commonJS((exports, module) => {
   };
   View.prototype.resolve = function resolve(dir, file) {
     var ext = this.ext;
-    var path2 = join5(dir, file);
+    var path2 = join10(dir, file);
     var stat = tryStat(path2);
     if (stat && stat.isFile()) {
       return path2;
     }
-    path2 = join5(dir, basename(file, ext), "index" + ext);
+    path2 = join10(dir, basename(file, ext), "index" + ext);
     stat = tryStat(path2);
     if (stat && stat.isFile()) {
       return path2;
@@ -36909,7 +38204,7 @@ var require_send = __commonJS((exports, module) => {
   var Stream = __require("stream");
   var util = __require("util");
   var extname = path.extname;
-  var join5 = path.join;
+  var join10 = path.join;
   var normalize = path.normalize;
   var resolve = path.resolve;
   var sep = path.sep;
@@ -37081,7 +38376,7 @@ var require_send = __commonJS((exports, module) => {
         return res;
       }
       parts = path2.split(sep);
-      path2 = normalize(join5(root, path2));
+      path2 = normalize(join10(root, path2));
     } else {
       if (UP_PATH_REGEXP.test(path2)) {
         debug('malicious path "%s"', path2);
@@ -37221,7 +38516,7 @@ var require_send = __commonJS((exports, module) => {
           return self.onStatError(err);
         return self.error(404);
       }
-      var p = join5(path2, self._index[i]);
+      var p = join10(path2, self._index[i]);
       debug('stat "%s"', p);
       fs.stat(p, function(err2, stat) {
         if (err2)
@@ -38129,8 +39424,8 @@ var exports_ui_server = {};
 __export(exports_ui_server, {
   UIServer: () => UIServer
 });
-import { join as join5, dirname as dirname2, resolve } from "path";
-import { readFileSync as readFileSync6, existsSync as existsSync5 } from "fs";
+import { join as join10, dirname as dirname2, resolve } from "path";
+import { readFileSync as readFileSync8, existsSync as existsSync9 } from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
@@ -38144,8 +39439,8 @@ class UIServer {
     this.setupRoutes();
   }
   async ensureUIBuilt() {
-    const distDir = join5(PROJECT_ROOT, "dist");
-    if (!existsSync5(join5(distDir, "AgentShepherdFlow.js"))) {
+    const distDir = join10(PROJECT_ROOT, "dist");
+    if (!existsSync9(join10(distDir, "AgentShepherdFlow.js"))) {
       console.log("Building UI...");
       return new Promise((resolve2, reject) => {
         const build = spawn("bun", ["run", "build:ui"], {
@@ -38170,7 +39465,7 @@ class UIServer {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
       next();
     });
-    const isDev = existsSync5(join5(PROJECT_ROOT, "package.json"));
+    const isDev = existsSync9(join10(PROJECT_ROOT, "package.json"));
     if (isDev) {
       this.ensureUIBuilt().catch((err) => {
         console.error("Failed to build UI:", err);
@@ -38238,14 +39533,14 @@ class UIServer {
     });
     this.app.get("/", (_req, res) => {
       try {
-        const filePath = join5(UI_DIR, "index.html");
+        const filePath = join10(UI_DIR, "index.html");
         console.log("Serving dashboard from:", filePath);
-        if (!existsSync5(filePath)) {
+        if (!existsSync9(filePath)) {
           console.error("index.html not found at:", filePath);
           res.status(404).send("index.html not found");
           return;
         }
-        const content = readFileSync6(filePath, "utf8");
+        const content = readFileSync8(filePath, "utf8");
         res.setHeader("Content-Type", "text/html");
         res.send(content);
       } catch (error) {
@@ -38299,8 +39594,8 @@ var init_ui_server = __esm(() => {
     resolve(process.cwd(), ".agent-shepherd"),
     process.cwd()
   ];
-  PROJECT_ROOT = possibleRoots.find((root) => existsSync5(join5(root, "src", "ui", "index.html"))) || possibleRoots[0];
-  UI_DIR = join5(PROJECT_ROOT, "src", "ui");
+  PROJECT_ROOT = possibleRoots.find((root) => existsSync9(join10(root, "src", "ui", "index.html"))) || possibleRoots[0];
+  UI_DIR = join10(PROJECT_ROOT, "src", "ui");
 });
 
 // src/core/policy-tree-visualizer.ts
@@ -38766,6 +40061,223 @@ class OpenCodeClient {
     } catch {}
     return;
   }
+  safeGet(obj, path, defaultValue) {
+    try {
+      const keys = path.split(".");
+      let result = obj;
+      for (const key of keys) {
+        if (result && typeof result === "object" && key in result) {
+          result = result[key];
+        } else {
+          return defaultValue;
+        }
+      }
+      return result;
+    } catch {
+      return defaultValue;
+    }
+  }
+  parseRunOutput(stdout, stderr) {
+    const outcome = {
+      success: true,
+      artifacts: [],
+      tool_calls: [],
+      warnings: [],
+      metrics: {},
+      messages: [],
+      raw_output: {
+        stdout,
+        stderr
+      }
+    };
+    const parseLine = (line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    };
+    const processEvent = (event) => {
+      if (!event)
+        return;
+      const payload = event.payload || event.properties;
+      switch (event.type) {
+        case "session.created":
+        case "session.updated":
+          if (this.safeGet(payload, "info.id")) {
+            outcome.session_id = this.safeGet(payload, "info.id");
+          }
+          break;
+        case "session.status":
+          if (this.safeGet(payload, "status.type") === "retry") {
+            outcome.warnings?.push(`Session retry: ${this.safeGet(payload, "status.message", "")} (attempt ${this.safeGet(payload, "status.attempt", 0)})`);
+          }
+          break;
+        case "session.error":
+          outcome.success = false;
+          outcome.error = this.safeGet(payload, "error.message", "Session error occurred");
+          if (this.safeGet(payload, "error")) {
+            outcome.error_details = {
+              type: this.safeGet(payload, "error.name", "SessionError"),
+              message: this.safeGet(payload, "error.message"),
+              stack_trace: this.safeGet(payload, "error.stack"),
+              code: this.safeGet(payload, "error.code"),
+              context: this.safeGet(payload, "error.context")
+            };
+          }
+          break;
+        case "message.updated": {
+          const role = this.safeGet(payload, "info.role");
+          if (role === "assistant" || role === "user") {
+            const msg = payload.info;
+            if (role === "assistant") {
+              if (this.safeGet(msg, "time.created")) {
+                outcome.metrics.start_time_ms = this.safeGet(msg, "time.created");
+              }
+              if (this.safeGet(msg, "time.completed")) {
+                outcome.metrics.end_time_ms = this.safeGet(msg, "time.completed");
+              }
+              if (this.safeGet(msg, "tokens")) {
+                outcome.metrics.tokens_used = (this.safeGet(msg, "tokens.input", 0) || 0) + (this.safeGet(msg, "tokens.output", 0) || 0);
+                const tokens = this.safeGet(msg, "tokens");
+                if (tokens && tokens.cache) {
+                  outcome.metrics.cache_reads = this.safeGet(tokens, "cache.read", 0) || 0;
+                  outcome.metrics.cache_writes = this.safeGet(tokens, "cache.write", 0) || 0;
+                }
+              }
+              if (this.safeGet(msg, "cost")) {
+                outcome.metrics.cost = this.safeGet(msg, "cost");
+              }
+              const modelID = this.safeGet(msg, "modelID");
+              const providerID = this.safeGet(msg, "providerID");
+              if (modelID && providerID) {
+                outcome.metrics.model_name = `${providerID}/${modelID}`;
+              }
+              if (this.safeGet(msg, "error")) {
+                outcome.success = false;
+                outcome.error = this.safeGet(msg, "error.data.message", "Message error occurred");
+                outcome.error_details = {
+                  type: this.safeGet(msg, "error.name", "MessageError"),
+                  message: this.safeGet(msg, "error.data.message"),
+                  stack_trace: this.safeGet(msg, "error.data.stack"),
+                  file_path: this.safeGet(msg, "error.data.file_path"),
+                  line_number: this.safeGet(msg, "error.data.line_number"),
+                  code: this.safeGet(msg, "error.data.code")
+                };
+              }
+            }
+            const message = {
+              id: this.safeGet(msg, "id"),
+              role,
+              content: this.safeGet(msg, "content"),
+              timestamp: this.safeGet(msg, "time.created")
+            };
+            if (role === "assistant") {
+              message.tokens = {
+                input: this.safeGet(msg, "tokens.input"),
+                output: this.safeGet(msg, "tokens.output"),
+                reasoning: this.safeGet(msg, "tokens.reasoning"),
+                total: this.safeGet(msg, "tokens.total")
+              };
+            }
+            outcome.messages?.push(message);
+          }
+          break;
+        }
+        case "message.part.updated":
+          if (this.safeGet(payload, "part.type") === "tool") {
+            const part = payload.part;
+            const toolName = this.safeGet(part, "tool");
+            const toolCall = {
+              name: toolName || "",
+              inputs: this.safeGet(part, "state.input"),
+              status: this.safeGet(part, "state.status", "completed")
+            };
+            const status = this.safeGet(part, "state.status");
+            if (status === "completed") {
+              const output = this.safeGet(part, "state.output");
+              if (output) {
+                toolCall.outputs = output;
+              }
+            }
+            const timeObj = this.safeGet(part, "state.time");
+            if (timeObj) {
+              const start = this.safeGet(timeObj, "start", 0) || 0;
+              const end = this.safeGet(timeObj, "end", start) || start;
+              toolCall.duration_ms = end - start;
+            }
+            outcome.tool_calls?.push(toolCall);
+          }
+          break;
+        case "file.edited": {
+          if (this.safeGet(payload, "diff")) {
+            const filePath = this.safeGet(payload, "diff.file");
+            if (filePath) {
+              const artifact = {
+                path: filePath,
+                operation: "modified",
+                size: this.safeGet(payload, "diff.size"),
+                type: this.safeGet(payload, "diff.type")
+              };
+              const additions = this.safeGet(payload, "diff.additions", 0) || 0;
+              const deletions = this.safeGet(payload, "diff.deletions", 0) || 0;
+              if (additions > 0 || deletions > 0) {
+                artifact.operation = "modified";
+              }
+              outcome.artifacts?.push(artifact);
+            }
+          }
+          break;
+        }
+        case "permission.updated":
+          outcome.warnings?.push(`Permission required: ${this.safeGet(payload, "title", "")}`);
+          break;
+        case "command.executed": {
+          const timeObj = this.safeGet(payload, "time");
+          const startTime = this.safeGet(timeObj, "start");
+          const endTime = this.safeGet(timeObj, "end");
+          outcome.tool_calls?.push({
+            name: "bash",
+            inputs: { command: this.safeGet(payload, "command", "") },
+            outputs: this.safeGet(payload, "stdout"),
+            status: this.safeGet(payload, "exitCode", 0) === 0 ? "completed" : "error",
+            duration_ms: startTime !== undefined && endTime !== undefined ? endTime - startTime : undefined
+          });
+          break;
+        }
+      }
+    };
+    const lines = stdout.split(`
+`);
+    for (const line of lines) {
+      if (line.trim()) {
+        const event = parseLine(line);
+        if (event) {
+          processEvent(event);
+        }
+      }
+    }
+    const stderrLines = stderr.split(`
+`);
+    for (const line of stderrLines) {
+      if (line.trim()) {
+        const event = parseLine(line);
+        if (event) {
+          processEvent(event);
+        }
+      }
+    }
+    if (outcome.metrics.start_time_ms && outcome.metrics.end_time_ms) {
+      outcome.metrics.duration_ms = outcome.metrics.end_time_ms - outcome.metrics.start_time_ms;
+    }
+    if (outcome.tool_calls && outcome.tool_calls.length > 0) {
+      outcome.metrics.api_calls_count = outcome.tool_calls.length;
+    }
+    if (!outcome.error && outcome.success === false) {
+      outcome.error = "Agent execution failed";
+    }
+    return outcome;
+  }
   async createSession() {
     throw new Error("Use runAgentCLI() instead - SDK methods not implemented");
   }
@@ -38794,255 +40306,7 @@ function getOpenCodeClient(config) {
 // src/core/worker-engine.ts
 init_policy();
 init_agent_registry();
-
-// src/core/logging.ts
-import { Database } from "bun:sqlite";
-import { appendFileSync, existsSync as existsSync3, mkdirSync, readFileSync as readFileSync4 } from "fs";
-import { join as join3 } from "path";
-
-class Logger {
-  db;
-  jsonlPath;
-  decisionsPath;
-  constructor(dataDir) {
-    const dir = dataDir || join3(process.cwd(), ".agent-shepherd");
-    if (!existsSync3(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
-    this.jsonlPath = join3(dir, "runs.jsonl");
-    this.decisionsPath = join3(dir, "decisions.jsonl");
-    const dbPath = join3(dir, "runs.db");
-    this.db = new Database(dbPath);
-    this.initializeSchema();
-    this.syncFromJSONL();
-  }
-  initializeSchema() {
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS runs (
-        id TEXT PRIMARY KEY,
-        issue_id TEXT NOT NULL,
-        session_id TEXT NOT NULL,
-        agent_id TEXT NOT NULL,
-        policy_name TEXT NOT NULL,
-        phase TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        completed_at INTEGER,
-        outcome TEXT,
-        metadata TEXT
-      )
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_issue_id ON runs(issue_id)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_agent_id ON runs(agent_id)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase_status ON runs(issue_id, phase, status)
-    `);
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS decisions (
-        id TEXT PRIMARY KEY,
-        run_id TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        decision TEXT NOT NULL,
-        reasoning TEXT,
-        metadata TEXT,
-        FOREIGN KEY (run_id) REFERENCES runs(id)
-      )
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_decisions_run_id ON decisions(run_id)
-    `);
-  }
-  syncFromJSONL() {
-    if (!existsSync3(this.jsonlPath)) {
-      return;
-    }
-    const content = readFileSync4(this.jsonlPath, "utf-8");
-    const lines = content.trim().split(`
-`);
-    for (const line of lines) {
-      if (!line.trim())
-        continue;
-      try {
-        const record = JSON.parse(line);
-        this.upsertToSQLite(record);
-      } catch (error) {
-        console.error("Failed to parse JSONL line:", error);
-      }
-    }
-    if (existsSync3(this.decisionsPath)) {
-      const decisionsContent = readFileSync4(this.decisionsPath, "utf-8");
-      const decisionLines = decisionsContent.trim().split(`
-`);
-      for (const line of decisionLines) {
-        if (!line.trim())
-          continue;
-        try {
-          const decision = JSON.parse(line);
-          this.upsertDecisionToSQLite(decision);
-        } catch (error) {
-          console.error("Failed to parse decision JSONL line:", error);
-        }
-      }
-    }
-  }
-  upsertToSQLite(record) {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO runs (
-        id, issue_id, session_id, agent_id, policy_name, phase,
-        status, created_at, updated_at, completed_at, outcome, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(record.id, record.issue_id, record.session_id, record.agent_id, record.policy_name, record.phase, record.status, record.created_at, record.updated_at, record.completed_at || null, record.outcome ? JSON.stringify(record.outcome) : null, record.metadata ? JSON.stringify(record.metadata) : null);
-  }
-  upsertDecisionToSQLite(decision) {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO decisions (
-        id, run_id, timestamp, type, decision, reasoning, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(decision.id, decision.run_id, decision.timestamp, decision.type, decision.decision, decision.reasoning || null, decision.metadata ? JSON.stringify(decision.metadata) : null);
-  }
-  createRun(record) {
-    const now = Date.now();
-    const fullRecord = {
-      ...record,
-      created_at: now,
-      updated_at: now
-    };
-    appendFileSync(this.jsonlPath, JSON.stringify(fullRecord) + `
-`);
-    this.upsertToSQLite(fullRecord);
-    return fullRecord;
-  }
-  updateRun(runId, updates) {
-    const existing = this.getRun(runId);
-    if (!existing) {
-      return null;
-    }
-    const updated = {
-      ...existing,
-      ...updates,
-      updated_at: Date.now()
-    };
-    appendFileSync(this.jsonlPath, JSON.stringify(updated) + `
-`);
-    this.upsertToSQLite(updated);
-    return updated;
-  }
-  getRun(runId) {
-    const stmt = this.db.prepare("SELECT * FROM runs WHERE id = ?");
-    const row = stmt.get(runId);
-    if (!row) {
-      return null;
-    }
-    return this.rowToRunRecord(row);
-  }
-  queryRuns(query) {
-    let sql = "SELECT * FROM runs WHERE 1=1";
-    const params = [];
-    if (query.issue_id) {
-      sql += " AND issue_id = ?";
-      params.push(query.issue_id);
-    }
-    if (query.agent_id) {
-      sql += " AND agent_id = ?";
-      params.push(query.agent_id);
-    }
-    if (query.status) {
-      sql += " AND status = ?";
-      params.push(query.status);
-    }
-    if (query.phase) {
-      sql += " AND phase = ?";
-      params.push(query.phase);
-    }
-    sql += " ORDER BY created_at DESC";
-    if (query.limit) {
-      sql += " LIMIT ?";
-      params.push(query.limit);
-    }
-    if (query.offset) {
-      sql += " OFFSET ?";
-      params.push(query.offset);
-    }
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params);
-    return rows.map((row) => this.rowToRunRecord(row));
-  }
-  getPhaseRetryCount(issueId, phaseName) {
-    const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count
-      FROM runs
-      WHERE issue_id = ? AND phase = ? AND status = 'failed'
-    `);
-    const result = stmt.get(issueId, phaseName);
-    return result?.count || 0;
-  }
-  logDecision(decision) {
-    const fullDecision = {
-      ...decision,
-      id: `decision-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-      timestamp: Date.now()
-    };
-    appendFileSync(this.decisionsPath, JSON.stringify(fullDecision) + `
-`);
-    this.upsertDecisionToSQLite(fullDecision);
-    return fullDecision;
-  }
-  getDecisions(runId) {
-    const stmt = this.db.prepare("SELECT * FROM decisions WHERE run_id = ? ORDER BY timestamp ASC");
-    const rows = stmt.all(runId);
-    return rows.map((row) => this.rowToDecisionRecord(row));
-  }
-  rowToRunRecord(row) {
-    return {
-      id: row.id,
-      issue_id: row.issue_id,
-      session_id: row.session_id,
-      agent_id: row.agent_id,
-      policy_name: row.policy_name,
-      phase: row.phase,
-      status: row.status,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      completed_at: row.completed_at || undefined,
-      outcome: row.outcome ? JSON.parse(row.outcome) : undefined,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
-    };
-  }
-  rowToDecisionRecord(row) {
-    return {
-      id: row.id,
-      run_id: row.run_id,
-      timestamp: row.timestamp,
-      type: row.type,
-      decision: row.decision,
-      reasoning: row.reasoning || undefined,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
-    };
-  }
-  close() {
-    this.db.close();
-  }
-}
-var defaultLogger = null;
-function getLogger(dataDir) {
-  if (!defaultLogger) {
-    defaultLogger = new Logger(dataDir);
-  }
-  return defaultLogger;
-}
-
-// src/core/worker-engine.ts
+init_logging();
 init_config();
 
 class WorkerEngine {
@@ -39052,6 +40316,8 @@ class WorkerEngine {
   opencode = getOpenCodeClient();
   logger = getLogger();
   isRunning = false;
+  currentRunId = null;
+  currentPhase = null;
   constructor(config) {
     this.config = {
       poll_interval_ms: 30000,
@@ -39130,6 +40396,8 @@ class WorkerEngine {
     console.log(`Selected agent: ${agent.name} (${agent.id})`);
     const retryCount = this.logger.getPhaseRetryCount(issue.id, phase);
     const runId = `run-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    this.currentRunId = runId;
+    this.currentPhase = phase;
     this.logger.logDecision({
       run_id: runId,
       type: "agent_selection",
@@ -39142,6 +40410,7 @@ class WorkerEngine {
       }
     });
     const attemptNumber = retryCount + 1;
+    const previousPhaseTotal = this.logger.getPhaseTotalDuration(issue.id, phase);
     const run = this.logger.createRun({
       id: runId,
       issue_id: issue.id,
@@ -39152,18 +40421,39 @@ class WorkerEngine {
       status: "pending",
       metadata: {
         attempt_number: attemptNumber,
-        retry_count: retryCount
+        retry_count: retryCount,
+        phase_total_duration_ms: previousPhaseTotal
       }
     });
     await updateIssue(issue.id, { status: "in_progress" });
     let outcome;
+    let sessionId;
     try {
-      outcome = await this.launchAgent(issue, agent.id, phase, policy);
-      this.logger.updateRun(run.id, {
+      const launchResult = await this.launchAgent(run.id, issue, agent.id, phase, policy);
+      outcome = launchResult.outcome;
+      sessionId = launchResult.sessionId;
+      const updateData = {
         status: outcome.success ? "completed" : "failed",
         outcome,
         completed_at: Date.now()
-      });
+      };
+      const currentPhaseTotal = run.metadata?.phase_total_duration_ms || 0;
+      const currentDuration = outcome.metrics?.duration_ms || 0;
+      if (sessionId) {
+        updateData.metadata = {
+          ...run.metadata,
+          session_id: sessionId,
+          phase_total_duration_ms: currentPhaseTotal + currentDuration,
+          ...launchResult.metadata
+        };
+      } else {
+        updateData.metadata = {
+          ...run.metadata,
+          phase_total_duration_ms: currentPhaseTotal + currentDuration,
+          ...launchResult.metadata
+        };
+      }
+      this.logger.updateRun(run.id, updateData);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       outcome = {
@@ -39176,17 +40466,19 @@ class WorkerEngine {
         completed_at: Date.now()
       });
     }
-    const transition = this.policyEngine.determineTransition(policy, phase, {
+    const transition = await this.policyEngine.determineTransition(policy, phase, {
       success: outcome.success,
       retry_count: retryCount,
       requires_approval: outcome.requires_approval
-    });
+    }, issue.id);
     this.logger.logDecision({
       run_id: run.id,
       type: "phase_transition",
       decision: transition.type,
       reasoning: transition.reason,
       metadata: {
+        from_phase: phase,
+        to_phase: transition.next_phase,
         next_phase: transition.next_phase,
         outcome
       }
@@ -39200,7 +40492,8 @@ class WorkerEngine {
       next_phase: transition.next_phase
     };
   }
-  async launchAgent(issue, agentId, phase, policy) {
+  async launchAgent(runId, issue, agentId, phase, policy) {
+    const startTimestamp = Date.now();
     const agent = this.agentRegistry.getAgent(agentId);
     if (!agent) {
       throw new Error(`Agent ${agentId} not found in registry`);
@@ -39225,17 +40518,71 @@ class WorkerEngine {
       model: modelToUse,
       message: instructions
     });
+    const endTimestamp = Date.now();
+    const wallClockDurationMs = endTimestamp - startTimestamp;
     if (!result.success) {
       console.error(`Agent execution failed: ${result.error}`);
       return {
-        success: false,
-        error: result.error || "Agent execution failed"
+        outcome: {
+          success: false,
+          error: result.error || "Agent execution failed",
+          metrics: {
+            duration_ms: wallClockDurationMs,
+            start_time_ms: startTimestamp,
+            end_time_ms: endTimestamp
+          }
+        },
+        sessionId: result.sessionId
       };
     }
     console.log(`Agent execution completed successfully`);
+    const parsedOutcome = this.opencode.parseRunOutput(result.output, result.error || "");
+    if (!parsedOutcome.success) {
+      console.error(`Agent execution reported failure: ${parsedOutcome.error}`);
+    }
+    const policyTimeout = this.policyEngine.calculateTimeout(policy, phase);
+    const actualDuration = parsedOutcome.metrics?.duration_ms || wallClockDurationMs;
+    let timeoutReason;
+    if (actualDuration > policyTimeout) {
+      timeoutReason = `Execution exceeded timeout of ${policyTimeout}ms (actual: ${actualDuration}ms)`;
+      console.warn(timeoutReason);
+      parsedOutcome.success = false;
+      parsedOutcome.error = timeoutReason;
+      this.logger.logDecision({
+        run_id: runId,
+        type: "timeout",
+        decision: "timeout_exceeded",
+        reasoning: timeoutReason,
+        metadata: {
+          timeout_threshold_ms: policyTimeout,
+          actual_duration_ms: actualDuration,
+          phase
+        }
+      });
+    }
+    const outcome = {
+      success: parsedOutcome.success,
+      message: parsedOutcome.message || "Task completed by agent",
+      artifacts: parsedOutcome.artifacts?.map((a) => a.path) || [],
+      error: parsedOutcome.error,
+      error_details: parsedOutcome.error_details,
+      warnings: parsedOutcome.warnings,
+      tool_calls: parsedOutcome.tool_calls,
+      metrics: {
+        ...parsedOutcome.metrics,
+        duration_ms: actualDuration,
+        start_time_ms: parsedOutcome.metrics?.start_time_ms || startTimestamp,
+        end_time_ms: parsedOutcome.metrics?.end_time_ms || endTimestamp
+      }
+    };
+    const metadata = {
+      messages: parsedOutcome.messages,
+      raw_cli_output: parsedOutcome.raw_output
+    };
     return {
-      success: true,
-      message: "Task completed by agent"
+      outcome,
+      sessionId: parsedOutcome.session_id || result.sessionId,
+      metadata
     };
   }
   buildInstructions(issue, phase, policy) {
@@ -39300,7 +40647,130 @@ ${phaseConfig?.require_approval ? `
         await clearHITLLabels(issueId);
         console.log(`Closed issue: ${transition.reason}`);
         break;
+      case "jump_back": {
+        await updateIssue(issueId, { status: "open" });
+        const targetPhase = transition.jump_target_phase || transition.next_phase;
+        if (targetPhase) {
+          await setPhaseLabel(issueId, targetPhase);
+          await clearHITLLabels(issueId);
+          console.log(`Jumped back to phase: ${targetPhase}`);
+        }
+        break;
+      }
+      case "dynamic_decision": {
+        try {
+          const finalTransition = await this.executeDecisionAgent(issueId, transition);
+          await this.applyTransition(issueId, finalTransition);
+          console.log(`Dynamic decision resulted in: ${finalTransition.type}`);
+        } catch (error) {
+          console.error(`Dynamic decision failed: ${error}`);
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          await updateIssue(issueId, { status: "blocked" });
+          if (validateHITLReason("manual-intervention", loadConfig().hitl)) {
+            await setHITLLabel(issueId, "manual-intervention");
+            await this.generateApprovalNote(issueId, "manual-intervention", `Dynamic decision failed: ${errorMsg}`);
+          }
+        }
+        break;
+      }
     }
+  }
+  async executeDecisionAgent(issueId, transition) {
+    console.log(`Executing decision agent ${transition.dynamic_agent} for issue ${issueId}`);
+    const agent = this.agentRegistry.selectAgent({
+      required_capabilities: [transition.dynamic_agent || ""],
+      tags: ["decision"]
+    });
+    if (!agent) {
+      throw new Error(`No decision agent found with capability: ${transition.dynamic_agent}`);
+    }
+    const issue = await getIssue(issueId);
+    if (!issue) {
+      throw new Error(`Issue ${issueId} not found`);
+    }
+    const run = this.logger.getRun(this.currentRunId || "");
+    if (!run || !run.outcome) {
+      throw new Error(`No run found with ID ${this.currentRunId}`);
+    }
+    const maxRetries = 2;
+    let lastError;
+    for (let attempt = 0;attempt <= maxRetries; attempt++) {
+      let instructions = this.policyEngine.buildDecisionInstructions(issue, transition.decision_config, run.outcome, this.currentPhase || "");
+      if (attempt > 0) {
+        console.log(`Retry attempt ${attempt}/${maxRetries} for decision agent`);
+        instructions = instructions + `
+
+Note: Previous attempts failed. Please provide a clearer, more explicit decision following the required format.`;
+      }
+      const result = await this.opencode.runAgentCLI({
+        directory: process.cwd(),
+        title: `Decision: ${transition.dynamic_agent}${attempt > 0 ? ` (Attempt ${attempt})` : ""}`,
+        agent: agent.id,
+        message: instructions
+      });
+      if (!result.success) {
+        lastError = `Decision agent execution failed: ${result.error}`;
+        console.error(lastError);
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(lastError);
+      }
+      const decision = this.policyEngine.parseDecisionResponse(result.output, transition.decision_config);
+      if (!decision) {
+        lastError = `Failed to parse decision response`;
+        console.error(lastError);
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          continue;
+        }
+        return {
+          type: "block",
+          reason: `Decision requires approval: Failed to parse AI response after ${attempt + 1} attempts. Last error: ${lastError}`
+        };
+      }
+      this.logger.logDecision({
+        run_id: this.currentRunId || "",
+        type: "dynamic_decision",
+        decision: decision.action,
+        reasoning: decision.reasoning,
+        metadata: {
+          decision_agent_id: agent.id,
+          capability: transition.dynamic_agent,
+          prompt: transition.decision_config.prompt,
+          allowed_destinations: transition.decision_config.allowed_destinations,
+          confidence_thresholds: transition.decision_config.confidence_thresholds,
+          confidence: decision.confidence,
+          target_phase: decision.target_phase,
+          requires_approval: decision.requires_approval,
+          issue_id: issue.id,
+          from_phase: this.currentPhase,
+          raw_response: result.output,
+          parsed_decision: decision,
+          attempt_number: attempt + 1,
+          max_attempts: maxRetries + 1
+        }
+      });
+      if (decision.requires_approval) {
+        return {
+          type: "block",
+          reason: `Decision requires approval: ${decision.reasoning}`
+        };
+      } else if (decision.target_phase) {
+        return {
+          type: decision.action.startsWith("jump_to_") ? "jump_back" : "advance",
+          next_phase: decision.target_phase,
+          reason: decision.reasoning
+        };
+      } else {
+        return {
+          type: "close",
+          reason: decision.reasoning
+        };
+      }
+    }
+    throw new Error(`Decision agent failed after ${maxRetries + 1} attempts: ${lastError}`);
   }
   async generateApprovalNote(issueId, reason, details) {
     const note = `\uD83D\uDD14 HITL Required: ${reason}
@@ -39320,6 +40790,7 @@ function getWorkerEngine(config) {
 }
 
 // src/core/monitor-engine.ts
+init_logging();
 init_policy();
 class MonitorEngine {
   config;
@@ -39494,11 +40965,1442 @@ function getMonitorEngine(config) {
 // src/cli/index.ts
 init_path_utils();
 init_policy_capability_validator();
-import { existsSync as existsSync6, mkdirSync as mkdirSync2, writeFileSync as writeFileSync2, readdirSync, readFileSync as readFileSync7, cpSync, rmSync } from "fs";
-import { join as join6 } from "path";
+import { existsSync as existsSync10, mkdirSync as mkdirSync4, writeFileSync as writeFileSync3, readdirSync, readFileSync as readFileSync9, cpSync, rmSync } from "fs";
+import { join as join11 } from "path";
 import path from "path";
 import { execSync } from "child_process";
 import { homedir as homedir2, platform } from "os";
+
+// src/core/cleanup-engine.ts
+init_config();
+
+// src/core/garbage-collector.ts
+init_logging();
+import { Database as Database2 } from "bun:sqlite";
+import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync6, writeFileSync as writeFileSync2 } from "fs";
+import { join as join4 } from "path";
+
+// src/core/retention-policy.ts
+init_logging();
+
+class RetentionPolicyManager {
+  policies = new Map;
+  metrics = [];
+  maxMetricsHistory = 1000;
+  logger;
+  constructor(policies, logger) {
+    this.logger = logger || getLogger();
+    for (const policy of policies) {
+      if (policy.enabled) {
+        this.policies.set(policy.name, policy);
+      }
+    }
+  }
+  getPolicies() {
+    return Array.from(this.policies.values());
+  }
+  getPolicy(name) {
+    return this.policies.get(name) || null;
+  }
+  shouldArchiveRun(runData, outcome) {
+    const now = Date.now();
+    const ageMs = now - runData.created_at;
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    for (const policy of this.policies.values()) {
+      if (!policy.archive_enabled) {
+        continue;
+      }
+      const archiveAfterDays = policy.archive_after_days || policy.age_days;
+      if (ageDays >= archiveAfterDays) {
+        if (this.matchesPolicy(runData, outcome, policy)) {
+          return { shouldArchive: true, policy };
+        }
+      }
+    }
+    return { shouldArchive: false };
+  }
+  shouldDeleteRun(runData, outcome) {
+    const now = Date.now();
+    const ageMs = now - runData.created_at;
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    for (const policy of this.policies.values()) {
+      if (policy.delete_after_days && ageDays >= policy.delete_after_days) {
+        if (this.matchesPolicy(runData, outcome, policy)) {
+          return { shouldDelete: true, policy };
+        }
+      }
+    }
+    return { shouldDelete: false };
+  }
+  matchesPolicy(runData, outcome, policy) {
+    if (policy.status_filter && policy.status_filter.length > 0) {
+      if (!policy.status_filter.includes(runData.status)) {
+        return false;
+      }
+    }
+    if (policy.phase_filter && policy.phase_filter.length > 0) {
+      if (!policy.phase_filter.includes(runData.phase)) {
+        return false;
+      }
+    }
+    if (policy.keep_successful_runs === true && outcome && outcome.success) {
+      return false;
+    }
+    if (policy.keep_failed_runs === false && outcome && !outcome.success) {
+      return true;
+    }
+    return true;
+  }
+  needsCleanup(totalRuns, totalSizeBytes) {
+    const totalSizeMB = totalSizeBytes / (1024 * 1024);
+    for (const policy of this.policies.values()) {
+      if (policy.max_runs && totalRuns > policy.max_runs) {
+        return {
+          needsCleanup: true,
+          reason: `Exceeds max_runs limit (${totalRuns} > ${policy.max_runs})`,
+          policy
+        };
+      }
+      if (policy.max_size_mb && totalSizeMB > policy.max_size_mb) {
+        return {
+          needsCleanup: true,
+          reason: `Exceeds max_size_mb limit (${totalSizeMB.toFixed(2)}MB > ${policy.max_size_mb}MB)`,
+          policy
+        };
+      }
+    }
+    return { needsCleanup: false };
+  }
+  recordMetrics(metrics) {
+    this.metrics.push(metrics);
+    if (this.metrics.length > this.maxMetricsHistory) {
+      this.metrics.shift();
+    }
+    this.logger.logDecision({
+      run_id: "system",
+      type: "dynamic_decision",
+      decision: "retention_policy_executed",
+      reasoning: `Cleanup completed: ${metrics.operation} - ${metrics.runs_archived} archived, ${metrics.runs_deleted} deleted`,
+      metadata: {
+        metrics
+      }
+    });
+  }
+  getMetrics(options) {
+    let filtered = this.metrics;
+    if (options?.policy_name) {
+      filtered = filtered.filter((m) => m.policy_name === options.policy_name);
+    }
+    if (options?.operation) {
+      filtered = filtered.filter((m) => m.operation === options.operation);
+    }
+    if (options && "since" in options) {
+      const since = options.since;
+      if (since !== undefined) {
+        filtered = filtered.filter((m) => m.timestamp >= since);
+      }
+    }
+    filtered.sort((a, b) => b.timestamp - a.timestamp);
+    if (options?.limit) {
+      return filtered.slice(0, options.limit);
+    }
+    return filtered;
+  }
+  getAggregateMetrics() {
+    if (this.metrics.length === 0) {
+      return {
+        total_runs_processed: 0,
+        total_runs_archived: 0,
+        total_runs_deleted: 0,
+        total_bytes_archived: 0,
+        total_bytes_deleted: 0,
+        last_cleanup: null,
+        average_duration_ms: 0
+      };
+    }
+    const totalRunsProcessed = this.metrics.reduce((sum, m) => sum + m.runs_processed, 0);
+    const totalRunsArchived = this.metrics.reduce((sum, m) => sum + m.runs_archived, 0);
+    const totalRunsDeleted = this.metrics.reduce((sum, m) => sum + m.runs_deleted, 0);
+    const totalBytesArchived = this.metrics.reduce((sum, m) => sum + m.bytes_archived, 0);
+    const totalBytesDeleted = this.metrics.reduce((sum, m) => sum + m.bytes_deleted, 0);
+    const averageDuration = this.metrics.reduce((sum, m) => sum + m.duration_ms, 0) / this.metrics.length;
+    return {
+      total_runs_processed: totalRunsProcessed,
+      total_runs_archived: totalRunsArchived,
+      total_runs_deleted: totalRunsDeleted,
+      total_bytes_archived: totalBytesArchived,
+      total_bytes_deleted: totalBytesDeleted,
+      last_cleanup: Math.max(...this.metrics.map((m) => m.timestamp)),
+      average_duration_ms: Math.round(averageDuration)
+    };
+  }
+}
+var defaultManager = null;
+function getRetentionPolicyManager(policies, logger) {
+  if (!defaultManager) {
+    defaultManager = new RetentionPolicyManager(policies, logger);
+  }
+  return defaultManager;
+}
+
+// src/core/garbage-collector.ts
+class GarbageCollector {
+  logger = getLogger();
+  archiveDb;
+  archiveJsonlPath;
+  dataDir;
+  policyManager;
+  isClosed = false;
+  constructor(config) {
+    this.dataDir = config.dataDir || join4(process.cwd(), ".agent-shepherd");
+    this.policyManager = getRetentionPolicyManager(config.policies);
+    const archiveDir = join4(this.dataDir, "archive");
+    if (!existsSync4(archiveDir)) {
+      mkdirSync2(archiveDir, { recursive: true });
+    }
+    const archiveDbPath = join4(archiveDir, "archive.db");
+    this.archiveDb = new Database2(archiveDbPath);
+    this.initializeArchiveSchema();
+    this.archiveJsonlPath = join4(archiveDir, "archive.jsonl");
+  }
+  initializeArchiveSchema() {
+    this.archiveDb.run(`
+      CREATE TABLE IF NOT EXISTS runs_archive (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        policy_name TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        outcome TEXT,
+        metadata TEXT,
+        archived_at INTEGER NOT NULL,
+        retention_policy TEXT NOT NULL,
+        scheduled_delete_at INTEGER
+      )
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_id ON runs_archive(issue_id)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_agent_id ON runs_archive(agent_id)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_status ON runs_archive(status)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_phase_status ON runs_archive(issue_id, phase, status)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_phase_completed ON runs_archive(phase, completed_at)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_phase ON runs_archive(issue_id, phase)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_archived_at ON runs_archive(archived_at)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_scheduled_delete ON runs_archive(scheduled_delete_at)
+    `);
+    this.archiveDb.run(`
+      CREATE TABLE IF NOT EXISTS decisions_archive (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reasoning TEXT,
+        metadata TEXT,
+        FOREIGN KEY (run_id) REFERENCES runs_archive(id)
+      )
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_archive_run_id ON decisions_archive(run_id)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_archive_type ON decisions_archive(type)
+    `);
+    this.archiveDb.run(`
+      CREATE TABLE IF NOT EXISTS cleanup_metrics (
+        id TEXT PRIMARY KEY,
+        timestamp INTEGER NOT NULL,
+        policy_name TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        runs_processed INTEGER NOT NULL,
+        runs_archived INTEGER NOT NULL,
+        runs_deleted INTEGER NOT NULL,
+        bytes_archived INTEGER NOT NULL,
+        bytes_deleted INTEGER NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        error TEXT
+      )
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_cleanup_metrics_timestamp ON cleanup_metrics(timestamp)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_cleanup_metrics_policy ON cleanup_metrics(policy_name)
+    `);
+    this.archiveDb.run(`
+      CREATE INDEX IF NOT EXISTS idx_cleanup_metrics_operation ON cleanup_metrics(operation)
+    `);
+  }
+  getAllRuns() {
+    return this.logger.queryRuns({});
+  }
+  calculateRunSize(run) {
+    return JSON.stringify(run).length * 2;
+  }
+  persistMetrics(metrics) {
+    try {
+      if (this.isClosed) {
+        console.warn("Cannot persist metrics: database is closed");
+        return;
+      }
+      const id = `cleanup-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      this.archiveDb.run(`
+         INSERT INTO cleanup_metrics (
+           id, timestamp, policy_name, operation,
+           runs_processed, runs_archived, runs_deleted,
+           bytes_archived, bytes_deleted, duration_ms, error
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       `, [
+        id,
+        metrics.timestamp,
+        metrics.policy_name,
+        metrics.operation,
+        metrics.runs_processed,
+        metrics.runs_archived,
+        metrics.runs_deleted,
+        metrics.bytes_archived,
+        metrics.bytes_deleted,
+        metrics.duration_ms,
+        metrics.error || null
+      ]);
+    } catch (error) {
+      console.error("Failed to persist cleanup metrics:", error);
+    }
+  }
+  async archiveOldRuns() {
+    const startTime = Date.now();
+    const metrics = {
+      timestamp: startTime,
+      policy_name: "all",
+      operation: "archive",
+      runs_processed: 0,
+      runs_archived: 0,
+      runs_deleted: 0,
+      bytes_archived: 0,
+      bytes_deleted: 0,
+      duration_ms: 0
+    };
+    try {
+      const runs = this.getAllRuns();
+      metrics.runs_processed = runs.length;
+      for (const run of runs) {
+        const { shouldArchive, policy } = this.policyManager.shouldArchiveRun(run, run.outcome);
+        if (shouldArchive && policy) {
+          const success = await this.archiveRun(run, policy);
+          if (success) {
+            metrics.runs_archived++;
+            metrics.bytes_archived += this.calculateRunSize(run);
+          }
+        }
+      }
+      metrics.duration_ms = Date.now() - startTime;
+      this.persistMetrics(metrics);
+      return { success: true, metrics };
+    } catch (error) {
+      const errorStr = error instanceof Error ? error.message : String(error);
+      metrics.error = errorStr;
+      metrics.duration_ms = Date.now() - startTime;
+      this.persistMetrics(metrics);
+      return { success: false, metrics, error: errorStr };
+    }
+  }
+  async archiveRun(run, policy) {
+    try {
+      this.archiveDb.run(`
+        INSERT OR REPLACE INTO runs_archive (
+          id, issue_id, session_id, agent_id, policy_name,
+          phase, status, created_at, updated_at, completed_at,
+          outcome, metadata, archived_at, retention_policy, scheduled_delete_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        run.id,
+        run.issue_id,
+        run.session_id,
+        run.agent_id,
+        run.policy_name,
+        run.phase,
+        run.status,
+        run.created_at,
+        run.updated_at,
+        run.completed_at || null,
+        run.outcome ? JSON.stringify(run.outcome) : null,
+        run.metadata ? JSON.stringify(run.metadata) : null,
+        Date.now(),
+        policy.name,
+        policy.delete_after_days ? Date.now() + policy.delete_after_days * 24 * 60 * 60 * 1000 : null
+      ]);
+      const decisions = this.logger.getDecisions(run.id);
+      for (const decision of decisions) {
+        this.archiveDb.run(`
+          INSERT OR REPLACE INTO decisions_archive (
+            id, run_id, timestamp, type, decision, reasoning, metadata
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [
+          decision.id,
+          decision.run_id,
+          decision.timestamp,
+          decision.type,
+          decision.decision,
+          decision.reasoning || null,
+          decision.metadata ? JSON.stringify(decision.metadata) : null
+        ]);
+      }
+      const archiveRecord = {
+        id: run.id,
+        archived_at: Date.now(),
+        retention_policy: policy.name
+      };
+      const archiveLine = JSON.stringify(archiveRecord) + `
+`;
+      writeFileSync2(this.archiveJsonlPath, archiveLine, { flag: "a" });
+      this.deleteRunFromMain(run.id);
+      return true;
+    } catch (error) {
+      console.error(`Failed to archive run ${run.id}:`, error);
+      return false;
+    }
+  }
+  async deleteAncientData() {
+    const startTime = Date.now();
+    const metrics = {
+      timestamp: startTime,
+      policy_name: "all",
+      operation: "delete",
+      runs_processed: 0,
+      runs_archived: 0,
+      runs_deleted: 0,
+      bytes_archived: 0,
+      bytes_deleted: 0,
+      duration_ms: 0
+    };
+    try {
+      const now = Date.now();
+      const archivedRunsStmt = this.archiveDb.prepare("SELECT * FROM runs_archive WHERE scheduled_delete_at IS NOT NULL AND scheduled_delete_at <= ?");
+      const archivedRuns = archivedRunsStmt.all(now);
+      for (const archivedRun of archivedRuns) {
+        this.archiveDb.run("DELETE FROM runs_archive WHERE id = ?", [
+          archivedRun.id
+        ]);
+        this.archiveDb.run("DELETE FROM decisions_archive WHERE run_id = ?", [archivedRun.id]);
+        metrics.runs_deleted++;
+        metrics.bytes_deleted += this.calculateRunSize(archivedRun);
+      }
+      const runs = this.getAllRuns();
+      metrics.runs_processed = runs.length;
+      for (const run of runs) {
+        const { shouldDelete, policy } = this.policyManager.shouldDeleteRun(run, run.outcome);
+        if (shouldDelete && policy) {
+          this.deleteRunFromMain(run.id);
+          metrics.runs_deleted++;
+          metrics.bytes_deleted += this.calculateRunSize(run);
+        }
+      }
+      metrics.duration_ms = Date.now() - startTime;
+      this.persistMetrics(metrics);
+      return { success: true, metrics };
+    } catch (error) {
+      const errorStr = error instanceof Error ? error.message : String(error);
+      metrics.error = errorStr;
+      metrics.duration_ms = Date.now() - startTime;
+      this.persistMetrics(metrics);
+      return { success: false, metrics, error: errorStr };
+    }
+  }
+  deleteRunFromMain(runId) {
+    this.logger.deleteRun(runId);
+    const decisionsPath = join4(this.dataDir, "decisions.jsonl");
+    if (existsSync4(decisionsPath)) {
+      const content = readFileSync6(decisionsPath, "utf-8");
+      const lines = content.trim().split(`
+`);
+      const filteredLines = lines.filter((line) => {
+        if (!line.trim())
+          return true;
+        try {
+          const decision = JSON.parse(line);
+          return decision.run_id !== runId;
+        } catch {
+          return true;
+        }
+      });
+      writeFileSync2(decisionsPath, filteredLines.join(`
+`) + `
+`);
+    }
+  }
+  async enforceSizeLimits() {
+    const startTime = Date.now();
+    const metrics = {
+      timestamp: startTime,
+      policy_name: "size_limits",
+      operation: "cleanup",
+      runs_processed: 0,
+      runs_archived: 0,
+      runs_deleted: 0,
+      bytes_archived: 0,
+      bytes_deleted: 0,
+      duration_ms: 0
+    };
+    try {
+      const runs = this.getAllRuns();
+      metrics.runs_processed = runs.length;
+      let totalSize = 0;
+      for (const run of runs) {
+        totalSize += this.calculateRunSize(run);
+      }
+      const { needsCleanup, policy } = this.policyManager.needsCleanup(runs.length, totalSize);
+      if (needsCleanup && policy) {
+        if (policy.max_runs && runs.length > policy.max_runs) {
+          const toRemove = runs.length - policy.max_runs;
+          const sortedByAge = [...runs].sort((a, b) => a.created_at - b.created_at);
+          for (let i = 0;i < toRemove; i++) {
+            const run = sortedByAge[i];
+            if (policy.archive_enabled) {
+              const success = await this.archiveRun(run, policy);
+              if (success) {
+                metrics.runs_archived++;
+                metrics.bytes_archived += this.calculateRunSize(run);
+              }
+            } else {
+              this.deleteRunFromMain(run.id);
+              metrics.runs_deleted++;
+              metrics.bytes_deleted += this.calculateRunSize(run);
+            }
+          }
+        }
+        if (policy.max_size_mb) {
+          const maxSizeBytes = policy.max_size_mb * 1024 * 1024;
+          const sortedByAge = [...runs].sort((a, b) => a.created_at - b.created_at);
+          let currentSize = totalSize;
+          for (const run of sortedByAge) {
+            if (currentSize <= maxSizeBytes)
+              break;
+            const runSize = this.calculateRunSize(run);
+            if (policy.archive_enabled) {
+              const success = await this.archiveRun(run, policy);
+              if (success) {
+                metrics.runs_archived++;
+                metrics.bytes_archived += runSize;
+                currentSize -= runSize;
+              }
+            } else {
+              this.deleteRunFromMain(run.id);
+              metrics.runs_deleted++;
+              metrics.bytes_deleted += runSize;
+              currentSize -= runSize;
+            }
+          }
+        }
+      }
+      metrics.duration_ms = Date.now() - startTime;
+      this.persistMetrics(metrics);
+      return { success: true, metrics };
+    } catch (error) {
+      const errorStr = error instanceof Error ? error.message : String(error);
+      metrics.error = errorStr;
+      metrics.duration_ms = Date.now() - startTime;
+      this.persistMetrics(metrics);
+      return { success: false, metrics, error: errorStr };
+    }
+  }
+  async runFullCleanup() {
+    const results = [];
+    if (this.policyManager.getPolicies().length === 0) {
+      return results;
+    }
+    const archiveResult = await this.archiveOldRuns();
+    results.push(archiveResult);
+    const deleteResult = await this.deleteAncientData();
+    results.push(deleteResult);
+    const sizeResult = await this.enforceSizeLimits();
+    results.push(sizeResult);
+    return results;
+  }
+  close() {
+    if (!this.isClosed) {
+      this.isClosed = true;
+      this.archiveDb.close();
+    }
+  }
+}
+var defaultCollector = null;
+function getGarbageCollector(config) {
+  if (!defaultCollector) {
+    defaultCollector = new GarbageCollector(config);
+  }
+  return defaultCollector;
+}
+function resetCollector() {
+  if (defaultCollector) {
+    defaultCollector.close();
+    defaultCollector = null;
+  }
+}
+
+// src/core/cleanup-health-check.ts
+init_logging();
+import { Database as Database4 } from "bun:sqlite";
+import { existsSync as existsSync6, statSync } from "fs";
+import { join as join6 } from "path";
+
+class CleanupHealthChecker {
+  dataDir;
+  logger;
+  config;
+  constructor(config = {}) {
+    this.dataDir = config.dataDir || join6(process.cwd(), ".agent-shepherd");
+    this.logger = getLogger(this.dataDir);
+    this.config = {
+      run_vacuum: config.run_vacuum ?? true,
+      check_integrity: config.check_integrity ?? true,
+      check_queries: config.check_queries ?? true,
+      check_archive: config.check_archive ?? true,
+      ...config
+    };
+  }
+  async runHealthChecks() {
+    const checks = [];
+    if (this.config.check_integrity) {
+      checks.push(await this.checkDatabaseIntegrity());
+    }
+    if (this.config.check_queries) {
+      checks.push(await this.checkQueryFunctionality());
+    }
+    if (this.config.check_archive) {
+      checks.push(await this.checkArchiveAccessibility());
+      checks.push(await this.checkArchiveConsistency());
+    }
+    checks.push(await this.checkSizeReduction());
+    checks.push(await this.checkIndexHealth());
+    if (this.config.run_vacuum) {
+      checks.push(await this.runVacuumOptimization());
+    }
+    const passedChecks = checks.filter((c) => c.passed).length;
+    const failedChecksCount = checks.filter((c) => !c.passed && c.message.includes("Critical")).length;
+    const warningChecksCount = checks.filter((c) => !c.passed && !c.message.includes("Critical")).length;
+    let overallHealth = "healthy";
+    if (failedChecksCount > 0) {
+      overallHealth = "critical";
+    } else if (warningChecksCount > 0) {
+      overallHealth = "warning";
+    }
+    const report = {
+      timestamp: Date.now(),
+      overall_health: overallHealth,
+      checks,
+      summary: {
+        total_checks: checks.length,
+        passed_checks: passedChecks,
+        failed_checks: failedChecksCount,
+        warning_checks: warningChecksCount
+      }
+    };
+    return report;
+  }
+  async checkDatabaseIntegrity() {
+    const dbPath = join6(this.dataDir, "runs.db");
+    if (!existsSync6(dbPath)) {
+      return {
+        check_name: "Database Integrity",
+        passed: true,
+        message: "Database file does not exist (not an error)",
+        timestamp: Date.now()
+      };
+    }
+    const db = new Database4(dbPath);
+    try {
+      const integrityResult = db.prepare("PRAGMA integrity_check").get();
+      db.close();
+      const isOk = integrityResult.integrity_check === "ok";
+      return {
+        check_name: "Database Integrity",
+        passed: isOk,
+        message: isOk ? "Database integrity check passed" : `Database integrity check failed: ${JSON.stringify(integrityResult)}`,
+        details: { integrity_result: integrityResult },
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      db.close();
+      return {
+        check_name: "Database Integrity",
+        passed: false,
+        message: `Critical: Database integrity check failed with error: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: Date.now()
+      };
+    }
+  }
+  async checkQueryFunctionality() {
+    try {
+      this.logger.queryRuns({ limit: 1 });
+      this.logger.queryRuns({ status: "completed" });
+      this.logger.queryRuns({ issue_id: "test-issue" });
+      return {
+        check_name: "Query Functionality",
+        passed: true,
+        message: "All test queries executed successfully",
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      return {
+        check_name: "Query Functionality",
+        passed: false,
+        message: `Critical: Query functionality check failed: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: Date.now()
+      };
+    }
+  }
+  async checkArchiveAccessibility() {
+    const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
+    try {
+      const archiveLogger = new ArchiveLogger2(this.dataDir);
+      archiveLogger.queryRuns({ limit: 1 });
+      const archivedRunCount = archiveLogger.getArchivedRunCount();
+      const archiveSize = archiveLogger.getArchiveSize();
+      archiveLogger.close();
+      return {
+        check_name: "Archive Accessibility",
+        passed: true,
+        message: "Archive database is accessible",
+        details: {
+          archived_run_count: archivedRunCount,
+          archive_size_bytes: archiveSize
+        },
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      return {
+        check_name: "Archive Accessibility",
+        passed: false,
+        message: `Critical: Archive accessibility check failed: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: Date.now()
+      };
+    }
+  }
+  async checkArchiveConsistency() {
+    const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
+    try {
+      const archiveLogger = new ArchiveLogger2(this.dataDir);
+      const dbPath = join6(this.dataDir, "archive", "archive.db");
+      if (!existsSync6(dbPath)) {
+        archiveLogger.close();
+        return {
+          check_name: "Archive Consistency",
+          passed: true,
+          message: "Archive database does not exist (not an error)",
+          timestamp: Date.now()
+        };
+      }
+      const db = new Database4(dbPath);
+      const integrityResult = db.prepare("PRAGMA integrity_check").get();
+      const foreignKeyCheck = db.prepare("PRAGMA foreign_key_check").get();
+      db.close();
+      archiveLogger.close();
+      const integrityOk = integrityResult.integrity_check === "ok";
+      const foreignKeysOk = !Array.isArray(foreignKeyCheck) || foreignKeyCheck.length === 0;
+      const passed = integrityOk && foreignKeysOk;
+      return {
+        check_name: "Archive Consistency",
+        passed,
+        message: passed ? "Archive database consistency check passed" : "Critical: Archive database consistency check failed",
+        details: {
+          integrity_ok: integrityOk,
+          foreign_keys_ok: foreignKeysOk,
+          integrity_result: integrityResult,
+          foreign_key_result: foreignKeyCheck
+        },
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      return {
+        check_name: "Archive Consistency",
+        passed: false,
+        message: `Critical: Archive consistency check failed: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: Date.now()
+      };
+    }
+  }
+  async checkSizeReduction() {
+    const dbPath = join6(this.dataDir, "runs.db");
+    if (!existsSync6(dbPath)) {
+      return {
+        check_name: "Size Reduction",
+        passed: true,
+        message: "Database file does not exist (not an error)",
+        timestamp: Date.now()
+      };
+    }
+    try {
+      const fileSize = statSync(dbPath).size;
+      const fileSizeMb = fileSize / 1048576;
+      const db = new Database4(dbPath);
+      const pageCountResult = db.prepare("PRAGMA page_count").get();
+      const pageSizeResult = db.prepare("PRAGMA page_size").get();
+      const pageCount = pageCountResult.page_count;
+      const pageSize = pageSizeResult.page_size;
+      const expectedSize = pageCount * pageSize;
+      const sizeDifference = Math.abs(fileSize - expectedSize);
+      const sizeDifferencePercent = sizeDifference / fileSize * 100;
+      const freePagesResult = db.prepare("PRAGMA freelist_count").get();
+      const freePages = freePagesResult.freelist_count;
+      const wastedSpace = freePages * pageSize;
+      const wastedSpacePercent = wastedSpace / fileSize * 100;
+      db.close();
+      const passed = sizeDifferencePercent < 5;
+      return {
+        check_name: "Size Reduction",
+        passed,
+        message: passed ? `Database size is reasonable (${fileSizeMb.toFixed(2)}MB)` : `Warning: Database size difference is ${sizeDifferencePercent.toFixed(2)}% (${(sizeDifference / 1048576).toFixed(2)}MB)`,
+        details: {
+          file_size_bytes: fileSize,
+          file_size_mb: fileSizeMb.toFixed(2),
+          expected_size_bytes: expectedSize,
+          size_difference_bytes: sizeDifference,
+          size_difference_percent: sizeDifferencePercent.toFixed(2),
+          free_pages: freePages,
+          wasted_space_bytes: wastedSpace,
+          wasted_space_percent: wastedSpacePercent.toFixed(2)
+        },
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      return {
+        check_name: "Size Reduction",
+        passed: false,
+        message: `Critical: Size reduction check failed: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: Date.now()
+      };
+    }
+  }
+  async checkIndexHealth() {
+    const dbPath = join6(this.dataDir, "runs.db");
+    if (!existsSync6(dbPath)) {
+      return {
+        check_name: "Index Health",
+        passed: true,
+        message: "Database file does not exist (not an error)",
+        timestamp: Date.now()
+      };
+    }
+    try {
+      const db = new Database4(dbPath);
+      const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'").all();
+      const indexStats = [];
+      for (const index of indexes) {
+        const stats = db.prepare(`PRAGMA index_xinfo(${index.name})`).all();
+        const indexInfo = db.prepare(`PRAGMA index_info(${index.name})`).all();
+        indexStats.push({
+          name: index.name,
+          size: stats.length,
+          scans: indexInfo.length
+        });
+      }
+      db.close();
+      return {
+        check_name: "Index Health",
+        passed: true,
+        message: `All ${indexes.length} indexes are present and functional`,
+        details: {
+          index_count: indexes.length,
+          indexes: indexStats
+        },
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      return {
+        check_name: "Index Health",
+        passed: false,
+        message: `Critical: Index health check failed: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: Date.now()
+      };
+    }
+  }
+  async runVacuumOptimization() {
+    const dbPath = join6(this.dataDir, "runs.db");
+    if (!existsSync6(dbPath)) {
+      return {
+        check_name: "Vacuum Optimization",
+        passed: true,
+        message: "Database file does not exist (not an error)",
+        timestamp: Date.now()
+      };
+    }
+    try {
+      const sizeBefore = statSync(dbPath).size;
+      const db = new Database4(dbPath);
+      db.run("VACUUM");
+      db.close();
+      const sizeAfter = statSync(dbPath).size;
+      const sizeSaved = sizeBefore - sizeAfter;
+      const sizeSavedPercent = sizeSaved / sizeBefore * 100;
+      return {
+        check_name: "Vacuum Optimization",
+        passed: true,
+        message: `Vacuum completed: ${(sizeSaved / 1048576).toFixed(2)}MB freed (${sizeSavedPercent.toFixed(2)}% reduction)`,
+        details: {
+          size_before_bytes: sizeBefore,
+          size_after_bytes: sizeAfter,
+          size_saved_bytes: sizeSaved,
+          size_saved_percent: sizeSavedPercent.toFixed(2)
+        },
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      return {
+        check_name: "Vacuum Optimization",
+        passed: false,
+        message: `Warning: Vacuum optimization failed: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: Date.now()
+      };
+    }
+  }
+}
+var defaultHealthChecker = null;
+function getHealthChecker(config) {
+  if (!defaultHealthChecker) {
+    defaultHealthChecker = new CleanupHealthChecker(config);
+  }
+  return defaultHealthChecker;
+}
+function resetHealthChecker() {
+  defaultHealthChecker = null;
+}
+
+// src/core/cleanup-engine.ts
+import { join as join7 } from "path";
+
+class CleanupEngine {
+  config;
+  collector = null;
+  isRunning = false;
+  cleanupInterval = null;
+  lastCleanupTime = 0;
+  dataDir;
+  constructor(config) {
+    const fullConfig = loadConfig();
+    const cleanupIntervalMs = fullConfig.cleanup?.schedule_interval_hours ? fullConfig.cleanup.schedule_interval_hours * 3600000 : 3600000;
+    this.config = {
+      dataDir: config?.dataDir,
+      runOnStartup: config?.runOnStartup ?? fullConfig.cleanup?.run_on_startup ?? false,
+      cleanupInterval: config?.cleanupInterval ?? cleanupIntervalMs,
+      cleanupConfig: fullConfig.cleanup ? {
+        enabled: fullConfig.cleanup.enabled,
+        run_on_startup: fullConfig.cleanup.run_on_startup,
+        archive_on_startup: fullConfig.cleanup.archive_on_startup ?? false,
+        delete_on_startup: fullConfig.cleanup.delete_on_startup ?? false,
+        schedule_interval_hours: fullConfig.cleanup.schedule_interval_hours ?? 24
+      } : undefined,
+      retentionConfig: fullConfig.retention ? {
+        enabled: fullConfig.retention.enabled,
+        policies: fullConfig.retention.policies || []
+      } : undefined,
+      ...config
+    };
+    this.dataDir = this.config.dataDir || join7(process.cwd(), ".agent-shepherd");
+    if (this.config.retentionConfig?.enabled && this.config.retentionConfig.policies.length > 0) {
+      this.collector = getGarbageCollector({
+        dataDir: this.config.dataDir,
+        policies: this.config.retentionConfig.policies,
+        archiveEnabled: this.config.retentionConfig.policies.some((p) => p.archive_enabled) ?? false
+      });
+    }
+  }
+  async start() {
+    if (!this.config.retentionConfig?.enabled) {
+      console.log("Cleanup Engine: retention policies disabled, skipping startup");
+      return;
+    }
+    if (!this.collector) {
+      console.warn("Cleanup Engine: no garbage collector initialized");
+      return;
+    }
+    this.isRunning = true;
+    console.log("Cleanup Engine started");
+    if (this.config.runOnStartup) {
+      await this.runStartupCleanup();
+    }
+    this.startScheduledCleanup();
+  }
+  stop() {
+    this.isRunning = false;
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    console.log("Cleanup Engine stopped");
+  }
+  async runHealthChecks(cleanupType) {
+    try {
+      console.log("Running health checks after cleanup...");
+      const healthChecker = getHealthChecker({ dataDir: this.dataDir });
+      const report = await healthChecker.runHealthChecks();
+      const allPassed = report.checks.every((check) => check.passed);
+      if (allPassed) {
+        console.log(`Health checks passed after ${cleanupType} cleanup`);
+      } else {
+        console.warn(`Health check warnings after ${cleanupType} cleanup:`);
+        for (const check of report.checks) {
+          if (!check.passed) {
+            console.warn(`  - ${check.check_name}: ${check.message}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Health check failed:", error instanceof Error ? error.message : String(error));
+    }
+  }
+  async runStartupCleanup() {
+    if (!this.collector) {
+      console.warn("Startup cleanup: no garbage collector available");
+      return;
+    }
+    console.log("Running startup cleanup...");
+    const startTime = Date.now();
+    try {
+      const results = await this.collector.runFullCleanup();
+      for (const result of results) {
+        if (result.success) {
+          console.log(`Startup cleanup ${result.metrics.operation} completed: ${result.metrics.runs_archived} archived, ${result.metrics.runs_deleted} deleted (${result.metrics.duration_ms}ms)`);
+        } else {
+          console.error(`Startup cleanup ${result.metrics.operation} failed: ${result.error}`);
+        }
+      }
+      const duration = Date.now() - startTime;
+      console.log(`Startup cleanup completed in ${duration}ms`);
+      this.lastCleanupTime = Date.now();
+      await this.runHealthChecks("startup");
+    } catch (error) {
+      console.error("Startup cleanup error:", error);
+    }
+  }
+  startScheduledCleanup() {
+    if (!this.config.cleanupInterval || this.config.cleanupInterval <= 0) {
+      console.log("Scheduled cleanup: disabled (no interval set)");
+      return;
+    }
+    console.log(`Scheduled cleanup: running every ${this.config.cleanupInterval}ms`);
+    this.cleanupInterval = setInterval(async () => {
+      if (!this.isRunning) {
+        return;
+      }
+      await this.runScheduledCleanup();
+    }, this.config.cleanupInterval);
+  }
+  async runScheduledCleanup() {
+    if (!this.collector) {
+      console.warn("Scheduled cleanup: no garbage collector available");
+      return;
+    }
+    const now = Date.now();
+    const timeSinceLastCleanup = now - this.lastCleanupTime;
+    const minCleanupInterval = Math.max(this.config.cleanupInterval || 0, 60000);
+    if (timeSinceLastCleanup < minCleanupInterval) {
+      console.log(`Scheduled cleanup skipped: last run was ${timeSinceLastCleanup}ms ago (minimum: ${minCleanupInterval}ms)`);
+      return;
+    }
+    console.log("Running scheduled cleanup...");
+    const startTime = Date.now();
+    try {
+      const results = await this.collector.runFullCleanup();
+      for (const result of results) {
+        if (result.success) {
+          console.log(`Scheduled cleanup ${result.metrics.operation} completed: ${result.metrics.runs_archived} archived, ${result.metrics.runs_deleted} deleted (${result.metrics.duration_ms}ms)`);
+        } else {
+          console.error(`Scheduled cleanup ${result.metrics.operation} failed: ${result.error}`);
+        }
+      }
+      const duration = Date.now() - startTime;
+      console.log(`Scheduled cleanup completed in ${duration}ms`);
+      this.lastCleanupTime = Date.now();
+      await this.runHealthChecks("scheduled");
+    } catch (error) {
+      console.error("Scheduled cleanup error:", error);
+    }
+  }
+  async runImmediateCleanup() {
+    if (!this.collector) {
+      return {
+        success: false,
+        results: [],
+        duration: 0
+      };
+    }
+    const startTime = Date.now();
+    try {
+      const results = await this.collector.runFullCleanup();
+      await this.runHealthChecks("immediate");
+      return {
+        success: true,
+        results,
+        duration: Date.now() - startTime
+      };
+    } catch (error) {
+      console.error("Immediate cleanup error:", error);
+      return {
+        success: false,
+        results: [],
+        duration: Date.now() - startTime
+      };
+    }
+  }
+  async runCriticalCleanup() {
+    if (!this.collector) {
+      return {
+        success: false,
+        results: [],
+        duration: 0
+      };
+    }
+    const startTime = Date.now();
+    try {
+      console.log("Running critical cleanup (aggressive mode)...");
+      const results = await this.collector.runFullCleanup();
+      await this.runHealthChecks("critical");
+      const duration = Date.now() - startTime;
+      console.log(`Critical cleanup completed in ${duration}ms`);
+      return {
+        success: true,
+        results,
+        duration
+      };
+    } catch (error) {
+      console.error("Critical cleanup error:", error);
+      return {
+        success: false,
+        results: [],
+        duration: Date.now() - startTime
+      };
+    }
+  }
+  async runEmergencyCleanup() {
+    if (!this.collector) {
+      return {
+        success: false,
+        results: [],
+        duration: 0
+      };
+    }
+    const startTime = Date.now();
+    try {
+      console.log("Running emergency cleanup (maximum aggression mode)...");
+      const results = await this.collector.runFullCleanup();
+      await this.runHealthChecks("emergency");
+      const duration = Date.now() - startTime;
+      console.log(`Emergency cleanup completed in ${duration}ms`);
+      return {
+        success: true,
+        results,
+        duration
+      };
+    } catch (error) {
+      console.error("Emergency cleanup error:", error);
+      return {
+        success: false,
+        results: [],
+        duration: Date.now() - startTime
+      };
+    }
+  }
+  getMetrics(options) {
+    if (!this.collector) {
+      return [];
+    }
+    const policyManager = this.collector.policyManager;
+    return policyManager.getMetrics(options);
+  }
+  getAggregateMetrics() {
+    if (!this.collector) {
+      return {
+        total_runs_processed: 0,
+        total_runs_archived: 0,
+        total_runs_deleted: 0,
+        total_bytes_archived: 0,
+        total_bytes_deleted: 0,
+        last_cleanup: null,
+        average_duration_ms: 0
+      };
+    }
+    const policyManager = this.collector.policyManager;
+    return policyManager.getAggregateMetrics();
+  }
+  close() {
+    this.stop();
+    if (this.collector) {
+      this.collector.close();
+      resetCollector();
+    }
+  }
+}
+var defaultEngine = null;
+function getCleanupEngine(config) {
+  if (!defaultEngine) {
+    defaultEngine = new CleanupEngine(config);
+  }
+  return defaultEngine;
+}
+function resetCleanupEngine() {
+  if (defaultEngine) {
+    defaultEngine.close();
+    defaultEngine = null;
+  }
+}
+
+// src/core/size-monitor.ts
+init_logging();
+import { existsSync as existsSync7, statSync as statSync2 } from "fs";
+import { join as join8 } from "path";
+class SizeMonitor {
+  config;
+  logger;
+  cleanupEngine;
+  checkInterval = null;
+  isRunning = false;
+  sizeHistory = [];
+  maxHistoryLength = 100;
+  constructor(config = {}) {
+    this.logger = getLogger(config.dataDir);
+    this.cleanupEngine = getCleanupEngine({ dataDir: config.dataDir });
+    const fullConfig = {
+      dataDir: config.dataDir || join8(process.cwd(), ".agent-shepherd"),
+      check_interval_ms: config.check_interval_ms || 3600000,
+      warning_threshold_percent: config.warning_threshold_percent || 90,
+      critical_threshold_percent: config.critical_threshold_percent || 100,
+      emergency_threshold_percent: config.emergency_threshold_percent || 110,
+      max_size_mb: config.max_size_mb || 100,
+      max_file_size_mb: config.max_file_size_mb || 50,
+      alert_callback: config.alert_callback
+    };
+    this.config = fullConfig;
+  }
+  start() {
+    if (this.isRunning) {
+      console.warn("Size Monitor: already running");
+      return;
+    }
+    this.isRunning = true;
+    console.log("Size Monitor started");
+    this.checkSizes();
+    this.checkInterval = setInterval(() => {
+      if (!this.isRunning) {
+        return;
+      }
+      this.checkSizes();
+    }, this.config.check_interval_ms);
+  }
+  stop() {
+    this.isRunning = false;
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+    console.log("Size Monitor stopped");
+  }
+  async checkSizes() {
+    const metrics = await this.collectSizeMetrics();
+    this.sizeHistory.push(metrics);
+    if (this.sizeHistory.length > this.maxHistoryLength) {
+      this.sizeHistory.shift();
+    }
+    await this.checkThresholds(metrics);
+    return metrics;
+  }
+  async collectSizeMetrics() {
+    const dataDir = this.config.dataDir;
+    const activeDbPath = join8(dataDir, "runs.db");
+    const jsonlPath = join8(dataDir, "runs.jsonl");
+    const decisionsPath = join8(dataDir, "decisions.jsonl");
+    const archiveDbPath = join8(dataDir, "archive", "archive.db");
+    const archiveJsonlPath = join8(dataDir, "archive", "archive.jsonl");
+    const activeDbSize = existsSync7(activeDbPath) ? statSync2(activeDbPath).size : 0;
+    const jsonlSize = existsSync7(jsonlPath) ? statSync2(jsonlPath).size : 0;
+    const decisionsSize = existsSync7(decisionsPath) ? statSync2(decisionsPath).size : 0;
+    const archiveDbSize = existsSync7(archiveDbPath) ? statSync2(archiveDbPath).size : 0;
+    const archiveJsonlSize = existsSync7(archiveJsonlPath) ? statSync2(archiveJsonlPath).size : 0;
+    const totalSizeBytes = activeDbSize + jsonlSize + decisionsSize + archiveDbSize + archiveJsonlSize;
+    const runCount = this.logger.queryRuns({}).length;
+    const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
+    const archiveLogger = new ArchiveLogger2(this.config.dataDir);
+    const archiveRunCount = archiveLogger.getArchivedRunCount();
+    archiveLogger.close();
+    return {
+      active_db_size_bytes: activeDbSize,
+      archive_db_size_bytes: archiveDbSize,
+      jsonl_size_bytes: jsonlSize + decisionsSize,
+      archive_jsonl_size_bytes: archiveJsonlSize,
+      total_size_bytes: totalSizeBytes,
+      total_size_mb: totalSizeBytes / 1048576,
+      run_count: runCount,
+      archive_run_count: archiveRunCount,
+      timestamp: Date.now()
+    };
+  }
+  async checkThresholds(metrics) {
+    const maxSizeBytes = this.config.max_size_mb * 1024 * 1024;
+    const sizePercent = metrics.total_size_bytes / maxSizeBytes * 100;
+    if (sizePercent >= this.config.emergency_threshold_percent) {
+      const alert = {
+        severity: "emergency",
+        type: "size_limit",
+        message: `Emergency: Total database size (${metrics.total_size_mb.toFixed(2)}MB) exceeds ${this.config.emergency_threshold_percent}% of limit (${this.config.max_size_mb}MB)`,
+        current_value: metrics.total_size_mb,
+        threshold: this.config.max_size_mb,
+        unit: "MB",
+        timestamp: Date.now()
+      };
+      this.alert(alert);
+      console.error(`[EMERGENCY] ${alert.message}`);
+      await this.triggerEmergencyCleanup();
+    } else if (sizePercent >= this.config.critical_threshold_percent) {
+      const alert = {
+        severity: "critical",
+        type: "size_limit",
+        message: `Critical: Total database size (${metrics.total_size_mb.toFixed(2)}MB) exceeds ${this.config.critical_threshold_percent}% of limit (${this.config.max_size_mb}MB)`,
+        current_value: metrics.total_size_mb,
+        threshold: this.config.max_size_mb,
+        unit: "MB",
+        timestamp: Date.now()
+      };
+      this.alert(alert);
+      console.warn(`[CRITICAL] ${alert.message}`);
+      await this.triggerCriticalCleanup();
+    } else if (sizePercent >= this.config.warning_threshold_percent) {
+      const alert = {
+        severity: "warning",
+        type: "size_limit",
+        message: `Warning: Total database size (${metrics.total_size_mb.toFixed(2)}MB) exceeds ${this.config.warning_threshold_percent}% of limit (${this.config.max_size_mb}MB)`,
+        current_value: metrics.total_size_mb,
+        threshold: this.config.max_size_mb,
+        unit: "MB",
+        timestamp: Date.now()
+      };
+      this.alert(alert);
+      console.log(`[WARNING] ${alert.message}`);
+      await this.triggerScheduledCleanup();
+    }
+    if (this.config.max_file_size_mb) {
+      const maxFileSizeBytes = this.config.max_file_size_mb * 1024 * 1024;
+      if (metrics.active_db_size_bytes > maxFileSizeBytes) {
+        const alert = {
+          severity: "critical",
+          type: "file_size",
+          message: `Critical: Active database file size (${(metrics.active_db_size_bytes / 1048576).toFixed(2)}MB) exceeds limit (${this.config.max_file_size_mb}MB)`,
+          current_value: metrics.active_db_size_bytes / 1048576,
+          threshold: this.config.max_file_size_mb,
+          unit: "MB",
+          timestamp: Date.now()
+        };
+        this.alert(alert);
+      }
+      if (metrics.archive_db_size_bytes > maxFileSizeBytes) {
+        const alert = {
+          severity: "critical",
+          type: "file_size",
+          message: `Critical: Archive database file size (${(metrics.archive_db_size_bytes / 1048576).toFixed(2)}MB) exceeds limit (${this.config.max_file_size_mb}MB)`,
+          current_value: metrics.archive_db_size_bytes / 1048576,
+          threshold: this.config.max_file_size_mb,
+          unit: "MB",
+          timestamp: Date.now()
+        };
+        this.alert(alert);
+      }
+    }
+  }
+  alert(alert) {
+    if (this.config.alert_callback) {
+      this.config.alert_callback(alert);
+    }
+  }
+  async triggerScheduledCleanup() {
+    try {
+      await this.cleanupEngine.runScheduledCleanup();
+    } catch (error) {
+      console.error("Scheduled cleanup triggered by size monitor failed:", error);
+    }
+  }
+  async triggerCriticalCleanup() {
+    try {
+      await this.cleanupEngine.runCriticalCleanup();
+    } catch (error) {
+      console.error("Critical cleanup triggered by size monitor failed:", error);
+    }
+  }
+  async triggerEmergencyCleanup() {
+    try {
+      await this.cleanupEngine.runEmergencyCleanup();
+    } catch (error) {
+      console.error("Emergency cleanup triggered by size monitor failed:", error);
+    }
+  }
+  async getMetrics() {
+    return await this.collectSizeMetrics();
+  }
+  getHistory(limit) {
+    let history = [...this.sizeHistory];
+    if (limit) {
+      history = history.slice(-limit);
+    }
+    return history;
+  }
+  getTrends(hours = 24) {
+    const cutoffTime = Date.now() - hours * 60 * 60 * 1000;
+    const recentMetrics = this.sizeHistory.filter((m) => m.timestamp >= cutoffTime);
+    if (recentMetrics.length < 2) {
+      return {
+        size_trend: "stable",
+        growth_rate_mb_per_hour: 0,
+        predicted_hours_to_limit: null
+      };
+    }
+    const oldest = recentMetrics[0];
+    const newest = recentMetrics[recentMetrics.length - 1];
+    const timeDeltaHours = (newest.timestamp - oldest.timestamp) / 3600000;
+    const sizeDeltaMb = newest.total_size_mb - oldest.total_size_mb;
+    const growthRate = timeDeltaHours > 0 ? sizeDeltaMb / timeDeltaHours : 0;
+    let trend = "stable";
+    if (growthRate > 1) {
+      trend = "increasing";
+    } else if (growthRate < -1) {
+      trend = "decreasing";
+    }
+    let predictedHoursToLimit = null;
+    if (growthRate > 0) {
+      const remainingMb = this.config.max_size_mb - newest.total_size_mb;
+      predictedHoursToLimit = growthRate > 0 ? remainingMb / growthRate : null;
+    }
+    return {
+      size_trend: trend,
+      growth_rate_mb_per_hour: growthRate,
+      predicted_hours_to_limit: predictedHoursToLimit
+    };
+  }
+}
+var defaultMonitor = null;
+function getSizeMonitor(config) {
+  if (!defaultMonitor) {
+    defaultMonitor = new SizeMonitor(config);
+  }
+  return defaultMonitor;
+}
+
+// src/cli/index.ts
 var COMMANDS = {
   worker: "Start the autonomous worker loop",
   monitor: "Start the supervision loop",
@@ -39515,6 +42417,8 @@ var COMMANDS = {
   "plugin-deactivate": "Deactivate a plugin",
   "plugin-remove": "Remove a plugin",
   "plugin-list": "List installed plugins",
+  "cleanup-metrics": "Show cleanup statistics and performance metrics",
+  "cleanup-status": "Show current cleanup system status and health",
   update: "Update Agent Shepherd to latest or specific version",
   version: "Show installed version",
   help: "Show help information"
@@ -39524,27 +42428,27 @@ var LOADED_PLUGINS = [];
 function loadPlugins() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join6(agentShepherdDir, "plugins");
-    if (!existsSync6(pluginsDir)) {
+    const pluginsDir = join11(agentShepherdDir, "plugins");
+    if (!existsSync10(pluginsDir)) {
       return;
     }
     const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     for (const pluginName of pluginDirs) {
-      const pluginPath = join6(pluginsDir, pluginName);
-      const manifestPath = join6(pluginPath, "manifest.json");
-      if (!existsSync6(manifestPath)) {
+      const pluginPath = join11(pluginsDir, pluginName);
+      const manifestPath = join11(pluginPath, "manifest.json");
+      if (!existsSync10(manifestPath)) {
         console.warn(`Plugin ${pluginName}: manifest.json not found, skipping`);
         continue;
       }
       try {
-        const manifestContent = readFileSync7(manifestPath, "utf-8");
+        const manifestContent = readFileSync9(manifestPath, "utf-8");
         const manifest = JSON.parse(manifestContent);
         if (!manifest.name || !manifest.commands || !Array.isArray(manifest.commands)) {
           console.warn(`Plugin ${pluginName}: invalid manifest.json, skipping`);
           continue;
         }
-        const indexPath = join6(pluginPath, "index.js");
-        if (!existsSync6(indexPath)) {
+        const indexPath = join11(pluginPath, "index.js");
+        if (!existsSync10(indexPath)) {
           console.warn(`Plugin ${pluginName}: index.js not found, skipping`);
           continue;
         }
@@ -39603,10 +42507,14 @@ async function cmdWorker() {
   const { validateStartup: validateStartup2 } = await Promise.resolve().then(() => (init_config_validator(), exports_config_validator));
   await validateStartup2();
   const worker = getWorkerEngine();
+  const cleanupEngine = getCleanupEngine();
+  await cleanupEngine.start();
   process.on("SIGINT", () => {
     console.log(`
 Stopping worker...`);
+    cleanupEngine.stop();
     worker.stop();
+    resetCleanupEngine();
     process.exit(0);
   });
   await worker.start();
@@ -39616,11 +42524,15 @@ async function cmdMonitor() {
   const { validateStartup: validateStartup2 } = await Promise.resolve().then(() => (init_config_validator(), exports_config_validator));
   await validateStartup2();
   const monitor = getMonitorEngine();
+  const cleanupEngine = getCleanupEngine();
+  await cleanupEngine.start();
   await monitor.resumeInterruptedRuns();
   process.on("SIGINT", () => {
     console.log(`
 Stopping monitor...`);
+    cleanupEngine.stop();
     monitor.stop();
+    resetCleanupEngine();
     process.exit(0);
   });
   await monitor.start();
@@ -39652,48 +42564,48 @@ Result:`);
 }
 function cmdInit() {
   console.log("Initializing Agent Shepherd configuration...");
-  const configDir = join6(process.cwd(), ".agent-shepherd");
-  const configSubDir = join6(configDir, "config");
-  const pluginsDir = join6(configDir, "plugins");
-  const configExists = existsSync6(configSubDir);
+  const configDir = join11(process.cwd(), ".agent-shepherd");
+  const configSubDir = join11(configDir, "config");
+  const pluginsDir = join11(configDir, "plugins");
+  const configExists = existsSync10(configSubDir);
   if (!configExists) {
-    mkdirSync2(configSubDir, { recursive: true });
+    mkdirSync4(configSubDir, { recursive: true });
     console.log(`\u2705 Created directory: ${configSubDir}`);
   } else {
     console.log(`\u2139\uFE0F  Configuration directory already exists: ${configSubDir}`);
   }
-  if (!existsSync6(pluginsDir)) {
-    mkdirSync2(pluginsDir, { recursive: true });
+  if (!existsSync10(pluginsDir)) {
+    mkdirSync4(pluginsDir, { recursive: true });
     console.log(`\u2705 Created directory: ${pluginsDir}`);
   }
   try {
     const installDir = findInstallDir();
-    const schemasSource = join6(installDir, "schemas");
-    const schemasDest = join6(configDir, "schemas");
-    if (existsSync6(schemasSource) && !existsSync6(schemasDest)) {
+    const schemasSource = join11(installDir, "schemas");
+    const schemasDest = join11(configDir, "schemas");
+    if (existsSync10(schemasSource) && !existsSync10(schemasDest)) {
       cpSync(schemasSource, schemasDest, { recursive: true });
       console.log(`\u2705 Created directory: ${schemasDest}`);
-    } else if (!existsSync6(schemasSource)) {
+    } else if (!existsSync10(schemasSource)) {
       console.log(`\u26A0\uFE0F  Warning: Schemas directory not found in installation`);
     }
   } catch {}
   try {
     const installDir = findInstallDir();
-    const pluginsSource = join6(installDir, "plugins");
-    if (existsSync6(pluginsSource)) {
+    const pluginsSource = join11(installDir, "plugins");
+    if (existsSync10(pluginsSource)) {
       const pluginDirs = readdirSync(pluginsSource, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
       for (const pluginName of pluginDirs) {
-        const sourcePath = join6(pluginsSource, pluginName);
-        const destPath = join6(pluginsDir, pluginName);
-        if (!existsSync6(destPath)) {
+        const sourcePath = join11(pluginsSource, pluginName);
+        const destPath = join11(pluginsDir, pluginName);
+        if (!existsSync10(destPath)) {
           cpSync(sourcePath, destPath, { recursive: true });
           console.log(`\u2705 Copied plugin: ${pluginName}`);
         }
       }
     }
   } catch {}
-  const policiesPath = join6(configSubDir, "policies.yaml");
-  if (!existsSync6(policiesPath)) {
+  const policiesPath = join11(configSubDir, "policies.yaml");
+  if (!existsSync10(policiesPath)) {
     const defaultPolicies = `policies:
   # Simple beginner workflow - works out-of-the-box with basic OpenCode agents
   simple:
@@ -39775,13 +42687,13 @@ function cmdInit() {
 
 default_policy: simple
 `;
-    writeFileSync2(policiesPath, defaultPolicies);
+    writeFileSync3(policiesPath, defaultPolicies);
     console.log(`\u2705 Created: ${policiesPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${policiesPath}`);
   }
-  const agentsPath = join6(configSubDir, "agents.yaml");
-  if (!existsSync6(agentsPath)) {
+  const agentsPath = join11(configSubDir, "agents.yaml");
+  if (!existsSync10(agentsPath)) {
     const defaultAgents = `version: "1.0"
 agents:
   - id: default-coder
@@ -39822,13 +42734,13 @@ agents:
     constraints:
       performance_tier: balanced
     `;
-    writeFileSync2(agentsPath, defaultAgents);
+    writeFileSync3(agentsPath, defaultAgents);
     console.log(`\u2705 Created: ${agentsPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${agentsPath}`);
   }
-  const configPath = join6(configSubDir, "config.yaml");
-  if (!existsSync6(configPath)) {
+  const configPath = join11(configSubDir, "config.yaml");
+  if (!existsSync10(configPath)) {
     const defaultConfig = `version: "1.0"
 
 worker:
@@ -39884,7 +42796,7 @@ hitl:
     # - alphanumeric-dash-underscore: Letters, numbers, dashes, underscores
     custom_validation: alphanumeric-dash-underscore
  `;
-    writeFileSync2(configPath, defaultConfig);
+    writeFileSync3(configPath, defaultConfig);
     console.log(`\u2705 Created: ${configPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${configPath}`);
@@ -40096,28 +43008,28 @@ async function cmdPluginInstall(source) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join6(agentShepherdDir, "plugins");
-    if (!existsSync6(pluginsDir)) {
-      mkdirSync2(pluginsDir, { recursive: true });
+    const pluginsDir = join11(agentShepherdDir, "plugins");
+    if (!existsSync10(pluginsDir)) {
+      mkdirSync4(pluginsDir, { recursive: true });
     }
     if (source.startsWith("http")) {
       console.log(`Cloning plugin from ${source}...`);
       const pluginName = source.split("/").pop()?.replace(".git", "") || "plugin";
-      const pluginPath = join6(pluginsDir, pluginName);
-      if (existsSync6(pluginPath)) {
+      const pluginPath = join11(pluginsDir, pluginName);
+      if (existsSync10(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
       execSync(`git clone "${source}" "${pluginPath}"`, { stdio: "inherit" });
     } else {
       const sourcePath = path.resolve(source);
-      if (!existsSync6(sourcePath)) {
+      if (!existsSync10(sourcePath)) {
         console.error(`Source path does not exist: ${sourcePath}`);
         process.exit(1);
       }
       const pluginName = path.basename(sourcePath);
-      const pluginPath = join6(pluginsDir, pluginName);
-      if (existsSync6(pluginPath)) {
+      const pluginPath = join11(pluginsDir, pluginName);
+      if (existsSync10(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
@@ -40136,14 +43048,14 @@ function cmdPluginActivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join6(agentShepherdDir, "plugins");
-    const pluginPath = join6(pluginsDir, name);
-    if (!existsSync6(pluginPath)) {
+    const pluginsDir = join11(agentShepherdDir, "plugins");
+    const pluginPath = join11(pluginsDir, name);
+    if (!existsSync10(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
-    const manifestPath = join6(pluginPath, "manifest.json");
-    if (!existsSync6(manifestPath)) {
+    const manifestPath = join11(pluginPath, "manifest.json");
+    if (!existsSync10(manifestPath)) {
       console.error(`Plugin ${name} has no manifest.json`);
       process.exit(1);
     }
@@ -40160,9 +43072,9 @@ function cmdPluginDeactivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join6(agentShepherdDir, "plugins");
-    const pluginPath = join6(pluginsDir, name);
-    if (!existsSync6(pluginPath)) {
+    const pluginsDir = join11(agentShepherdDir, "plugins");
+    const pluginPath = join11(pluginsDir, name);
+    if (!existsSync10(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -40179,9 +43091,9 @@ function cmdPluginRemove(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join6(agentShepherdDir, "plugins");
-    const pluginPath = join6(pluginsDir, name);
-    if (!existsSync6(pluginPath)) {
+    const pluginsDir = join11(agentShepherdDir, "plugins");
+    const pluginPath = join11(pluginsDir, name);
+    if (!existsSync10(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -40308,13 +43220,13 @@ You can try running individual commands:`);
 function getCurrentVersion() {
   try {
     const installDir = findInstallDir();
-    const versionFile = join6(installDir, "VERSION");
-    if (existsSync6(versionFile)) {
-      return readFileSync7(versionFile, "utf-8").trim();
+    const versionFile = join11(installDir, "VERSION");
+    if (existsSync10(versionFile)) {
+      return readFileSync9(versionFile, "utf-8").trim();
     }
-    const packageJsonPath = join6(installDir, "package.json");
-    if (existsSync6(packageJsonPath)) {
-      const packageJson = JSON.parse(readFileSync7(packageJsonPath, "utf-8"));
+    const packageJsonPath = join11(installDir, "package.json");
+    if (existsSync10(packageJsonPath)) {
+      const packageJson = JSON.parse(readFileSync9(packageJsonPath, "utf-8"));
       return packageJson.version || "unknown";
     }
   } catch {}
@@ -40339,18 +43251,18 @@ async function cmdUpdate(version) {
   console.log(`Updating Agent Shepherd to ${targetVersion}...`);
   try {
     const installDir = findInstallDir();
-    const tempDir = join6(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
-    mkdirSync2(tempDir, { recursive: true });
-    const configDir = join6(installDir, "config");
-    const pluginsDir = join6(installDir, "plugins");
-    if (existsSync6(configDir)) {
-      cpSync(configDir, join6(tempDir, "config"), { recursive: true });
+    const tempDir = join11(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
+    mkdirSync4(tempDir, { recursive: true });
+    const configDir = join11(installDir, "config");
+    const pluginsDir = join11(installDir, "plugins");
+    if (existsSync10(configDir)) {
+      cpSync(configDir, join11(tempDir, "config"), { recursive: true });
     }
-    if (existsSync6(pluginsDir)) {
-      cpSync(pluginsDir, join6(tempDir, "plugins"), { recursive: true });
+    if (existsSync10(pluginsDir)) {
+      cpSync(pluginsDir, join11(tempDir, "plugins"), { recursive: true });
     }
     const repoUrl = "https://github.com/USER/agent-shepherd.git";
-    const cloneDir = join6(tempDir, "clone");
+    const cloneDir = join11(tempDir, "clone");
     if (targetVersion === "latest") {
       execSync(`git clone --depth 1 "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
     } else {
@@ -40359,26 +43271,26 @@ async function cmdUpdate(version) {
     const items = readdirSync(installDir);
     for (const item of items) {
       if (item !== "logs" && item !== "config" && item !== "plugins") {
-        const itemPath = join6(installDir, item);
-        if (existsSync6(itemPath)) {
+        const itemPath = join11(installDir, item);
+        if (existsSync10(itemPath)) {
           rmSync(itemPath, { recursive: true, force: true });
         }
       }
     }
-    const sourceDir = join6(cloneDir, ".agent-shepherd");
+    const sourceDir = join11(cloneDir, ".agent-shepherd");
     const sourceItems = readdirSync(sourceDir);
     for (const item of sourceItems) {
-      const srcPath = join6(sourceDir, item);
-      const destPath = join6(installDir, item);
+      const srcPath = join11(sourceDir, item);
+      const destPath = join11(installDir, item);
       cpSync(srcPath, destPath, { recursive: true });
     }
-    if (existsSync6(join6(tempDir, "config"))) {
-      cpSync(join6(tempDir, "config"), configDir, { recursive: true });
+    if (existsSync10(join11(tempDir, "config"))) {
+      cpSync(join11(tempDir, "config"), configDir, { recursive: true });
     }
-    if (existsSync6(join6(tempDir, "plugins"))) {
-      cpSync(join6(tempDir, "plugins"), pluginsDir, { recursive: true });
+    if (existsSync10(join11(tempDir, "plugins"))) {
+      cpSync(join11(tempDir, "plugins"), pluginsDir, { recursive: true });
     }
-    writeFileSync2(join6(installDir, "VERSION"), targetVersion);
+    writeFileSync3(join11(installDir, "VERSION"), targetVersion);
     console.log("Installing dependencies...");
     execSync("bun install", { cwd: installDir, stdio: "inherit" });
     rmSync(tempDir, { recursive: true, force: true });
@@ -40388,11 +43300,87 @@ async function cmdUpdate(version) {
     process.exit(1);
   }
 }
+function cmdCleanupMetrics() {
+  try {
+    const cleanupEngine = getCleanupEngine();
+    const metrics = cleanupEngine.getAggregateMetrics();
+    console.log(`
+\uD83D\uDCCA Cleanup Metrics`);
+    console.log("\u2500".repeat(50));
+    console.log(`Total runs processed: ${metrics.total_runs_processed}`);
+    console.log(`Total runs archived: ${metrics.total_runs_archived}`);
+    console.log(`Total runs deleted: ${metrics.total_runs_deleted}`);
+    console.log(`Total bytes archived: ${(metrics.total_bytes_archived / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Total bytes deleted: ${(metrics.total_bytes_deleted / 1024 / 1024).toFixed(2)} MB`);
+    if (metrics.last_cleanup) {
+      const lastCleanupDate = new Date(metrics.last_cleanup);
+      console.log(`Last cleanup: ${lastCleanupDate.toLocaleString()}`);
+    } else {
+      console.log("Last cleanup: Never");
+    }
+    console.log(`Average cleanup duration: ${metrics.average_duration_ms.toFixed(2)} ms`);
+    console.log();
+    resetCleanupEngine();
+  } catch (error) {
+    console.error("\u274C Failed to get cleanup metrics:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdCleanupStatus() {
+  try {
+    const cleanupEngine = getCleanupEngine();
+    const sizeMonitor = getSizeMonitor();
+    const healthChecker = getHealthChecker();
+    console.log(`
+\uD83D\uDD0D Cleanup System Status`);
+    console.log("\u2500".repeat(50));
+    const isRunning = cleanupEngine.isRunning;
+    console.log(`Cleanup Engine: ${isRunning ? "\uD83D\uDFE2 Running" : "\u26AB Stopped"}`);
+    if (isRunning) {
+      const lastCleanupTime = cleanupEngine.lastCleanupTime;
+      if (lastCleanupTime > 0) {
+        const lastCleanupDate = new Date(lastCleanupTime);
+        console.log(`Last Cleanup: ${lastCleanupDate.toLocaleString()}`);
+      } else {
+        console.log("Last Cleanup: Never");
+      }
+    }
+    console.log();
+    console.log("\uD83D\uDCCF Current Size Metrics");
+    console.log("\u2500".repeat(50));
+    const sizeMetrics = await sizeMonitor.getMetrics();
+    console.log(`Active DB size: ${(sizeMetrics.active_db_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Archive DB size: ${(sizeMetrics.archive_db_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`JSONL size: ${(sizeMetrics.jsonl_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Archive JSONL size: ${(sizeMetrics.archive_jsonl_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Total size: ${sizeMetrics.total_size_mb.toFixed(2)} MB`);
+    console.log(`Run count: ${sizeMetrics.run_count}`);
+    console.log(`Archive run count: ${sizeMetrics.archive_run_count}`);
+    console.log();
+    sizeMonitor.stop();
+    console.log("\uD83C\uDFE5 Health Status");
+    console.log("\u2500".repeat(50));
+    const healthReport = await healthChecker.runHealthChecks();
+    const allPassed = healthReport.checks.every((check) => check.passed);
+    for (const check of healthReport.checks) {
+      const status = check.passed ? "\u2705" : "\u274C";
+      console.log(`${status} ${check.check_name}: ${check.message}`);
+    }
+    console.log();
+    console.log(`Overall Health: ${allPassed ? "\u2705 Healthy" : "\u274C Issues Detected"}`);
+    console.log();
+    resetCleanupEngine();
+    resetHealthChecker();
+  } catch (error) {
+    console.error("\u274C Failed to get cleanup status:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 function cmdPluginList() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join6(agentShepherdDir, "plugins");
-    if (!existsSync6(pluginsDir)) {
+    const pluginsDir = join11(agentShepherdDir, "plugins");
+    if (!existsSync10(pluginsDir)) {
       console.log("No plugins directory found");
       return;
     }
@@ -40403,13 +43391,13 @@ function cmdPluginList() {
     }
     console.log("Installed plugins:");
     for (const pluginName of pluginDirs) {
-      const pluginPath = join6(pluginsDir, pluginName);
-      const manifestPath = join6(pluginPath, "manifest.json");
+      const pluginPath = join11(pluginsDir, pluginName);
+      const manifestPath = join11(pluginPath, "manifest.json");
       let status = "\u274C Invalid";
       let description = "";
-      if (existsSync6(manifestPath)) {
+      if (existsSync10(manifestPath)) {
         try {
-          const manifest = JSON.parse(readFileSync7(manifestPath, "utf-8"));
+          const manifest = JSON.parse(readFileSync9(manifestPath, "utf-8"));
           status = "\u2705 Active";
           description = manifest.description || "";
         } catch {
@@ -40499,6 +43487,12 @@ async function main() {
       break;
     case "plugin-list":
       cmdPluginList();
+      break;
+    case "cleanup-metrics":
+      cmdCleanupMetrics();
+      break;
+    case "cleanup-status":
+      await cmdCleanupStatus();
       break;
     case "update":
       await cmdUpdate(args[1]);

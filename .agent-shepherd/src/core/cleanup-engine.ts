@@ -12,6 +12,8 @@ import {
   type CleanupConfig,
   type RetentionConfig,
 } from "./config.ts";
+import { getHealthChecker } from "./cleanup-health-check.ts";
+import { join } from "path";
 
 export interface CleanupEngineConfig {
   dataDir?: string;
@@ -30,6 +32,7 @@ export class CleanupEngine {
   private isRunning = false;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private lastCleanupTime: number = 0;
+  private dataDir: string;
 
   constructor(config?: CleanupEngineConfig) {
     const fullConfig = loadConfig();
@@ -61,6 +64,8 @@ export class CleanupEngine {
         : undefined,
       ...config,
     };
+
+    this.dataDir = this.config.dataDir || join(process.cwd(), ".agent-shepherd");
 
     if (
       this.config.retentionConfig?.enabled &&
@@ -113,6 +118,32 @@ export class CleanupEngine {
   }
 
   /**
+   * Run health checks after cleanup
+   */
+  private async runHealthChecks(cleanupType: string): Promise<void> {
+    try {
+      console.log("Running health checks after cleanup...");
+      const healthChecker = getHealthChecker({ dataDir: this.dataDir });
+      const report = await healthChecker.runHealthChecks();
+
+      const allPassed = report.checks.every((check: any) => check.passed);
+
+      if (allPassed) {
+        console.log(`Health checks passed after ${cleanupType} cleanup`);
+      } else {
+        console.warn(`Health check warnings after ${cleanupType} cleanup:`);
+        for (const check of report.checks) {
+          if (!check.passed) {
+            console.warn(`  - ${check.check_name}: ${check.message}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Health check failed:", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /**
    * Run startup cleanup
    */
   async runStartupCleanup(): Promise<void> {
@@ -143,6 +174,8 @@ export class CleanupEngine {
       console.log(`Startup cleanup completed in ${duration}ms`);
 
       this.lastCleanupTime = Date.now();
+
+      await this.runHealthChecks("startup");
     } catch (error) {
       console.error("Startup cleanup error:", error);
     }
@@ -212,6 +245,8 @@ export class CleanupEngine {
       console.log(`Scheduled cleanup completed in ${duration}ms`);
 
       this.lastCleanupTime = Date.now();
+
+      await this.runHealthChecks("scheduled");
     } catch (error) {
       console.error("Scheduled cleanup error:", error);
     }
@@ -237,6 +272,9 @@ export class CleanupEngine {
 
     try {
       const results = await this.collector.runFullCleanup();
+
+      await this.runHealthChecks("immediate");
+
       return {
         success: true,
         results,
@@ -273,6 +311,8 @@ export class CleanupEngine {
     try {
       console.log("Running critical cleanup (aggressive mode)...");
       const results = await this.collector.runFullCleanup();
+
+      await this.runHealthChecks("critical");
 
       const duration = Date.now() - startTime;
       console.log(`Critical cleanup completed in ${duration}ms`);
@@ -313,6 +353,8 @@ export class CleanupEngine {
     try {
       console.log("Running emergency cleanup (maximum aggression mode)...");
       const results = await this.collector.runFullCleanup();
+
+      await this.runHealthChecks("emergency");
 
       const duration = Date.now() - startTime;
       console.log(`Emergency cleanup completed in ${duration}ms`);

@@ -16,6 +16,8 @@ import { homedir, platform } from "os";
 import { policyCapabilityValidator } from "../core/policy-capability-validator";
 import { getCleanupEngine } from "../core/cleanup-engine.ts";
 import { resetCleanupEngine } from "../core/cleanup-engine.ts";
+import { getSizeMonitor } from "../core/size-monitor.ts";
+import { getHealthChecker, resetHealthChecker } from "../core/cleanup-health-check.ts";
 
 const COMMANDS: Record<string, string> = {
   worker: "Start the autonomous worker loop",
@@ -33,6 +35,8 @@ const COMMANDS: Record<string, string> = {
   "plugin-deactivate": "Deactivate a plugin",
   "plugin-remove": "Remove a plugin",
   "plugin-list": "List installed plugins",
+  "cleanup-metrics": "Show cleanup statistics and performance metrics",
+  "cleanup-status": "Show current cleanup system status and health",
   update: "Update Agent Shepherd to latest or specific version",
   version: "Show installed version",
   help: "Show help information",
@@ -1167,6 +1171,103 @@ async function cmdUpdate(version?: string): Promise<void> {
 }
 
 /**
+ * Cleanup metrics command - show cleanup statistics
+ */
+function cmdCleanupMetrics(): void {
+  try {
+    const cleanupEngine = getCleanupEngine();
+    const metrics = cleanupEngine.getAggregateMetrics();
+
+    console.log("\n📊 Cleanup Metrics");
+    console.log("─".repeat(50));
+    console.log(`Total runs processed: ${metrics.total_runs_processed}`);
+    console.log(`Total runs archived: ${metrics.total_runs_archived}`);
+    console.log(`Total runs deleted: ${metrics.total_runs_deleted}`);
+    console.log(`Total bytes archived: ${(metrics.total_bytes_archived / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Total bytes deleted: ${(metrics.total_bytes_deleted / 1024 / 1024).toFixed(2)} MB`);
+
+    if (metrics.last_cleanup) {
+      const lastCleanupDate = new Date(metrics.last_cleanup);
+      console.log(`Last cleanup: ${lastCleanupDate.toLocaleString()}`);
+    } else {
+      console.log("Last cleanup: Never");
+    }
+
+    console.log(`Average cleanup duration: ${metrics.average_duration_ms.toFixed(2)} ms`);
+    console.log();
+
+    resetCleanupEngine();
+  } catch (error) {
+    console.error("❌ Failed to get cleanup metrics:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Cleanup status command - show system status
+ */
+async function cmdCleanupStatus(): Promise<void> {
+  try {
+    const cleanupEngine = getCleanupEngine();
+    const sizeMonitor = getSizeMonitor();
+    const healthChecker = getHealthChecker();
+
+    console.log("\n🔍 Cleanup System Status");
+    console.log("─".repeat(50));
+
+    const isRunning = (cleanupEngine as any).isRunning;
+    console.log(`Cleanup Engine: ${isRunning ? "🟢 Running" : "⚫ Stopped"}`);
+
+    if (isRunning) {
+      const lastCleanupTime = (cleanupEngine as any).lastCleanupTime;
+      if (lastCleanupTime > 0) {
+        const lastCleanupDate = new Date(lastCleanupTime);
+        console.log(`Last Cleanup: ${lastCleanupDate.toLocaleString()}`);
+      } else {
+        console.log("Last Cleanup: Never");
+      }
+    }
+
+    console.log();
+    console.log("📏 Current Size Metrics");
+    console.log("─".repeat(50));
+
+    const sizeMetrics = await sizeMonitor.getMetrics();
+    console.log(`Active DB size: ${(sizeMetrics.active_db_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Archive DB size: ${(sizeMetrics.archive_db_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`JSONL size: ${(sizeMetrics.jsonl_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Archive JSONL size: ${(sizeMetrics.archive_jsonl_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Total size: ${sizeMetrics.total_size_mb.toFixed(2)} MB`);
+    console.log(`Run count: ${sizeMetrics.run_count}`);
+    console.log(`Archive run count: ${sizeMetrics.archive_run_count}`);
+    console.log();
+
+    sizeMonitor.stop();
+
+    console.log("🏥 Health Status");
+    console.log("─".repeat(50));
+
+    const healthReport = await healthChecker.runHealthChecks();
+    const allPassed = healthReport.checks.every((check: any) => check.passed);
+
+    for (const check of healthReport.checks) {
+      const status = check.passed ? "✅" : "❌";
+      console.log(`${status} ${check.check_name}: ${check.message}`);
+    }
+
+    console.log();
+    console.log(`Overall Health: ${allPassed ? "✅ Healthy" : "❌ Issues Detected"}`);
+    console.log();
+
+    resetCleanupEngine();
+    resetHealthChecker();
+  } catch (error) {
+    console.error("❌ Failed to get cleanup status:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
  * Plugin list command - list installed plugins
  */
 function cmdPluginList(): void {
@@ -1317,6 +1418,14 @@ async function main(): Promise<void> {
 
     case "plugin-list":
       cmdPluginList();
+      break;
+
+    case "cleanup-metrics":
+      cmdCleanupMetrics();
+      break;
+
+    case "cleanup-status":
+      await cmdCleanupStatus();
       break;
 
     case "update":
