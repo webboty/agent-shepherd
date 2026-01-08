@@ -24,6 +24,7 @@ import {
 import { getAgentRegistry } from "./agent-registry.ts";
 import { getLogger, type RunOutcome } from "./logging.ts";
 import { loadConfig } from "./config.ts";
+import { getPhaseMessenger } from "./phase-messenger.ts";
 
 export interface WorkerConfig {
   poll_interval_ms?: number;
@@ -47,6 +48,7 @@ export class WorkerEngine {
   private agentRegistry = getAgentRegistry();
   private opencode = getOpenCodeClient();
   private logger = getLogger();
+  private phaseMessenger = getPhaseMessenger();
   private isRunning = false;
   private currentRunId: string | null = null;
   private currentPhase: string | null = null;
@@ -217,6 +219,24 @@ export class WorkerEngine {
     // 4. Update issue status to in_progress
     await updateIssue(issue.id, { status: "in_progress" });
 
+    // 4.5. Receive any pending messages for this phase
+    const pendingMessages = this.phaseMessenger.receiveMessages(issue.id, phase, true);
+    if (pendingMessages.length > 0) {
+      console.log(`Received ${pendingMessages.length} pending message(s) for phase '${phase}'`);
+      // Log message receipt in run metadata
+      this.logger.logDecision({
+        run_id: runId,
+        type: "message_receipt",
+        decision: "messages_received",
+        reasoning: `Received ${pendingMessages.length} message(s) for phase ${phase}`,
+        metadata: {
+          issue_id: issue.id,
+          phase,
+          message_count: pendingMessages.length
+        }
+      });
+    }
+
     // 5. Launch agent in OpenCode
     let outcome: RunOutcome;
     let sessionId: string | undefined;
@@ -286,6 +306,38 @@ export class WorkerEngine {
         outcome,
       },
     });
+
+    // 6.5. Send result message to next phase on successful completion and advance
+    if (outcome.success && transition.type === "advance" && transition.next_phase && transition.next_phase !== phase) {
+      try {
+        const resultMessage = this.phaseMessenger.sendMessage({
+          issue_id: issue.id,
+          from_phase: phase,
+          to_phase: transition.next_phase,
+          message_type: "result",
+          content: outcome.message || "Phase completed successfully",
+          metadata: {
+            status: "completed",
+            artifacts: outcome.artifacts?.length || 0,
+            duration_ms: outcome.metrics?.duration_ms
+          }
+        });
+        console.log(`Sent result message from '${phase}' to '${transition.next_phase}': ${resultMessage.id}`);
+        this.logger.logDecision({
+          run_id: runId,
+          type: "message_send",
+          decision: "result_message_sent",
+          reasoning: `Sent result message from ${phase} to ${transition.next_phase}`,
+          metadata: {
+            message_id: resultMessage.id,
+            from_phase: phase,
+            to_phase: transition.next_phase
+          }
+        });
+      } catch (error) {
+        console.warn(`Failed to send phase message: ${error}`);
+      }
+    }
 
     // 7. Update Beads state based on transition
     await this.applyTransition(issue.id, transition);

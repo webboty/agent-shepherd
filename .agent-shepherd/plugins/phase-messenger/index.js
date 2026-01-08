@@ -11,9 +11,9 @@ async function phaseMsgSend(issueId, fromPhase, toPhase, messageType, content) {
 
   try {
     const storagePath = path.join(__dirname, 'lib', 'message-storage.cjs');
-    execSync(`node "${storagePath}" send "${issueId}" "${fromPhase}" "${toPhase}" "${messageType}" "${content}"`, { 
-      stdio: 'inherit', 
-      cwd: path.join(__dirname, '..', '..', '..') 
+    execSync(`bun "${storagePath}" send "${issueId}" "${fromPhase}" "${toPhase}" "${messageType}" "${content}"`, {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..', '..', '..')
     });
   } catch (error) {
     console.error('Failed to send message:', error.message);
@@ -31,9 +31,9 @@ async function phaseMsgReceive(issueId, phase, markAsReceived = true) {
   try {
     const storagePath = path.join(__dirname, 'lib', 'message-storage.cjs');
     const keepUnreadFlag = markAsReceived === false ? '--keep-unread' : '';
-    execSync(`node "${storagePath}" receive "${issueId}" "${phase}" ${keepUnreadFlag}`, { 
-      stdio: 'inherit', 
-      cwd: path.join(__dirname, '..', '..', '..') 
+    execSync(`bun "${storagePath}" receive "${issueId}" "${phase}" ${keepUnreadFlag}`, {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..', '..', '..')
     });
   } catch (error) {
     console.error('Failed to receive messages:', error.message);
@@ -54,9 +54,9 @@ async function phaseMsgList(issueId, phase, messageType) {
     const storagePath = path.join(__dirname, 'lib', 'message-storage.cjs');
     const phaseFilter = phase ? `"${phase}"` : '';
     const typeFilter = messageType ? `"${messageType}"` : '';
-    execSync(`node "${storagePath}" list "${issueId}" ${phaseFilter} ${typeFilter}`, { 
-      stdio: 'inherit', 
-      cwd: path.join(__dirname, '..', '..', '..') 
+    execSync(`bun "${storagePath}" list "${issueId}" ${phaseFilter} ${typeFilter}`, {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..', '..', '..')
     });
   } catch (error) {
     console.error('Failed to list messages:', error.message);
