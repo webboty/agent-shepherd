@@ -1,8 +1,7 @@
 const { existsSync, readFileSync, appendFileSync, mkdirSync, unlinkSync } = require('fs');
 const { join } = require('path');
 const YAML = require('yaml');
-
-const Database = require('bun:sqlite');
+const Database = require('better-sqlite3');
 
 const DEFAULT_CONFIG = {
   size_limits: {

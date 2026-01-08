@@ -8,10 +8,22 @@ export function getGlobalInstallDir(): string {
 
 export function findLocalAgentShepherdDir(): string | null {
   let currentDir = process.cwd();
+  const visited = new Set<string>();
+  
   while (true) {
+    // Prevent infinite loops
+    if (visited.has(currentDir)) {
+      break;
+    }
+    visited.add(currentDir);
+    
     const agentShepherdDir = join(currentDir, ".agent-shepherd");
     if (existsSync(agentShepherdDir)) {
-      return agentShepherdDir;
+      // Check if this has src/ (to distinguish install directory from runtime directory)
+      const hasSrc = existsSync(join(agentShepherdDir, "src"));
+      if (hasSrc) {
+        return agentShepherdDir;
+      }
     }
     const parentDir = dirname(currentDir);
     if (parentDir === currentDir) break;
