@@ -9,7 +9,7 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 - **OpenCode** (AI agent execution platform)
 - **Human developers**
 
-The system manages autonomous issue processing, workflow orchestration, agent selection, and execution monitoring.
+The system manages autonomous issue processing, workflow orchestration, agent selection, execution monitoring, and enhanced features including AI-driven transitions, loop prevention, decision agents, garbage collection, and inter-phase messaging.
 
 ## Design Philosophy
 
@@ -100,9 +100,13 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 - **Worker Engine** (`src/core/worker-engine.ts`) - Processes issues from Beads through workflow phases
 - **Monitor Engine** (`src/core/monitor-engine.ts`) - Supervises agent execution and detects stalls
 - **Agent Registry** (`src/core/agent-registry.ts`) - Manages agent capabilities and selection
-- **Policy Engine** (`src/core/policy.ts`) - Defines and executes workflow policies
+- **Policy Engine** (`src/core/policy.ts`) - Defines and executes workflow policies with enhanced transitions
+- **Decision Builder** (`src/core/decision-builder.ts`) - Builds prompts and parses AI decision responses
 - **Policy Capability Validator** (`src/core/policy-capability-validator.ts`) - Validates policy→capability→agent chains
 - **Policy Tree Visualizer** (`src/core/policy-tree-visualizer.ts`) - Visualizes relationship trees
+- **Phase Messenger** (`src/core/phase-messenger.ts`) - Inter-phase communication system
+- **Garbage Collector** (`src/core/garbage-collector.ts`) - Data archival and cleanup system
+- **Retention Policy Manager** (`src/core/retention-policy.ts`) - Manages data retention rules
 - **Beads Integration** (`src/core/beads.ts`) - Interface to Beads issue tracking
 - **OpenCode Integration** (`src/core/opencode.ts`) - Interface to OpenCode agent sessions
 - **Config Validator** (`src/core/config-validator.ts`) - Validates configuration files
@@ -142,13 +146,17 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 │   │   ├── beads.ts             # Beads integration
 │   │   ├── config-validator.ts   # Config validation
 │   │   ├── config.ts            # Config loading
+│   │   ├── decision-builder.ts   # Decision agent prompts
+│   │   ├── garbage-collector.ts  # Data archival and cleanup
 │   │   ├── logging.ts          # Logging system
 │   │   ├── monitor-engine.ts    # Process supervision
 │   │   ├── opencode.ts         # OpenCode client
 │   │   ├── path-utils.ts       # Path utilities
+│   │   ├── phase-messenger.ts   # Inter-phase communication
 │   │   ├── policy.ts           # Policy engine
 │   │   ├── policy-capability-validator.ts  # Chain validation
 │   │   ├── policy-tree-visualizer.ts     # Tree visualization
+│   │   ├── retention-policy.ts  # Retention rules management
 │   │   └── worker-engine.ts    # Issue processing
 │   └── ui/
 │       ├── ui-server.ts         # Express server
@@ -180,7 +188,12 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 │   ├── config-config.md
 │   ├── policies-config.md
 │   ├── agents-config.md
-│   └── plugin-system.md
+│   ├── plugin-system.md
+│   ├── enhanced-transitions.md
+│   ├── loop-prevention.md
+│   ├── decision-agents.md
+│   ├── garbage-collection.md
+│   └── phase-messenger.md
 ├── package.json
 ├── tsconfig.json
 ├── eslint.config.js
@@ -380,6 +393,11 @@ When working on specific features, open the relevant documentation for detailed 
 | `docs/policies-config.md` | Creating workflows, defining phases, agent selection rules | Policy system reference with examples, validation, and best practices |
 | `docs/agents-config.md` | Syncing agents, understanding agent capabilities, agent selection | Agent registry reference with capability mapping and selection logic |
 | `docs/plugin-system.md` | Developing plugins, understanding plugin architecture, installing plugins | Plugin development guide with examples and best practices |
+| `docs/enhanced-transitions.md` | Understanding advanced workflow routing and AI-based transitions | Enhanced transition system with conditional branching, decision agents, and confidence thresholds |
+| `docs/loop-prevention.md` | Configuring loop prevention and preventing infinite workflows | Loop prevention mechanisms including phase visit limits, transition limits, and cycle detection |
+| `docs/decision-agents.md` | Understanding AI-driven decision making and routing | Decision agent system with template-based prompts, confidence scoring, and analytics |
+| `docs/garbage-collection.md` | Managing data lifecycle and storage cleanup | Garbage collection and archival system with retention policies and cleanup operations |
+| `docs/phase-messenger.md` | Understanding inter-phase communication and data exchange | Phase messenger system for passing context and results between workflow phases |
 
 ### Configuration Files
 

@@ -14,6 +14,14 @@
     {
       "name": "phase-msg-list",
       "description": "List all messages for an issue or phase"
+    },
+    {
+      "name": "phase-msg-cleanup",
+      "description": "Manually cleanup messages for an issue (archives and deletes)"
+    },
+    {
+      "name": "phase-msg-status",
+      "description": "Show message cleanup status and metrics"
     }
   ],
   "author": "Agent Shepherd Team",

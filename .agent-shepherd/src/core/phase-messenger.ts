@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, readFileSync, appendFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, appendFileSync, mkdirSync, statSync } from "fs";
 import { join } from "path";
 import YAML from "yaml";
 
@@ -413,6 +413,158 @@ export class PhaseMessenger {
       read: row.read === 1,
       created_at: row.created_at,
       read_at: row.read_at || undefined
+    };
+  }
+
+  private getArchivePath(issueId: string): string {
+    const archiveDir = join(this.jsonlPath, "..", "messages_archive");
+    
+    if (!existsSync(archiveDir)) {
+      mkdirSync(archiveDir, { recursive: true });
+    }
+    
+    return join(archiveDir, `${issueId}.jsonl`);
+  }
+
+  archiveMessagesForIssue(issueId: string, reason: string = "cleanup"): { archived: number } {
+    const messages = this.listMessages({ issue_id: issueId });
+
+    if (messages.length === 0) {
+      return { archived: 0 };
+    }
+
+    const archivePath = this.getArchivePath(issueId);
+    const timestamp = Date.now();
+
+    messages.forEach(message => {
+      const archivedMessage = {
+        ...message,
+        archived_at: timestamp,
+        archive_reason: reason,
+        original_id: message.id
+      };
+
+      appendFileSync(archivePath, JSON.stringify(archivedMessage) + "\n");
+    });
+
+    return { archived: messages.length };
+  }
+
+  cleanupPhaseMessages(issueId: string, reason: string = "manual"): {
+    archived: number;
+    deleted: number;
+    db_size_before: number;
+    db_size_after: number;
+  } {
+    const dbPath = join(this.jsonlPath, "..", this.config.storage.database_file);
+    
+    const dbSizeBefore = this.getDatabaseSize(dbPath);
+
+    const archiveResult = this.archiveMessagesForIssue(issueId, reason);
+
+    this.deleteIssueMessages(issueId);
+
+    const dbSizeAfter = this.getDatabaseSize(dbPath);
+
+    this.recordCleanupMetric(issueId, reason, archiveResult.archived, archiveResult.archived, dbSizeBefore, dbSizeAfter);
+
+    return {
+      archived: archiveResult.archived,
+      deleted: archiveResult.archived,
+      db_size_before: dbSizeBefore,
+      db_size_after: dbSizeAfter
+    };
+  }
+
+  private getDatabaseSize(dbPath: string): number {
+    if (existsSync(dbPath)) {
+      const stats = statSync(dbPath);
+      return stats.size;
+    }
+    return 0;
+  }
+
+  private recordCleanupMetric(issueId: string, reason: string, archived: number, deleted: number, sizeBefore: number, sizeAfter: number): void {
+    const cleanupMetricsPath = join(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+
+    const metric = {
+      timestamp: Date.now(),
+      issue_id: issueId,
+      reason: reason,
+      messages_archived: archived,
+      messages_deleted: deleted,
+      db_size_before_bytes: sizeBefore,
+      db_size_after_bytes: sizeAfter,
+      db_size_before_mb: sizeBefore / (1024 * 1024),
+      db_size_after_mb: sizeAfter / (1024 * 1024)
+    };
+
+    appendFileSync(cleanupMetricsPath, JSON.stringify(metric) + "\n");
+  }
+
+  getCleanupMetrics(issueId?: string): any[] {
+    const { existsSync, readFileSync } = require("fs");
+    const cleanupMetricsPath = join(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+
+    if (!existsSync(cleanupMetricsPath)) {
+      return [];
+    }
+
+    const content = readFileSync(cleanupMetricsPath, "utf-8");
+    const lines = content.trim().split("\n");
+    const metrics: any[] = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      try {
+        const metric = JSON.parse(line);
+        if (issueId === undefined || metric.issue_id === issueId) {
+          metrics.push(metric);
+        }
+      } catch (error) {
+        console.error("Failed to parse cleanup metric line:", error);
+      }
+    }
+
+    return metrics.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  getMessageStats(issueId?: string): {
+    total_messages: number;
+    unread_messages: number;
+    read_messages: number;
+    by_issue: Record<string, number>;
+    db_size_mb: number;
+  } {
+    let messages: PhaseMessage[];
+
+    if (issueId) {
+      messages = this.listMessages({ issue_id: issueId });
+    } else {
+      messages = this.listMessages();
+    }
+
+    const total = messages.length;
+    const unread = messages.filter(m => !m.read).length;
+    const read = total - unread;
+
+    const byIssue: Record<string, number> = {};
+    if (!issueId) {
+      messages.forEach(m => {
+        byIssue[m.issue_id] = (byIssue[m.issue_id] || 0) + 1;
+      });
+    }
+
+    const dbPath = join(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbSize = this.getDatabaseSize(dbPath) / (1024 * 1024);
+
+    return {
+      total_messages: total,
+      unread_messages: unread,
+      read_messages: read,
+      by_issue: byIssue,
+      db_size_mb: dbSize
     };
   }
 }

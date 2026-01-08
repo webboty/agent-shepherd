@@ -1,0 +1,393 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "decision.schema.json",
+  "title": "Decision System Configuration",
+  "description": "Schema for decision agent prompt configuration, response format, and analytics",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/definitions/decisionPromptConfig"
+    },
+    {
+      "$ref": "#/definitions/templateContext"
+    },
+    {
+      "$ref": "#/definitions/decisionResponse"
+    },
+    {
+      "$ref": "#/definitions/decisionValidationResult"
+    },
+    {
+      "$ref": "#/definitions/decisionAnalytics"
+    }
+  ],
+  "definitions": {
+    "decisionPromptConfig": {
+      "type": "object",
+      "description": "Configuration for decision agent prompt templates",
+      "required": ["version", "templates"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+$",
+          "description": "Configuration version (e.g., '1.0')"
+        },
+        "templates": {
+          "type": "object",
+          "description": "Decision prompt templates by capability name",
+          "patternProperties": {
+            "^[a-z][a-z0-9_-]*$": {
+              "$ref": "#/definitions/promptTemplate"
+            }
+          },
+          "additionalProperties": false
+        },
+        "default_template": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Default template name to use when specific template not found"
+        }
+      },
+      "additionalProperties": false
+    },
+    "promptTemplate": {
+      "type": "object",
+      "description": "Single prompt template definition",
+      "required": ["name", "description", "system_prompt", "prompt_template"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Template name (usually matches capability)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Template description"
+        },
+        "system_prompt": {
+          "type": "string",
+          "minLength": 1,
+          "description": "System prompt for decision agent"
+        },
+        "prompt_template": {
+          "type": "string",
+          "minLength": 1,
+          "description": "User prompt template with variable substitution placeholders (e.g., {{issue.id}}, {{outcome.success}})"
+        }
+      },
+      "additionalProperties": false
+    },
+    "templateContext": {
+      "type": "object",
+      "description": "Context data for template variable substitution",
+      "required": ["issue", "outcome", "current_phase", "custom_instructions", "allowed_destinations"],
+      "properties": {
+        "issue": {
+          "type": "object",
+          "description": "Beads issue object",
+          "required": ["id", "title", "description", "status"],
+          "properties": {
+            "id": { "type": "string" },
+            "title": { "type": "string" },
+            "description": { "type": "string" },
+            "issue_type": { "type": "string" },
+            "priority": { "type": "integer" },
+            "status": { "type": "string" },
+            "labels": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "outcome": {
+          "type": "object",
+          "description": "Previous run outcome",
+          "required": ["success"],
+          "properties": {
+            "success": { "type": "boolean" },
+            "message": { "type": "string" },
+            "error": { "type": "string" },
+            "metrics": {
+              "type": "object",
+              "properties": {
+                "duration_ms": { "type": "number" }
+              }
+            },
+            "warnings": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "current_phase": {
+          "type": "string",
+          "description": "Current phase name"
+        },
+        "custom_instructions": {
+          "type": "string",
+          "description": "Custom instructions from transition configuration"
+        },
+        "allowed_destinations": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Valid destination phases"
+        },
+        "recent_decisions": {
+          "type": "array",
+          "description": "Recent decision history",
+          "items": {
+            "type": "object",
+            "properties": {
+              "timestamp": { "type": "number" },
+              "decision": { "type": "string" },
+              "reasoning": { "type": "string" }
+            }
+          }
+        },
+        "phase_history": {
+          "type": "array",
+          "description": "Phase execution history",
+          "items": {
+            "type": "object",
+            "properties": {
+              "phase": { "type": "string" },
+              "attempt_number": { "type": "integer" },
+              "status": { "type": "string" },
+              "duration_ms": { "type": "number" },
+              "error": { "type": "string" }
+            }
+          }
+        },
+        "performance_context": {
+          "type": "object",
+          "description": "Performance metrics",
+          "properties": {
+            "average_duration_ms": { "type": "number" },
+            "total_duration_ms": { "type": "number" },
+            "phase_visit_count": { "type": "integer" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "decisionResponse": {
+      "type": "object",
+      "description": "Parsed AI decision response",
+      "required": ["decision", "reasoning", "confidence"],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "description": "Decision action: 'require_approval' or starts with 'jump_to_' or 'advance_to_'"
+        },
+        "reasoning": {
+          "type": "string",
+          "minLength": 1,
+          "description": "AI's reasoning for the decision"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Confidence score (0.0-1.0)"
+        },
+        "recommendations": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional recommendations from the agent"
+        }
+      },
+      "additionalProperties": false
+    },
+    "decisionValidationResult": {
+      "type": "object",
+      "description": "Validation result for decision response",
+      "required": ["valid", "errors", "warnings"],
+      "properties": {
+        "valid": {
+          "type": "boolean",
+          "description": "Whether the response is valid"
+        },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Validation errors (if any)"
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Validation warnings (if any)"
+        },
+        "response": {
+          "$ref": "#/definitions/decisionResponse",
+          "description": "Parsed response (if valid)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "decisionAnalytics": {
+      "type": "object",
+      "description": "Analytics tracking for decision agent performance",
+      "required": [
+        "total_decisions",
+        "decisions_by_type",
+        "confidence_distribution",
+        "most_common_targets",
+        "approval_rate_by_confidence"
+      ],
+      "properties": {
+        "total_decisions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of decisions made"
+        },
+        "decisions_by_type": {
+          "type": "object",
+          "description": "Count of decisions by type (jump, advance, require_approval)",
+          "patternProperties": {
+            "^[a-z][a-z0-9_-]*$": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "confidence_distribution": {
+          "type": "object",
+          "required": ["high", "medium", "low"],
+          "properties": {
+            "high": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of decisions with confidence 0.8-1.0"
+            },
+            "medium": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of decisions with confidence 0.5-0.8"
+            },
+            "low": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of decisions with confidence 0.0-0.5"
+            }
+          },
+          "additionalProperties": false
+        },
+        "most_common_targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["target", "count"],
+            "properties": {
+              "target": { "type": "string" },
+              "count": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "description": "Most commonly selected target phases"
+        },
+        "approval_rate_by_confidence": {
+          "type": "object",
+          "required": [
+            "high_approved",
+            "high_total",
+            "medium_approved",
+            "medium_total",
+            "low_approved",
+            "low_total"
+          ],
+          "properties": {
+            "high_approved": { "type": "integer", "minimum": 0 },
+            "high_total": { "type": "integer", "minimum": 0 },
+            "medium_approved": { "type": "integer", "minimum": 0 },
+            "medium_total": { "type": "integer", "minimum": 0 },
+            "low_approved": { "type": "integer", "minimum": 0 },
+            "low_total": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false,
+          "description": "Approval rate breakdown by confidence level"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "version": "1.0",
+      "templates": {
+        "test-decision": {
+          "name": "test-decision",
+          "description": "Analyze test results and determine next phase",
+          "system_prompt": "You are a test result analyzer. Decide whether to advance, retry, or request approval.",
+          "prompt_template": "Issue: {{issue.title}}\nDescription: {{issue.description}}\nCurrent phase: {{current_phase}}\n\nTest outcome:\nSuccess: {{outcome.success}}\nMessage: {{outcome.message}}\n\nAllowed destinations: {{#each allowed_destinations}}\n- **{{this}}**\n{{/each}}\n\nMake a decision and explain your reasoning."
+        },
+        "failure-analysis": {
+          "name": "failure-analysis",
+          "description": "Analyze failures and recommend next steps",
+          "system_prompt": "You analyze failures and recommend appropriate actions.",
+          "prompt_template": "Issue: {{issue.title}}\nFailure: {{outcome.error}}\n\nDecide the best course of action."
+        }
+      },
+      "default_template": "test-decision"
+    },
+    {
+      "issue": {
+        "id": "issue-1",
+        "title": "Fix authentication bug",
+        "description": "Users cannot login",
+        "status": "open",
+        "priority": 2
+      },
+      "outcome": {
+        "success": false,
+        "error": "Test failed: Expected 200, got 401"
+      },
+      "current_phase": "fix",
+      "custom_instructions": "Determine if we need to retry or go back to planning",
+      "allowed_destinations": ["plan", "fix", "review"],
+      "recent_decisions": [],
+      "phase_history": []
+    },
+    {
+      "decision": "advance_to_test",
+      "reasoning": "All tests passed, code is ready for testing phase",
+      "confidence": 0.92,
+      "recommendations": [
+        "Run integration tests",
+        "Check for edge cases"
+      ]
+    },
+    {
+      "valid": true,
+      "errors": [],
+      "warnings": ["Confidence 0.55 below require_approval threshold 0.6"],
+      "response": {
+        "decision": "advance_to_test",
+        "reasoning": "Tests passed",
+        "confidence": 0.55
+      }
+    },
+    {
+      "total_decisions": 150,
+      "decisions_by_type": {
+        "jump": 45,
+        "advance": 90,
+        "require_approval": 15
+      },
+      "confidence_distribution": {
+        "high": 80,
+        "medium": 50,
+        "low": 20
+      },
+      "most_common_targets": [
+        { "target": "test", "count": 60 },
+        { "target": "review", "count": 40 },
+        { "target": "plan", "count": 30 }
+      ],
+      "approval_rate_by_confidence": {
+        "high_approved": 75,
+        "high_total": 80,
+        "medium_approved": 30,
+        "medium_total": 50,
+        "low_approved": 5,
+        "low_total": 20
+      }
+    }
+  ]
+}

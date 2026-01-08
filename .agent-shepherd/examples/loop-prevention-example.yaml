@@ -1,0 +1,84 @@
+policies:
+  loop-prevention-workflow:
+    name: Loop Prevention Workflow
+    description: Demonstrates loop prevention with phase visit limits, transition limits, and cycle detection
+
+    issue_types: ["bug"]
+    priority: 70
+
+    phases:
+      - name: investigate
+        description: Initial investigation of the issue
+        capabilities: [analysis, debugging]
+        timeout_multiplier: 1.0
+        max_visits: 3
+
+      - name: implement-fix
+        description: Implement the fix
+        capabilities: [coding]
+        timeout_multiplier: 2.0
+        max_visits: 5
+
+      - name: verify-fix
+        description: Verify that the fix works
+        capabilities: [testing, validation]
+        timeout_multiplier: 1.5
+        max_visits: 8
+        transitions:
+          on_success: integration-test
+          on_failure:
+            capability: failure-analysis
+            prompt: |
+              Fix verification failed. Determine next action:
+              - If fix is incomplete, jump to implement-fix (but watch loop limit)
+              - If investigation was wrong, jump to investigate
+              - If issue is more complex, require human approval
+
+              Current fix attempt: {{outcome.retry_count}}
+              Max allowed attempts: 5
+            allowed_destinations: [investigate, implement-fix, integration-test]
+            confidence_thresholds:
+              auto_advance: 0.85
+              require_approval: 0.65
+
+      - name: integration-test
+        description: Full integration testing
+        capabilities: [testing, integration]
+        timeout_multiplier: 2.0
+        max_visits: 6
+        transitions:
+          on_success: close
+          on_failure:
+            capability: integration-failure-decision
+            prompt: |
+              Integration tests failed. Analyze the failure and decide:
+
+              Phase visit history:
+              - investigate: max 3 visits
+              - implement-fix: max 5 visits
+              - verify-fix: max 8 visits
+              - integration-test: max 6 visits
+
+              Decision options:
+              1. If it's a minor integration issue, jump back to verify-fix
+              2. If the fix is broken, jump to implement-fix
+              3. If the investigation was flawed, jump to investigate
+              4. If we've hit limits or issue is complex, require approval
+
+              Check phase visit counts before deciding to jump back.
+            allowed_destinations: [investigate, implement-fix, verify-fix, close]
+            confidence_thresholds:
+              auto_advance: 0.90
+              require_approval: 0.70
+
+    retry:
+      max_attempts: 3
+      backoff_strategy: exponential
+      initial_delay_ms: 10000
+      max_delay_ms: 300000
+
+    timeout_base_ms: 300000
+    stall_threshold_ms: 90000
+
+    fallback_enabled: true
+    fallback_agent: "diagnostic-summary"

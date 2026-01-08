@@ -10,6 +10,8 @@ function printHelp() {
   console.log('  node message-storage.cjs send <issue-id> <from-phase> <to-phase> <message-type> <content> [metadata-json]');
   console.log('  node message-storage.cjs receive <issue-id> <phase> [--keep-unread]');
   console.log('  node message-storage.cjs list <issue-id> [phase] [message-type]');
+  console.log('  node message-storage.cjs cleanup <issue-id> [reason]');
+  console.log('  node message-storage.cjs status [issue-id]');
   console.log('');
   console.log('Message types: context, result, decision, data');
   console.log('');
@@ -21,6 +23,10 @@ function printHelp() {
   console.log('  node message-storage.cjs list agent-shepherd-alg8.1');
   console.log('  node message-storage.cjs list agent-shepherd-alg8.1 implement');
   console.log('  node message-storage.cjs list agent-shepherd-alg8.1 implement result');
+  console.log('  node message-storage.cjs cleanup agent-shepherd-alg8.1');
+  console.log('  node message-storage.cjs cleanup agent-shepherd-alg8.1 issue_closed');
+  console.log('  node message-storage.cjs status');
+  console.log('  node message-storage.cjs status agent-shepherd-alg8.1');
 }
 
 function formatDate(timestamp) {
@@ -209,6 +215,117 @@ function commandList(args) {
   }
 }
 
+function commandCleanup(args) {
+  if (args.length < 1) {
+    console.error('Error: Missing required arguments for cleanup command');
+    console.error('Usage: cleanup <issue-id> [reason]');
+    process.exit(1);
+  }
+
+  const [issueId, reason = 'manual'] = args;
+
+  const storage = new MessageStorage();
+
+  try {
+    console.log(`Cleaning up messages for issue '${issueId}' (reason: ${reason})...`);
+
+    const messages = storage.listMessages({ issue_id: issueId });
+
+    if (messages.length === 0) {
+      console.log('No messages to clean up');
+      storage.close();
+      return;
+    }
+
+    console.log(`Found ${messages.length} message(s)`);
+
+    const archiveDir = path.join(storage.jsonlPath, '..', 'messages_archive');
+
+    if (!existsSync(archiveDir)) {
+      mkdirSync(archiveDir, { recursive: true });
+    }
+
+    const archivePath = path.join(archiveDir, `${issueId}.jsonl`);
+    const timestamp = Date.now();
+
+    console.log(`Archiving messages to messages_archive/${issueId}.jsonl...`);
+
+    messages.forEach(message => {
+      const archivedMessage = {
+        ...message,
+        archived_at: timestamp,
+        archive_reason: reason,
+        original_id: message.id
+      };
+
+      appendFileSync(archivePath, JSON.stringify(archivedMessage) + '\n');
+    });
+
+    console.log(`Archived ${messages.length} message(s)`);
+
+    storage.deleteIssueMessages(issueId);
+
+    console.log(`Deleted ${messages.length} message(s) from active database`);
+    console.log(`✓ Cleanup completed successfully`);
+
+    storage.close();
+  } catch (error) {
+    console.error('Error during cleanup:', error.message);
+    storage.close();
+    process.exit(1);
+  }
+}
+
+function commandStatus(args) {
+  const issueId = args[0] || undefined;
+
+  const storage = new MessageStorage();
+
+  try {
+    const stats = storage.getCleanupStats();
+
+    console.log('Message Storage Status');
+    console.log('');
+    console.log(`Total Messages: ${stats.total}`);
+    console.log(`Unread Messages: ${stats.unread}`);
+    console.log(`Messages > 90 days old: ${stats.old90Days}`);
+    console.log('');
+
+    if (issueId) {
+      const issueMessages = storage.listMessages({ issue_id: issueId });
+      const unreadCount = storage.getUnreadCount(issueId, '');
+
+      console.log(`Issue: ${issueId}`);
+      console.log(`  Messages: ${issueMessages.length}`);
+      console.log(`  Unread: ${unreadCount}`);
+
+      if (issueMessages.length > 0) {
+        console.log('');
+        console.log('Recent messages:');
+        issueMessages.slice(0, 5).forEach((msg, i) => {
+          const date = new Date(msg.created_at).toISOString();
+          const status = msg.read ? '✓' : '○';
+          console.log(`  [${i + 1}] ${status} ${msg.from_phase} → ${msg.to_phase} (${msg.message_type}) - ${date}`);
+        });
+      }
+    } else {
+      if (stats.topIssues.length > 0) {
+        console.log('Top Issues by Message Count:');
+        stats.topIssues.forEach((item, i) => {
+          console.log(`  [${i + 1}] ${item.issue_id}: ${item.count} messages`);
+        });
+      }
+    }
+
+    console.log('');
+    storage.close();
+  } catch (error) {
+    console.error('Error getting status:', error.message);
+    storage.close();
+    process.exit(1);
+  }
+}
+
 function main() {
   const args = process.argv.slice(2);
 
@@ -230,6 +347,12 @@ function main() {
     case 'list':
       commandList(commandArgs);
       break;
+    case 'cleanup':
+      commandCleanup(commandArgs);
+      break;
+    case 'status':
+      commandStatus(commandArgs);
+      break;
     default:
       console.error(`Error: Unknown command '${command}'`);
       console.error('');
@@ -242,4 +365,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { main, commandSend, commandReceive, commandList };
+module.exports = { main, commandSend, commandReceive, commandList, commandCleanup, commandStatus };

@@ -518,3 +518,263 @@ Policies generate metrics on:
 - Success/failure rates per policy type
 
 Use this data to optimize policy configurations over time.
+
+## Enhanced Transitions
+
+### Overview
+
+Enhanced transitions enable AI-driven workflow routing with conditional branching. For detailed information, see [Enhanced Transitions Documentation](./enhanced-transitions.md).
+
+### Transition Blocks
+
+Each phase can define transitions for different outcome types using a `transitions` block:
+
+```yaml
+phases:
+  - name: test
+    transitions:
+      on_success: deploy                    # Simple string transition
+      on_failure:
+        capability: test-decision             # Decision transition (object)
+        prompt: "Analyze test failures"
+        allowed_destinations: [debug, retry]
+      on_partial_success:
+        capability: partial-handler            # Decision transition (object only)
+        allowed_destinations: [proceed, retry]
+      on_unclear:
+        capability: unclear-handler            # Decision transition (object only)
+        allowed_destinations: [manual-review]
+```
+
+**Transition Types**:
+- **String Transitions**: Direct jumps to named phases
+- **Decision Transitions**: AI-based routing with confidence scoring
+
+**Outcome Triggers**:
+- `on_success`: Triggered on successful completion
+- `on_failure`: Triggered on phase failure
+- `on_partial_success`: Triggered on mixed results (object only)
+- `on_unclear`: Triggered on ambiguous outcomes (object only)
+
+### Decision Transition Configuration
+
+```yaml
+phases:
+  - name: test
+    transitions:
+      on_success:
+        capability: test-decision                    # Required: Agent capability
+        prompt: "Evaluate test results"                 # Required: Custom instructions
+        allowed_destinations: [deploy, fix-bugs, review]  # Required: Safety constraint
+        messaging: true                                  # Optional: Enable phase messenger
+        confidence_thresholds:                           # Optional: Automation levels
+          auto_advance: 0.8                             # High confidence: auto-proceed
+          require_approval: 0.6                           # Medium: request human
+```
+
+### Phase-Level Loop Prevention
+
+Override global loop prevention settings per phase:
+
+```yaml
+phases:
+  - name: test
+    max_visits: 5                    # Limit test phase to 5 visits
+
+  - name: deploy
+    max_visits: 2                    # Stricter limit for production
+```
+
+For complete loop prevention configuration, see [Loop Prevention Documentation](./loop-prevention.md).
+
+## Loop Prevention
+
+### Global Configuration
+
+Loop prevention settings in `config.yaml` apply across all policies:
+
+```yaml
+loop_prevention:
+  enabled: true                      # Master switch
+  max_visits_default: 10             # Global phase visit limit
+  max_transitions_default: 5          # Global transition limit
+  cycle_detection_enabled: true        # Enable pattern detection
+  cycle_detection_length: 3            # Cycle detection sensitivity (2-5)
+  trigger_hitl: true                 # Escalate to human
+```
+
+### Protection Mechanisms
+
+1. **Phase Visit Limits**: Maximum visits per phase (prevents infinite re-execution)
+2. **Transition Limits**: Maximum repetitions of specific A→B transitions
+3. **Cycle Detection**: Detects oscillating patterns (e.g., A→B→A→B)
+4. **HITL Escalation**: Automatically adds `ashep-hitl:loop-prevention` label when blocked
+
+### Phase-Level Overrides
+
+Configure per-phase limits in policy definitions:
+
+```yaml
+phases:
+  - name: test
+    max_visits: 5                     # Override global default
+
+  - name: deploy
+    max_visits: 3                     # Stricter limit for production
+```
+
+For detailed loop prevention information, see [Loop Prevention Documentation](./loop-prevention.md).
+
+## Decision Agents
+
+### Decision Prompts Configuration
+
+Decision agents use template-based prompts defined in `decision-prompts.yaml`:
+
+```yaml
+version: "1.0"
+templates:
+  test-decision:
+    name: "Test Outcome Analyzer"
+    description: "Analyzes test results and recommends deployment path"
+    system_prompt: |
+      You are a quality gate decision agent. Analyze test outcomes and recommend
+      appropriate next phase based on test results, coverage, and failure severity.
+    prompt_template: |
+      # Issue
+      Issue ID: {{issue.id}}
+      Title: {{issue.title}}
+      Type: {{issue.issue_type}}
+
+      # Test Outcome
+      Success: {{outcome.success}}
+      Message: {{outcome.message}}
+      Error: {{outcome.error}}
+
+      # Allowed Next Phases
+      {{#each allowed_destinations}}
+      - **{{this}}**
+      {{/each}}
+
+      # Instructions
+      {{custom_instructions}}
+
+      Analyze test outcome and decide:
+      1. Select most appropriate next phase from allowed destinations
+      2. Provide clear reasoning for your choice
+      3. Rate your confidence (0.0-1.0)
+
+      Respond in JSON format:
+      {
+        "decision": "advance_to_<phase>" or "jump_to_<phase>" or "require_approval",
+        "reasoning": "Your detailed reasoning",
+        "confidence": 0.0 to 1.0,
+        "recommendations": ["Optional recommendation 1", "Optional recommendation 2"]
+      }
+
+default_template: "fallback-template"
+```
+
+### Template Variables
+
+Available variables in prompt templates:
+- `{{issue.id}}`, `{{issue.title}}`, `{{issue.description}}`, etc.
+- `{{outcome.success}}`, `{{outcome.message}}`, `{{outcome.error}}`, etc.
+- `{{current_phase}}`
+- `{{custom_instructions}}`
+- `{{allowed_destinations}}`
+- `{{recent_decisions}}` (last 5 decisions)
+- `{{phase_history}}` (phase visit history)
+- `{{performance_context}}` (performance metrics)
+
+### Custom Prompts
+
+Override templates with custom prompts in transition config:
+
+```yaml
+phases:
+  - name: test
+    transitions:
+      on_success:
+        capability: test-decision
+        prompt: "Review test results. If < 5 failures and coverage > 80%, deploy. Otherwise, fix-bugs."
+        allowed_destinations: [deploy, fix-bugs]
+```
+
+For complete decision agent information, see [Decision Agents Documentation](./decision-agents.md).
+
+## Garbage Collection
+
+### Retention Policies Configuration
+
+Configure data retention policies in `config.yaml`:
+
+```yaml
+retention_policies:
+  - name: "standard-90-day"
+    enabled: true
+    age_days: 90
+    max_runs: 1000
+    max_size_mb: 500
+    archive_enabled: true
+    archive_after_days: 30
+    delete_after_days: 365
+
+  - name: "aggressive-cleanup"
+    enabled: false
+    age_days: 30
+    max_runs: 500
+    max_size_mb: 200
+    archive_enabled: false
+```
+
+### Cleanup Configuration
+
+```yaml
+cleanup:
+  enabled: true
+  schedule_interval_hours: 24    # Run cleanup every 24 hours
+  max_runtime_minutes: 30        # Limit cleanup duration
+```
+
+For complete garbage collection information, see [Garbage Collection Documentation](./garbage-collection.md).
+
+## Phase Messenger
+
+### Configuration
+
+Phase messenger configuration in `phase-messenger.yaml`:
+
+```yaml
+size_limits:
+  max_content_length: 10000           # Max message content length
+  max_metadata_length: 5000            # Max metadata JSON length
+  max_messages_per_issue_phase: 100   # Max messages per (issue, phase) pair
+  max_messages_per_issue: 500         # Max messages per issue
+
+cleanup:
+  default_max_age_days: 90           # Default age for cleanup
+  keep_last_n_per_phase: 10          # Keep last N messages per phase
+  keep_last_n_runs: 1               # Keep last N runs
+
+storage:
+  data_dir: ".agent-shepherd"
+  database_file: "messages.db"
+  jsonl_file: "messages.jsonl"
+```
+
+### Enabling Phase Messaging
+
+Enable automatic messaging in transition configuration:
+
+```yaml
+phases:
+  - name: test
+    transitions:
+      on_success:
+        capability: test-decision
+        allowed_destinations: [deploy, fix-bugs]
+        messaging: true  # Enable phase messenger
+```
+
+For complete phase messenger information, see [Phase Messenger Documentation](./phase-messenger.md).

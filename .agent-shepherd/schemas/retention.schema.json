@@ -1,0 +1,326 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "retention.schema.json",
+  "title": "Retention Policy Configuration",
+  "description": "Schema for data retention policies, cleanup metrics, and archive records",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/definitions/retentionPolicy"
+    },
+    {
+      "$ref": "#/definitions/cleanupMetrics"
+    },
+    {
+      "$ref": "#/definitions/archiveRecord"
+    }
+  ],
+  "definitions": {
+    "retentionPolicy": {
+      "type": "object",
+      "description": "Data retention policy configuration",
+      "required": ["name", "enabled", "age_days", "max_runs", "max_size_mb", "archive_enabled"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Unique policy name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Policy description"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether this policy is active"
+        },
+        "age_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3650,
+          "default": 90,
+          "description": "Age threshold in days for retention decisions"
+        },
+        "max_runs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "Maximum number of runs to keep before cleanup is triggered"
+        },
+        "max_size_mb": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "Maximum storage size in MB before cleanup is triggered"
+        },
+        "archive_enabled": {
+          "type": "boolean",
+          "description": "Whether to archive data before deletion"
+        },
+        "archive_after_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3650,
+          "description": "Days after which to archive (defaults to age_days if not set)"
+        },
+        "delete_after_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3650,
+          "description": "Days after which to permanently delete archived data"
+        },
+        "status_filter": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["open", "in_progress", "blocked", "closed"]
+          },
+          "description": "Filter by run status (if set, only matches these statuses)"
+        },
+        "phase_filter": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "description": "Filter by phase name (if set, only matches these phases)"
+        },
+        "keep_successful_runs": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, never delete successful runs"
+        },
+        "keep_failed_runs": {
+          "type": "boolean",
+          "default": true,
+          "description": "If false, delete all failed runs regardless of age"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cleanupMetrics": {
+      "type": "object",
+      "description": "Metrics recorded for cleanup operations",
+      "required": ["timestamp", "policy_name", "operation", "runs_processed", "runs_archived", "runs_deleted", "bytes_archived", "bytes_deleted", "duration_ms"],
+      "properties": {
+        "timestamp": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unix timestamp in milliseconds"
+        },
+        "policy_name": {
+          "type": "string",
+          "description": "Name of the policy that triggered cleanup"
+        },
+        "operation": {
+          "type": "string",
+          "enum": ["archive", "delete", "cleanup"],
+          "description": "Type of cleanup operation"
+        },
+        "runs_processed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of runs evaluated"
+        },
+        "runs_archived": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of runs archived"
+        },
+        "runs_deleted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of runs deleted"
+        },
+        "bytes_archived": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total bytes archived"
+        },
+        "bytes_deleted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total bytes deleted"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Duration of cleanup operation in milliseconds"
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if operation failed"
+        }
+      },
+      "additionalProperties": false
+    },
+    "archiveRecord": {
+      "type": "object",
+      "description": "Record of an archived run",
+      "required": ["id", "original_run_id", "archived_at", "retention_policy", "run_data"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique archive record ID"
+        },
+        "original_run_id": {
+          "type": "string",
+          "description": "ID of the original run that was archived"
+        },
+        "archived_at": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unix timestamp in milliseconds when archived"
+        },
+        "retention_policy": {
+          "type": "string",
+          "description": "Name of the policy that caused archiving"
+        },
+        "run_data": {
+          "type": "string",
+          "description": "Serialized run data"
+        },
+        "outcome_data": {
+          "type": "string",
+          "description": "Serialized outcome data (if available)"
+        },
+        "decision_data": {
+          "type": "string",
+          "description": "Serialized decision data (if available)"
+        },
+        "compressed_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Size in bytes after compression (if compressed)"
+        },
+        "scheduled_delete_at": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unix timestamp in milliseconds when scheduled for permanent deletion"
+        }
+      },
+      "additionalProperties": false
+    },
+    "aggregateMetrics": {
+      "type": "object",
+      "description": "Aggregate metrics for retention policy operations",
+      "required": [
+        "total_runs_processed",
+        "total_runs_archived",
+        "total_runs_deleted",
+        "total_bytes_archived",
+        "total_bytes_deleted",
+        "last_cleanup",
+        "average_duration_ms"
+      ],
+      "properties": {
+        "total_runs_processed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total runs processed across all operations"
+        },
+        "total_runs_archived": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total runs archived across all operations"
+        },
+        "total_runs_deleted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total runs deleted across all operations"
+        },
+        "total_bytes_archived": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total bytes archived across all operations"
+        },
+        "total_bytes_deleted": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total bytes deleted across all operations"
+        },
+        "last_cleanup": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "null" }
+          ],
+          "description": "Unix timestamp of last cleanup operation, or null if none"
+        },
+        "average_duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Average duration of cleanup operations in milliseconds"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "name": "default-policy",
+      "description": "Default retention policy for most runs",
+      "enabled": true,
+      "age_days": 90,
+      "max_runs": 1000,
+      "max_size_mb": 500,
+      "archive_enabled": true,
+      "archive_after_days": 60,
+      "delete_after_days": 365,
+      "keep_successful_runs": false,
+      "keep_failed_runs": true
+    },
+    {
+      "name": "failed-only-policy",
+      "description": "Delete failed runs quickly but keep successful ones",
+      "enabled": true,
+      "age_days": 30,
+      "max_runs": 500,
+      "max_size_mb": 200,
+      "archive_enabled": true,
+      "archive_after_days": 7,
+      "keep_successful_runs": true,
+      "keep_failed_runs": false
+    },
+    {
+      "name": "development-policy",
+      "description": "Aggressive cleanup for development environment",
+      "enabled": true,
+      "age_days": 7,
+      "max_runs": 100,
+      "max_size_mb": 50,
+      "archive_enabled": false,
+      "status_filter": ["closed"],
+      "phase_filter": ["review"]
+    },
+    {
+      "timestamp": 1704067200000,
+      "policy_name": "default-policy",
+      "operation": "cleanup",
+      "runs_processed": 1200,
+      "runs_archived": 200,
+      "runs_deleted": 50,
+      "bytes_archived": 10485760,
+      "bytes_deleted": 2097152,
+      "duration_ms": 15234
+    },
+    {
+      "id": "archive-1",
+      "original_run_id": "run-12345",
+      "archived_at": 1704067200000,
+      "retention_policy": "default-policy",
+      "run_data": "{\"issue_id\":\"issue-1\",\"phase\":\"review\",\"status\":\"completed\"}",
+      "outcome_data": "{\"success\":true,\"message\":\"Review completed\"}",
+      "compressed_size": 512,
+      "scheduled_delete_at": 1735689600000
+    },
+    {
+      "total_runs_processed": 5000,
+      "total_runs_archived": 800,
+      "total_runs_deleted": 150,
+      "total_bytes_archived": 41943040,
+      "total_bytes_deleted": 8388608,
+      "last_cleanup": 1704067200000,
+      "average_duration_ms": 12500
+    }
+  ]
+}

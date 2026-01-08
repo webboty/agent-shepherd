@@ -1,0 +1,227 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "transition.schema.json",
+  "title": "Transition System Configuration",
+  "description": "Schema for transition system configuration and transition execution data",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/definitions/transitionConfig"
+    },
+    {
+      "$ref": "#/definitions/transitionBlock"
+    },
+    {
+      "$ref": "#/definitions/phaseTransition"
+    }
+  ],
+  "definitions": {
+    "transitionConfig": {
+      "type": "object",
+      "description": "Configuration for AI-based conditional routing between phases",
+      "required": ["capability", "prompt", "allowed_destinations"],
+      "properties": {
+        "capability": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Decision agent capability (e.g., 'test-decision', 'failure-analysis')"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Decision instructions for the agent"
+        },
+        "allowed_destinations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "description": "Safety constraint - valid phases to jump to"
+        },
+        "messaging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable phase messenger for complex data exchange between phases"
+        },
+        "confidence_thresholds": {
+          "type": "object",
+          "description": "Confidence thresholds for automatic vs manual routing",
+          "properties": {
+            "auto_advance": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.8,
+              "description": "High confidence threshold for auto progression"
+            },
+            "require_approval": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.6,
+              "description": "Medium confidence threshold triggering review"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "transitionBlock": {
+      "type": "object",
+      "description": "Optional transition configuration for phases with multiple outcome paths",
+      "properties": {
+        "on_success": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "description": "Direct jump to phase name on success"
+            },
+            {
+              "$ref": "#/definitions/transitionConfig"
+            }
+          ],
+          "description": "Transition on success - can be direct jump or AI decision"
+        },
+        "on_failure": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "description": "Direct jump to phase name on failure"
+            },
+            {
+              "$ref": "#/definitions/transitionConfig"
+            }
+          ],
+          "description": "Transition on failure - can be direct jump or AI decision"
+        },
+        "on_partial_success": {
+          "$ref": "#/definitions/transitionConfig",
+          "description": "Transition on partial success - AI decision only (not string)"
+        },
+        "on_unclear": {
+          "$ref": "#/definitions/transitionConfig",
+          "description": "Transition on unclear outcome - AI decision only (not string)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "phaseTransition": {
+      "type": "object",
+      "description": "Runtime transition execution data",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["advance", "retry", "block", "close", "jump_back", "dynamic_decision"],
+          "description": "Transition type"
+        },
+        "next_phase": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Target phase for advance transitions"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for transition decision"
+        },
+        "jump_target_phase": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Target phase for jump_back transitions"
+        },
+        "dynamic_agent": {
+          "type": "string",
+          "description": "Agent capability for dynamic_decision transitions"
+        },
+        "decision_config": {
+          "description": "Full transition configuration for dynamic_decision",
+          "oneOf": [
+            { "$ref": "#/definitions/transitionConfig" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "decisionResult": {
+      "type": "object",
+      "description": "Parsed AI decision response",
+      "required": ["action", "reasoning", "confidence"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Decision action (e.g., 'advance_to_test', 'jump_to_plan', 'require_approval')"
+        },
+        "target_phase": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Extracted target phase from action"
+        },
+        "reasoning": {
+          "type": "string",
+          "minLength": 1,
+          "description": "AI's reasoning for the decision"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Confidence score (0.0-1.0)"
+        },
+        "requires_approval": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether human approval is required"
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional recommendations from the decision agent"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "capability": "test-decision",
+      "prompt": "Analyze the test results and decide whether to advance, retry, or request approval.",
+      "allowed_destinations": ["test", "fix", "review"],
+      "messaging": true,
+      "confidence_thresholds": {
+        "auto_advance": 0.85,
+        "require_approval": 0.6
+      }
+    },
+    {
+      "on_success": "test",
+      "on_failure": {
+        "capability": "failure-analysis",
+        "prompt": "Determine if we should fix, plan, or block based on the failure.",
+        "allowed_destinations": ["fix", "plan", "review"]
+      },
+      "on_partial_success": {
+        "capability": "partial-analysis",
+        "prompt": "Decide how to handle partial success.",
+        "allowed_destinations": ["test", "fix", "review"]
+      }
+    },
+    {
+      "type": "dynamic_decision",
+      "dynamic_agent": "test-decision",
+      "decision_config": {
+        "capability": "test-decision",
+        "prompt": "Analyze results...",
+        "allowed_destinations": ["test", "fix", "review"]
+      },
+      "reason": "AI routing for on_failure"
+    }
+  ]
+}

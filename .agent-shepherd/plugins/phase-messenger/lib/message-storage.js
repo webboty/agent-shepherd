@@ -304,6 +304,36 @@ class MessageStorage {
     };
   }
 
+  archiveMessagesForIssue(issueId, reason = 'cleanup') {
+    const messages = this.listMessages({ issue_id: issueId });
+
+    if (messages.length === 0) {
+      return { archived: 0 };
+    }
+
+    const archiveDir = join(this.jsonlPath, '..', 'messages_archive');
+
+    if (!existsSync(archiveDir)) {
+      mkdirSync(archiveDir, { recursive: true });
+    }
+
+    const archivePath = join(archiveDir, `${issueId}.jsonl`);
+    const timestamp = Date.now();
+
+    messages.forEach(message => {
+      const archivedMessage = {
+        ...message,
+        archived_at: timestamp,
+        archive_reason: reason,
+        original_id: message.id
+      };
+
+      appendToJSONL(archivePath, archivedMessage);
+    });
+
+    return { archived: messages.length };
+  }
+
   cleanupOldMessages(options = {}) {
     const maxAgeDays = options.maxAgeDays || this.config.cleanup.default_max_age_days;
     const keepUnread = options.keepUnread !== false;

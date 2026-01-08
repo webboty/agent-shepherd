@@ -92,7 +92,10 @@ Selection logic:
 4. **Session Creation**: OpenCode client launches agent session
 5. **Progress Monitoring**: Monitor Engine watches execution and detects stalls
 6. **Outcome Recording**: Logging system captures results and updates issue status
-7. **Visualization**: UI displays flow state and progress
+7. **Enhanced Transition Decision**: For decision transitions, AI agent analyzes outcome and selects next phase from allowed destinations
+8. **Loop Prevention Checks**: Validates phase visits, transition counts, and cycle detection before proceeding
+9. **Phase Messenger Integration**: Automatically sends result messages to next phase if messaging enabled
+10. **Visualization**: UI displays flow state and progress
 
 ## Key Design Decisions
 
@@ -220,6 +223,131 @@ The Policy Capability Validator ensures workflow integrity by validating the com
 - **Health Monitoring**: Tracks relationship health with status indicators (valid/warning/error)
 - **Startup Validation**: Runs automatically during system startup to prevent broken configurations
 - **Visual Diagnostics**: Tree visualization shows relationship status and identifies issues
+
+### Enhanced Transitions System
+
+Enhanced transitions enable AI-driven workflow routing with conditional branching and intelligent phase selection:
+
+- **String Transitions**: Simple direct jumps between phases (e.g., `test → deploy`)
+- **Decision Transitions**: AI agents analyze outcomes and select from `allowed_destinations`
+- **Outcome-Based Routing**: Different transitions for success, failure, partial success, and unclear outcomes
+- **Confidence Thresholds**: Automatic progression vs. human-in-the-loop decisions based on AI confidence scores
+- **Phase Messaging**: Automatic data exchange between phases when messaging enabled
+
+**Data Flow**:
+1. Phase completes with outcome
+2. Worker engine checks transition configuration
+3. If decision transition: Launch AI decision agent with context
+4. Decision agent returns selected phase and confidence
+5. Confidence check determines auto-advance or HITL request
+6. Loop prevention validates transition
+7. Phase messenger sends result message (if enabled)
+8. Workflow advances to selected phase
+
+### Loop Prevention System
+
+Loop prevention ensures workflows remain bounded and efficient through multiple protective mechanisms:
+
+- **Phase Visit Limits**: Maximum number of visits per phase (e.g., test phase limited to 5 visits)
+- **Transition Limits**: Maximum repetitions of specific phase-to-phase transitions (e.g., fix→test limited to 5 times)
+- **Cycle Detection**: Pattern detection for oscillating transitions (e.g., A→B→A→B patterns)
+- **HITL Escalation**: Automatic human-in-the-loop request when limits are reached
+
+**Protection Layers**:
+1. **Phase Visit Limits**: Track visits per phase, block if exceeded
+2. **Transition Limits**: Track transition pairs, block if repeated too many times
+3. **Cycle Detection**: Analyze recent transitions for oscillating patterns, block if detected
+4. **HITL Escalation**: Add `ashep-hitl:loop-prevention` label when blocked
+
+**Configuration Hierarchy**:
+- Global defaults in `config.yaml` → Policy-level overrides → Phase-level overrides
+- Per-phase `max_visits` can override global defaults for critical phases
+
+### Decision Agent System
+
+Decision agents are specialized AI agents that analyze workflow outcomes and make routing decisions:
+
+- **Template-Based Prompts**: Structured prompts from `decision-prompts.yaml` or custom instructions
+- **Context Injection**: Issue data, outcomes, phase history, and performance metrics
+- **Constrained Routing**: Selection limited to `allowed_destinations` for safety
+- **Confidence Scoring**: Agents provide 0.0-1.0 confidence scores for decisions
+- **Analytics Tracking**: Decision patterns, confidence distributions, and approval rates tracked
+
+**Decision Process**:
+1. Triggered when phase completes with decision transition configured
+2. System gathers context (issue, outcome, phase history, performance)
+3. Decision prompt built from template or custom instructions
+4. AI agent executes and returns structured response
+5. Response validation ensures required fields and valid target phase
+6. Confidence check determines automation level (auto-advance, approval, or escalation)
+7. Decision logged for analytics and audit trail
+
+**Decision Response Format**:
+```json
+{
+  "decision": "advance_to_deploy",
+  "reasoning": "All tests passed, coverage 95%, no critical issues",
+  "confidence": 0.92,
+  "recommendations": ["Monitor production metrics"]
+}
+```
+
+### Phase Messenger System
+
+Phase messenger enables inter-phase communication for context preservation and data exchange:
+
+- **Message Types**: Context, result, decision, and data messages
+- **Dual Storage**: JSONL (audit trail) + SQLite (fast queries)
+- **Automatic Delivery**: Messages received when phase starts
+- **Size Management**: Automatic cleanup when limits exceeded
+- **Message Lifecycle**: Create → Send → Receive → Mark Read → Cleanup
+
+**Message Flow**:
+1. Phase A completes successfully with `messaging: true` enabled
+2. System automatically sends result message to next phase
+3. Message stored in both JSONL and SQLite
+4. When Phase B starts, receives all unread messages
+5. Messages marked as read automatically
+6. Old messages cleaned up when size limits reached
+
+**Storage Architecture**:
+- **JSONL Source**: Append-only log of all messages (audit trail)
+- **SQLite Cache**: Indexed database for fast queries and lookups
+- **Synchronization**: JSONL → SQLite sync on startup, writes to both on creation
+
+### Garbage Collection System
+
+Garbage collection manages data lifecycle to maintain performance and storage efficiency:
+
+- **Retention Policies**: Configurable rules for archiving and deletion
+- **Archive Database**: Historical run data stored separately from active runs
+- **Cleanup Operations**: Archive old runs, delete ancient data, enforce size limits
+- **Metrics Tracking**: Record cleanup operations for monitoring
+- **Message Cleanup**: Messages follow same retention as associated runs
+
+**Cleanup Operations**:
+1. **Archive Old Runs**: Move runs older than `archive_after_days` to archive database
+2. **Delete Ancient Data**: Permanently remove runs older than `delete_after_days`
+3. **Enforce Size Limits**: Remove oldest runs when exceeding `max_runs` or `max_size_mb`
+
+**Data Flow**:
+```
+Active DB (runs.db)
+  ↓ [age > archive_after_days]
+Archive DB (archive/archive.db)
+  ↓ [age > delete_after_days]
+Deleted (permanently removed)
+```
+
+**Retention Policy Fields**:
+- `age_days`: Age threshold for archiving
+- `max_runs`: Maximum run count limit
+- `max_size_mb`: Maximum database size limit
+- `archive_enabled`: Whether to archive before delete
+- `archive_after_days`: When to archive (overrides `age_days`)
+- `delete_after_days`: When to permanently delete
+- `status_filter`: Filter by run status
+- `phase_filter`: Filter by phase name
 
 ### Tree Visualization
 
@@ -409,7 +537,7 @@ For detailed plugin development information, see [docs/plugin-system.md](../docs
 ### Advanced Orchestration
 
 - Parallel phase execution
-- Conditional branching
+- **Conditional branching** (implemented - see [Enhanced Transitions](./enhanced-transitions.md))
 - Dynamic policy selection
 - ML-based agent selection
 

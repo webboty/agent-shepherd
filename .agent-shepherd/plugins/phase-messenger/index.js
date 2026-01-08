@@ -64,8 +64,46 @@ async function phaseMsgList(issueId, phase, messageType) {
   }
 }
 
+async function phaseMsgCleanup(issueId, reason) {
+  if (!issueId) {
+    console.error('Usage: ashep phase-msg-cleanup <issue-id> [--reason <reason>]');
+    console.error('Example: ashep phase-msg-cleanup agent-shepherd-alg8.1');
+    console.error('         ashep phase-msg-cleanup agent-shepherd-alg8.1 --reason issue_closed');
+    process.exit(1);
+  }
+
+  const cleanupReason = reason || 'manual';
+
+  try {
+    const storagePath = path.join(__dirname, 'lib', 'message-storage.cjs');
+    execSync(`bun "${storagePath}" cleanup "${issueId}" "${cleanupReason}"`, {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..', '..', '..')
+    });
+  } catch (error) {
+    console.error('Failed to cleanup messages:', error.message);
+    process.exit(1);
+  }
+}
+
+async function phaseMsgStatus(issueId) {
+  try {
+    const storagePath = path.join(__dirname, 'lib', 'message-storage.cjs');
+    const issueIdArg = issueId ? `"${issueId}"` : '';
+    execSync(`bun "${storagePath}" status ${issueIdArg}`, {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..', '..', '..')
+    });
+  } catch (error) {
+    console.error('Failed to get status:', error.message);
+    process.exit(1);
+  }
+}
+
 module.exports = {
   'phase-msg-send': phaseMsgSend,
   'phase-msg-receive': phaseMsgReceive,
-  'phase-msg-list': phaseMsgList
+  'phase-msg-list': phaseMsgList,
+  'phase-msg-cleanup': phaseMsgCleanup,
+  'phase-msg-status': phaseMsgStatus
 };
