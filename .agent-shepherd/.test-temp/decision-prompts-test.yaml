@@ -1,0 +1,54 @@
+
+version: "1.0"
+templates:
+  test-decision:
+    name: "Test Decision"
+    description: "Test template"
+    system_prompt: "You are a test decision agent."
+    prompt_template: |
+      # Test Decision
+      ID: {{issue.id}}
+      Title: {{issue.title}}
+      Description: {{issue.description}}
+      Type: {{issue.issue_type}}
+      Priority: P{{issue.priority}}
+      Status: {{issue.status}}
+      Outcome: {{outcome.success}}
+      Message: {{outcome.message}}
+      Duration: {{outcome.metrics.duration_ms}}ms
+      Error: {{outcome.error}}
+
+      {{#each outcome.warnings}}
+        - {{this}}
+      {{/each}}
+
+      {{#each recent_decisions}}
+        - {{timestamp}}: {{decision}} ({{reasoning}})
+      {{/each}}
+
+      {{#each phase_history}}
+        - {{phase}} (Attempt {{attempt_number}}): {{status}} ({{duration_ms}}ms)
+      {{/each}}
+
+      {{#performance_context}}
+        Average: {{average_duration_ms}}ms
+        Total: {{total_duration_ms}}ms
+        Visits: {{phase_visit_count}}
+      {{/performance_context}}
+
+      Custom: {{custom_instructions}}
+
+      {{#each allowed_destinations}}
+      - {{this}}
+      {{/each}}
+  fallback-template:
+    name: "Fallback"
+    description: "Fallback template"
+    system_prompt: "Fallback agent"
+    prompt_template: |
+      Fallback: {{issue.title}}
+      Custom: {{custom_instructions}}
+      Allowed: {{#each allowed_destinations}}
+      - {{this}}
+      {{/each}}
+default_template: "fallback-template"

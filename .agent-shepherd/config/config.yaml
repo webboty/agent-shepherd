@@ -21,11 +21,15 @@ loop_prevention:
   cycle_detection_length: 3
   trigger_hitl: true
 
+cleanup:
+  enabled: true
+  run_on_startup: false
+  archive_on_startup: false
+  delete_on_startup: false
+  schedule_interval_hours: 24
+
 retention:
   enabled: true
-  cleanup_on_startup: false
-  cleanup_interval_ms: 3600000
-  archive_enabled: true
   policies:
     - name: default
       description: Default retention policy for all runs

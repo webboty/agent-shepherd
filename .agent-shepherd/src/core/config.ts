@@ -37,6 +37,14 @@ export interface LoopPreventionConfig {
   trigger_hitl: boolean;
 }
 
+export interface CleanupConfig {
+  enabled: boolean;
+  run_on_startup: boolean;
+  archive_on_startup: boolean;
+  delete_on_startup: boolean;
+  schedule_interval_hours: number;
+}
+
 export interface RetentionPolicy {
   name: string;
   description?: string;
@@ -55,9 +63,31 @@ export interface RetentionPolicy {
 
 export interface RetentionConfig {
   enabled: boolean;
-  cleanup_on_startup: boolean;
-  cleanup_interval_ms: number;
-  archive_enabled: boolean;
+  policies: RetentionPolicy[];
+}
+
+export interface AgentShepherdConfig {
+  version: string;
+  worker?: {
+    poll_interval_ms?: number;
+    max_concurrent_runs?: number;
+  };
+  monitor?: {
+    poll_interval_ms?: number;
+    stall_threshold_ms?: number;
+    timeout_multiplier?: number;
+  };
+  ui?: UIConfig;
+  fallback?: FallbackConfig;
+  workflow?: WorkflowConfig;
+  hitl?: HITLConfig;
+  loop_prevention?: LoopPreventionConfig;
+  cleanup?: CleanupConfig;
+  retention?: RetentionConfig;
+}
+
+export interface RetentionConfig {
+  enabled: boolean;
   policies: RetentionPolicy[];
 }
 
@@ -146,18 +176,25 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
         cycle_detection_length: 3,
         trigger_hitl: true
       },
-      retention: config.retention ? {
-        enabled: config.retention.enabled ?? true,
-        cleanup_on_startup: config.retention.cleanup_on_startup ?? false,
-        cleanup_interval_ms: config.retention.cleanup_interval_ms ?? 3600000,
-        archive_enabled: config.retention.archive_enabled ?? true,
-        policies: config.retention.policies ?? []
+      cleanup: config.cleanup ? {
+        enabled: config.cleanup.enabled ?? true,
+        run_on_startup: config.cleanup.run_on_startup ?? false,
+        archive_on_startup: config.cleanup.archive_on_startup ?? false,
+        delete_on_startup: config.cleanup.delete_on_startup ?? false,
+        schedule_interval_hours: config.cleanup.schedule_interval_hours ?? 24,
       } : {
         enabled: true,
-        cleanup_on_startup: false,
-        cleanup_interval_ms: 3600000,
-        archive_enabled: true,
-        policies: []
+        run_on_startup: false,
+        archive_on_startup: false,
+        delete_on_startup: false,
+        schedule_interval_hours: 24,
+      },
+      retention: config.retention ? {
+        enabled: config.retention.enabled ?? true,
+        policies: config.retention.policies ?? [],
+      } : {
+        enabled: true,
+        policies: [],
       }
     };
   } catch (error) {
