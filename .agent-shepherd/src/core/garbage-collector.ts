@@ -34,6 +34,7 @@ export class GarbageCollector {
   private archiveJsonlPath: string;
   private dataDir: string;
   private policyManager: ReturnType<typeof getRetentionPolicyManager>;
+  private isClosed = false;
 
   constructor(config: GarbageCollectorConfig) {
     this.dataDir = config.dataDir || join(process.cwd(), ".agent-shepherd");
@@ -176,16 +177,21 @@ export class GarbageCollector {
    */
   private persistMetrics(metrics: CleanupMetrics): void {
     try {
+      if (this.isClosed) {
+        console.warn("Cannot persist metrics: database is closed");
+        return;
+      }
+
       const id = `cleanup-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
       this.archiveDb.run(
         `
-        INSERT INTO cleanup_metrics (
-          id, timestamp, policy_name, operation,
-          runs_processed, runs_archived, runs_deleted,
-          bytes_archived, bytes_deleted, duration_ms, error
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
+         INSERT INTO cleanup_metrics (
+           id, timestamp, policy_name, operation,
+           runs_processed, runs_archived, runs_deleted,
+           bytes_archived, bytes_deleted, duration_ms, error
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       `,
         [
           id,
           metrics.timestamp,
@@ -541,7 +547,10 @@ export class GarbageCollector {
    * Close database connections
    */
   close(): void {
-    this.archiveDb.close();
+    if (!this.isClosed) {
+      this.isClosed = true;
+      this.archiveDb.close();
+    }
   }
 }
 

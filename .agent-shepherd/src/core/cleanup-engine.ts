@@ -8,7 +8,6 @@ import {
   getGarbageCollector,
   resetCollector,
 } from "./garbage-collector.ts";
-import { getHealthChecker } from "./cleanup-health-check.ts";
 import {
   type CleanupConfig,
   type RetentionConfig,
@@ -245,6 +244,86 @@ export class CleanupEngine {
       };
     } catch (error) {
       console.error("Immediate cleanup error:", error);
+      return {
+        success: false,
+        results: [],
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Run critical cleanup (more aggressive)
+   */
+  async runCriticalCleanup(): Promise<{
+    success: boolean;
+    results: any[];
+    duration: number;
+  }> {
+    if (!this.collector) {
+      return {
+        success: false,
+        results: [],
+        duration: 0,
+      };
+    }
+
+    const startTime = Date.now();
+
+    try {
+      console.log("Running critical cleanup (aggressive mode)...");
+      const results = await this.collector.runFullCleanup();
+
+      const duration = Date.now() - startTime;
+      console.log(`Critical cleanup completed in ${duration}ms`);
+
+      return {
+        success: true,
+        results,
+        duration,
+      };
+    } catch (error) {
+      console.error("Critical cleanup error:", error);
+      return {
+        success: false,
+        results: [],
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Run emergency cleanup (most aggressive)
+   */
+  async runEmergencyCleanup(): Promise<{
+    success: boolean;
+    results: any[];
+    duration: number;
+  }> {
+    if (!this.collector) {
+      return {
+        success: false,
+        results: [],
+        duration: 0,
+      };
+    }
+
+    const startTime = Date.now();
+
+    try {
+      console.log("Running emergency cleanup (maximum aggression mode)...");
+      const results = await this.collector.runEmergencyCleanup();
+
+      const duration = Date.now() - startTime;
+      console.log(`Emergency cleanup completed in ${duration}ms`);
+
+      return {
+        success: true,
+        results,
+        duration,
+      };
+    } catch (error) {
+      console.error("Emergency cleanup error:", error);
       return {
         success: false,
         results: [],
