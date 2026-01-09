@@ -149,6 +149,10 @@
         "transitions": {
           "$ref": "#/definitions/TransitionBlock",
           "description": "Optional transition configuration for complex routing"
+        },
+        "custom_prompt": {
+          "type": "string",
+          "description": "Custom prompt template for this phase. Supports variables: {{issue.title}}, {{issue.description}}, {{issue.id}}, {{issue.type}}, {{phase}}, {{capabilities}}. If not specified, uses default template."
         }
       },
       "additionalProperties": false

@@ -109,6 +109,7 @@ ashep work --phase implement ISSUE-456
 - Validates issue exists in Beads
 - Processes through complete workflow
 - Returns detailed result status
+- **Note**: Custom prompts configured in policies.yaml are automatically applied per phase and support variable substitution (e.g., `{{issue.title}}`, `{{phase}}`, `{{capabilities}}`)
 
 **Output:**
 ```

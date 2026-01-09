@@ -338,6 +338,38 @@ bd update ISSUE-123 --labels "ashep-workflow:nonexistent"
 **Impact**: Caps exponential backoff growth  
 **Values**: Time in milliseconds
 
+#### `custom_prompt` (string)
+**Required**: No  
+**Purpose**: Custom prompt template for this phase  
+**Impact**: Allows per-phase tailored instructions for agents  
+**Fallback**: Uses generic template if not specified
+
+**Supported Variables**:
+- `{{issue.title}}` - Issue title
+- `{{issue.description}}` - Issue description
+- `{{issue.id}}` - Issue identifier
+- `{{issue.type}}` - Issue type (e.g., bug, feature)
+- `{{phase}}` - Current phase name
+- `{{capabilities}}` - Comma-separated list of required capabilities
+
+**Example**:
+```yaml
+phases:
+  - name: plan
+    custom_prompt: "Create a detailed plan for {{issue.title}} (Issue ID: {{issue.id}}). Type: {{issue.type}}. Use capabilities: {{capabilities}}. Focus on architectural decisions."
+  - name: implement
+    custom_prompt: "Implement the {{issue.title}} feature based on the plan. Use these capabilities: {{capabilities}}. Follow best practices and include tests."
+  - name: test
+    capabilities: [testing]
+```
+
+**Notes**:
+- Optional field - if not specified, generic prompt template is used
+- Variable substitution happens at runtime with actual issue data
+- Invalid variables are left unchanged (no errors thrown)
+- Empty custom_prompt falls back to generic template
+- Works with `require_approval` - approval warning is appended to custom prompts
+
 ## Policy Execution Flow
 
 1. **Trigger Matching**: Issue labels and type matched against policies

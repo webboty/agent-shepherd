@@ -486,6 +486,16 @@ export class WorkerEngine {
   ): string {
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
 
+    if (phaseConfig?.custom_prompt && phaseConfig.custom_prompt.trim()) {
+      let customPrompt = this.substituteVariables(phaseConfig.custom_prompt, issue, phase, phaseConfig.capabilities);
+
+      if (phaseConfig?.require_approval) {
+        customPrompt += "\n\n⚠️ This phase requires human approval before proceeding.\n";
+      }
+
+      return customPrompt.trim();
+    }
+
     return `
 # Task: ${issue.title}
 
@@ -509,6 +519,29 @@ Please complete the ${phase} phase for this issue. When done, provide a summary 
 
 ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval before proceeding.\n" : ""}
 `.trim();
+  }
+
+  /**
+   * Substitute variables in custom prompt template
+   */
+  private substituteVariables(
+    template: string,
+    issue: BeadsIssue,
+    phase: string,
+    capabilities?: string[]
+  ): string {
+    const capabilitiesList = capabilities?.join(", ") || "None specified";
+
+    let result = template;
+
+    result = result.replace(/\{\{issue\.title\}\}/g, issue.title || "");
+    result = result.replace(/\{\{issue\.description\}\}/g, issue.description || "");
+    result = result.replace(/\{\{issue\.id\}\}/g, issue.id || "");
+    result = result.replace(/\{\{issue\.type\}\}/g, issue.issue_type || "");
+    result = result.replace(/\{\{phase\}\}/g, phase || "");
+    result = result.replace(/\{\{capabilities\}\}/g, capabilitiesList);
+
+    return result;
   }
 
   /**

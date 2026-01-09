@@ -24,6 +24,7 @@ export interface PhaseConfig {
   fallback_enabled?: boolean;
   transitions?: TransitionBlock;
   max_visits?: number;
+  custom_prompt?: string;
 }
 
 export interface TransitionConfig {

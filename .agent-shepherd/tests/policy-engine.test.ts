@@ -109,6 +109,33 @@ default_policy: default
       expect(implementPhase?.capabilities).toEqual(['coding', 'refactoring']);
     });
 
+    it('should load phase with custom_prompt', () => {
+      const policiesWithCustomPrompt = `
+policies:
+  custom:
+    name: "Custom Prompt Policy"
+    phases:
+      - name: plan
+        capabilities: [planning]
+        custom_prompt: "Plan the solution for {{issue.title}}. Issue type: {{issue.type}}. Phase: {{phase}}."
+      - name: implement
+        capabilities: [coding]
+    retry:
+      max_attempts: 3
+      backoff_strategy: exponential
+    timeout_base_ms: 300000
+
+default_policy: custom
+      `.trim();
+
+      writeFileSync(policiesPath, policiesWithCustomPrompt);
+      const customEngine = new PolicyEngine(policiesPath);
+
+      const planPhase = customEngine.getPhaseConfig('custom', 'plan');
+      expect(planPhase?.custom_prompt).toContain('Plan the solution');
+      expect(planPhase?.custom_prompt).toContain('{{issue.title}}');
+    });
+
     it('should get next phase in sequence', () => {
       const nextPhase = policyEngine.getNextPhase('default', 'plan');
       expect(nextPhase).toBe('implement');
