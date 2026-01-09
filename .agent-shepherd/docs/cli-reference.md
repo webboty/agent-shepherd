@@ -335,6 +335,118 @@ Summary:
   Dead end capabilities: testing, qa
 ```
 
+## Listing Commands
+
+### `ashep list-active`
+
+List all ashep-managed issues that are currently active (open or in_progress status).
+
+**Usage:**
+```bash
+ashep list-active
+```
+
+**Behavior:**
+- Queries Beads for issues with `ashep-managed` label
+- Filters for issues with status `open` or `in_progress`
+- Displays phase information extracted from `ashep-phase:` labels
+- Shows priority, last update time
+- Handles empty results gracefully
+
+**Output:**
+```
+Active Issues (2):
+┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┐
+│ ID      │ Title                           │ Phase        │ Priority │ Updated      │
+├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┤
+│ bd-42   │ Fix authentication bug          │ implement    │ P1       │ 2m ago       │
+│ bd-87   │ Add user settings              │ test         │ P2       │ 15m ago      │
+└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┘
+```
+
+### `ashep list-hitl`
+
+List issues requiring human-in-the-loop (HITL) intervention.
+
+**Usage:**
+```bash
+ashep list-hitl
+```
+
+**Behavior:**
+- Queries all Beads issues
+- Filters for issues with `ashep-hitl:` labels
+- Displays HITL reason, current phase, and status
+- Useful for identifying issues that need human attention
+
+**Output:**
+```
+HITL Issues (1):
+┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────────┐
+│ ID      │ Title                           │ Reason       │ Phase    │ Status          │
+├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────────┤
+│ bd-123  │ Complex API integration         │ approval     │ review   │ open            │
+└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────────┘
+```
+
+### `ashep list-ready`
+
+List ashep-managed issues ready to be worked on (open status only, no blockers).
+
+**Usage:**
+```bash
+ashep list-ready
+```
+
+**Behavior:**
+- Queries Beads for issues with `ashep-managed` label
+- Filters for issues with status `open`
+- Shows issues that are not blocked and ready for worker pickup
+- Displays phase, priority, and last update time
+
+**Output:**
+```
+Ready Issues (1):
+┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┐
+│ ID      │ Title                           │ Phase        │ Priority │ Updated      │
+├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┤
+│ bd-99   │ Implement caching              │ plan         │ P1       │ 5m ago       │
+└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┘
+```
+
+### `ashep list-struggle [hours]`
+
+List problematic/struggling issues (blocked, HITL, or stale).
+
+**Usage:**
+```bash
+ashep list-struggle           # Default: 24 hours
+ashep list-struggle 48       # Custom threshold: 48 hours
+```
+
+**Options:**
+- `hours` (optional): Stale threshold in hours (default: 24)
+
+**Behavior:**
+- Identifies ashep-managed issues that are:
+  - Blocked status
+  - Have `ashep-hitl:` labels
+  - Not updated within specified hours
+- Useful for identifying issues that need human intervention
+- Customizable stale threshold
+
+**Output:**
+```
+Struggling Issues (3):
+┌─────────┬─────────────────────────────────┬───────────┬─────────┬──────────────────┐
+│ ID      │ Title                           │ Issue Type │ Phase    │ Issue/Reason   │
+├─────────┼─────────────────────────────────┼───────────┼─────────┼──────────────────┤
+│ bd-45   │ Database migration             │ blocked    │ test     │ blocked         │
+│ bd-78   │ Performance regression         │ hitl       │ fix      │ approval        │
+│ bd-91   │ Legacy code cleanup          │ stale      │ review   │ 72h old        │
+└─────────┴─────────────────────────────────┴───────────┴─────────┴──────────────────┘
+```
+
 ## Plugin Commands
 
 ### `ashep plugin-install <path-or-url>`

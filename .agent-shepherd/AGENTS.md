@@ -369,6 +369,21 @@ my-plugin/
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
+### Beads Label System
+
+Agent Shepherd uses the following labels to track issue state:
+
+- `ashep-managed` - Indicates issue is managed by ashep (set once, kept until issue closed)
+- `ashep-phase:<name>` - Current workflow phase (e.g., `ashep-phase:implement`)
+- `ashep-hitl:<reason>` - Human-in-the-loop state (e.g., `ashep-hitl:approval`)
+
+**Useful commands:**
+- `bd list --label ashep-managed` - See all managed issues
+- `ashep list-active` - See currently active work (open or in_progress)
+- `ashep list-hitl` - See issues needing human attention
+- `ashep list-ready` - See issues ready to be worked on (open only)
+- `ashep list-struggle` - See blocked, HITL, or stale issues
+
 ### Quick Reference
 
 ```bash

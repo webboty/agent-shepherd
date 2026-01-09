@@ -1330,18 +1330,33 @@ function cmdPluginList(): void {
  */
 async function cmdListActive(): Promise<void> {
   try {
-    const proc = Bun.spawn([
+    const procOpen = Bun.spawn([
       "bd", "list",
       "--label", "ashep-managed",
-      "--status", "open,in_progress",
+      "--status", "open",
       "--json"
     ], {
       stdout: "pipe",
       stderr: "pipe"
     });
 
-    const output = await new Response(proc.stdout).text();
-    const issues = JSON.parse(output);
+    const outputOpen = await new Response(procOpen.stdout).text();
+    const issuesOpen = JSON.parse(outputOpen);
+
+    const procInProgress = Bun.spawn([
+      "bd", "list",
+      "--label", "ashep-managed",
+      "--status", "in_progress",
+      "--json"
+    ], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const outputInProgress = await new Response(procInProgress.stdout).text();
+    const issuesInProgress = JSON.parse(outputInProgress);
+
+    const issues = [...issuesOpen, ...issuesInProgress];
 
     if (issues.length === 0) {
       console.log("No active issues found.");
