@@ -909,3 +909,466 @@ describe("Integration with Worker Engine", () => {
     expect(parsed.warnings).toBeDefined();
   });
 });
+
+describe("OpenCodeClient.parseRunOutput - Text Message Part Extraction", () => {
+  let client: OpenCodeClient;
+
+  beforeEach(() => {
+    client = new OpenCodeClient();
+  });
+
+  test("extracts single text part from assistant message", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "I completed the task successfully.",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe("I completed the task successfully.");
+    expect(result.success).toBe(true);
+  });
+
+  test("extracts multiple text parts from single assistant message", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "First paragraph.",
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-2",
+            messageID: "msg-1",
+            type: "text",
+            text: "Second paragraph.",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe("First paragraph.\nSecond paragraph.");
+    expect(result.success).toBe(true);
+  });
+
+  test("handles special characters in text content", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "Task with \"quotes\", 'apostrophes', and \\backslashes\\.",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe('Task with "quotes", \'apostrophes\', and \\backslashes\\.');
+    expect(result.success).toBe(true);
+  });
+
+  test("handles unicode characters in text content", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "Unicode test: 🚀 日本語 Ño café",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe("Unicode test: 🚀 日本語 Ño café");
+    expect(result.success).toBe(true);
+  });
+
+  test("handles newlines and code blocks in text content", () => {
+    const codeContent = "```javascript\nconst x = 1;\nconsole.log(x);\n```";
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: codeContent,
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe(codeContent);
+    expect(result.success).toBe(true);
+  });
+
+  test("ignores empty or whitespace-only text parts", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "   ",
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-2",
+            messageID: "msg-1",
+            type: "text",
+            text: "",
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-3",
+            messageID: "msg-1",
+            type: "text",
+            text: "Valid text",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe("Valid text");
+    expect(result.success).toBe(true);
+  });
+
+  test("selects last assistant message for text extraction", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "First assistant message",
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-2",
+            role: "assistant",
+            time: { created: 3000, completed: 4000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-2",
+            messageID: "msg-2",
+            type: "text",
+            text: "Second assistant message",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe("Second assistant message");
+    expect(result.success).toBe(true);
+  });
+
+  test("handles mixed tool and text parts in same message", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "tool",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: { command: "echo hello" },
+              output: "hello\n",
+              time: { start: 1100, end: 1200 },
+            },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-2",
+            messageID: "msg-1",
+            type: "text",
+            text: "Output: hello",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe("Output: hello");
+    expect(result.tool_calls).toHaveLength(1);
+    expect(result.tool_calls?.[0].name).toBe("bash");
+    expect(result.success).toBe(true);
+  });
+
+  test("does not extract text from user messages", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "user",
+            time: { created: 1000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "User text",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBeUndefined();
+    expect(result.success).toBe(true);
+  });
+
+  test("handles null or missing text content gracefully", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBeUndefined();
+    expect(result.success).toBe(true);
+  });
+
+  test("extracts text from failed session with error", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+            error: {
+              name: "ApiError",
+              data: {
+                message: "Rate limit exceeded",
+                statusCode: 429,
+              },
+            },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "Partial response before error",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Rate limit exceeded");
+    expect(result.message).toBe("Partial response before error");
+    expect(result.error_details?.type).toBe("ApiError");
+  });
+
+  test("extracts text from session with timeout", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "message.updated",
+        properties: {
+          info: {
+            id: "msg-1",
+            role: "assistant",
+            time: { created: 1000, completed: 2000 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "part-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "Work completed before timeout",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const result = client.parseRunOutput(stdout, "");
+
+    expect(result.message).toBe("Work completed before timeout");
+    expect(result.metrics?.start_time_ms).toBe(1000);
+    expect(result.metrics?.end_time_ms).toBe(2000);
+  });
+});

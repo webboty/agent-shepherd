@@ -398,6 +398,8 @@ export class WorkerEngine {
 
     const instructions = this.buildInstructions(issue, phase, policy);
 
+    const initialPrompt = instructions;
+
     console.log(`Running agent ${agentId} with OpenCode CLI...`);
 
     const result = await this.opencode.runAgentCLI({
@@ -471,12 +473,12 @@ export class WorkerEngine {
         duration_ms: actualDuration,
         start_time_ms: parsedOutcome.metrics?.start_time_ms || startTimestamp,
         end_time_ms: parsedOutcome.metrics?.end_time_ms || endTimestamp,
+        tool_calls_count: parsedOutcome.tool_calls?.length || 0,
       },
     };
 
     const metadata: any = {
-      messages: parsedOutcome.messages,
-      raw_cli_output: parsedOutcome.raw_output,
+      initial_prompt: initialPrompt,
     };
 
     return {

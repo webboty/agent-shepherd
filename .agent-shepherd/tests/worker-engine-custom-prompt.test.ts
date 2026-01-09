@@ -262,5 +262,43 @@ default_policy: default
 
       expect(result).toBe('XYZ XYZ XYZ');
     });
+
+    it('should handle special characters in custom prompts', () => {
+      const issue = {
+        id: 'TEST-001',
+        title: 'Issue with "quotes" and \'apostrophes\'',
+        description: 'Description with \\backslashes\\ and \n newlines',
+        issue_type: 'bug',
+        priority: 2,
+        status: 'open',
+        labels: []
+      };
+
+      const template = 'Title: {{issue.title}} with code:\n```javascript\nconst x = "{{issue.title}}";\n```\n';
+      const result = (workerEngine as any).substituteVariables(template, issue, 'implement', ['coding']);
+
+      expect(result).toContain('Title: Issue with "quotes" and \'apostrophes\'');
+      expect(result).toContain('```javascript');
+      expect(result).toContain('const x = "Issue with "quotes" and \'apostrophes\'"');
+    });
+
+    it('should handle unicode in custom prompts', () => {
+      const issue = {
+        id: 'TEST-001',
+        title: 'Unicode Test 🚀',
+        description: 'Test with 日本語 and café',
+        issue_type: 'feature',
+        priority: 2,
+        status: 'open',
+        labels: []
+      };
+
+      const template = 'Process issue: {{issue.title}} - {{issue.description}}';
+      const result = (workerEngine as any).substituteVariables(template, issue, 'plan', ['planning']);
+
+      expect(result).toContain('Unicode Test 🚀');
+      expect(result).toContain('日本語');
+      expect(result).toContain('café');
+    });
   });
 });

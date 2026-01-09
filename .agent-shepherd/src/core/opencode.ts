@@ -247,6 +247,9 @@ export class OpenCodeClient {
       },
     };
 
+    let lastAssistantMessageId: string | undefined;
+    const textPartsByMessage: Map<string, string[]> = new Map();
+
     const parseLine = (line: string) => {
       try {
         return JSON.parse(line) as OpenCodeEvent;
@@ -295,6 +298,7 @@ export class OpenCodeClient {
           if (role === "assistant" || role === "user") {
             const msg = payload.info;
             if (role === "assistant") {
+              lastAssistantMessageId = this.safeGet<string>(msg, "id");
               if (this.safeGet<number>(msg, "time.created")) {
                 outcome.metrics!.start_time_ms = this.safeGet<number>(msg, "time.created");
               }
@@ -352,8 +356,9 @@ export class OpenCodeClient {
           break;
         }
 
-        case "message.part.updated":
-          if (this.safeGet<string>(payload, "part.type") === "tool") {
+        case "message.part.updated": {
+          const partType = this.safeGet<string>(payload, "part.type");
+          if (partType === "tool") {
             const part = payload.part;
             const toolName = this.safeGet<string>(part, "tool");
             const toolCall: ToolCall = {
@@ -375,8 +380,20 @@ export class OpenCodeClient {
               toolCall.duration_ms = end - start;
             }
             outcome.tool_calls?.push(toolCall);
+          } else if (partType === "text") {
+            const part = payload.part;
+            const messageId = this.safeGet<string>(part, "messageID");
+            let textContent = this.safeGet<string>(part, "text");
+
+            if (messageId && typeof textContent === "string" && textContent.trim().length > 0) {
+              if (!textPartsByMessage.has(messageId)) {
+                textPartsByMessage.set(messageId, []);
+              }
+              textPartsByMessage.get(messageId)!.push(textContent);
+            }
           }
           break;
+        }
 
         case "file.edited": {
           if (this.safeGet<any>(payload, "diff")) {
@@ -453,6 +470,14 @@ export class OpenCodeClient {
 
     if (!outcome.error && outcome.success === false) {
       outcome.error = "Agent execution failed";
+    }
+
+    if (lastAssistantMessageId && textPartsByMessage.has(lastAssistantMessageId)) {
+      const parts = textPartsByMessage.get(lastAssistantMessageId)!;
+      const combinedMessage = parts.join("\n").trim();
+      if (combinedMessage) {
+        outcome.message = combinedMessage;
+      }
     }
 
     return outcome;

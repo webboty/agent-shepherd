@@ -25,23 +25,7 @@ export interface RunRecord {
     phase_total_duration_ms?: number;
     attempt_number?: number;
     retry_count?: number;
-    messages?: Array<{
-      id?: string;
-      role: "user" | "assistant" | "system";
-      content?: string;
-      timestamp?: number;
-      tokens?: {
-        input?: number;
-        output?: number;
-        reasoning?: number;
-        total?: number;
-      };
-    }>;
-    raw_cli_output?: {
-      stdout: string;
-      stderr: string;
-      exit_code?: number;
-    };
+    initial_prompt?: string;
   };
 }
 
@@ -84,6 +68,7 @@ export interface RunOutcome {
     start_time_ms?: number;
     end_time_ms?: number;
     api_calls_count?: number;
+    tool_calls_count?: number;
     model_name?: string;
   };
 }
