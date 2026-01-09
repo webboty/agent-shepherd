@@ -29,6 +29,10 @@ const COMMANDS: Record<string, string> = {
   ui: "Start the flow visualization server",
   "validate-policy-chain": "Validate policy-capability-agent chain integrity",
   "show-policy-tree": "Display policy-capability-agent relationship tree",
+  "list-active": "List issues currently being worked on (in_progress)",
+  "list-hitl": "List issues requiring human-in-the-loop intervention",
+  "list-ready": "List issues ready to be worked on (no blockers)",
+  "list-struggle": "List blocked issues that need attention",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
   "plugin-activate": "Activate a plugin",
@@ -1322,6 +1326,204 @@ function cmdPluginList(): void {
 }
 
 /**
+ * List active command - list issues currently being worked on
+ */
+async function cmdListActive(): Promise<void> {
+  try {
+    const proc = Bun.spawn([
+      "bd", "list",
+      "--label", "ashep-managed",
+      "--status", "open,in_progress",
+      "--json"
+    ], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+
+    if (issues.length === 0) {
+      console.log("No active issues found.");
+      return;
+    }
+
+    console.log(`\nActive Issues (${issues.length}):`);
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┐");
+    console.log("│ ID      │ Title                           │ Phase        │ Priority │ Updated      │");
+    console.log("├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┤");
+
+    for (const issue of issues) {
+      const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const updatedTime = new Date(issue.updated_at).toLocaleString();
+
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${phase.padEnd(12)} │ ${`P${issue.priority}`.padEnd(7)} │ ${updatedTime.padEnd(12)} │`);
+    }
+
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┘");
+  } catch (error) {
+    console.error("❌ Failed to list active issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * List HITL command - list issues requiring human-in-the-loop intervention
+ */
+async function cmdListHITL(): Promise<void> {
+  try {
+    const proc = Bun.spawn(["bd", "list", "--json"], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+
+    const hitlIssues = issues.filter((issue: any) =>
+      issue.labels?.some((l: string) => l.startsWith("ashep-hitl:"))
+    );
+
+    if (hitlIssues.length === 0) {
+      console.log("No HITL issues found.");
+      return;
+    }
+
+    console.log(`\nHITL Issues (${hitlIssues.length}):`);
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────────┐");
+    console.log("│ ID      │ Title                           │ Reason       │ Phase    │ Status          │");
+
+    for (const issue of hitlIssues) {
+      const hitlLabel = issue.labels?.find((l: string) => l.startsWith("ashep-hitl:"));
+      const reason = hitlLabel?.replace("ashep-hitl:", "") || "unknown";
+      const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${reason.padEnd(12)} │ ${phase.padEnd(8)} │ ${issue.status.padEnd(14)} │`);
+    }
+
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────────┘");
+  } catch (error) {
+    console.error("❌ Failed to list HITL issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * List ready command - list issues ready to be worked on
+ */
+async function cmdListReady(): Promise<void> {
+  try {
+    const proc = Bun.spawn([
+      "bd", "list",
+      "--label", "ashep-managed",
+      "--status", "open",
+      "--json"
+    ], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+
+    if (issues.length === 0) {
+      console.log("No ready issues found.");
+      return;
+    }
+
+    console.log(`\nReady Issues (${issues.length}):`);
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┐");
+    console.log("│ ID      │ Title                           │ Phase        │ Priority │ Updated      │");
+    console.log("├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┤");
+
+    for (const issue of issues) {
+      const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const updatedTime = new Date(issue.updated_at).toLocaleString();
+
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${phase.padEnd(12)} │ ${`P${issue.priority}`.padEnd(7)} │ ${updatedTime.padEnd(12)} │`);
+    }
+
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┘");
+  } catch (error) {
+    console.error("❌ Failed to list ready issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * List struggle command - list blocked issues that need attention
+ */
+async function cmdListStruggle(hours?: number): Promise<void> {
+  try {
+    const staleThresholdHours = hours || 24;
+    const staleCutoff = Date.now() - (staleThresholdHours * 60 * 60 * 1000);
+
+    const proc = Bun.spawn(["bd", "list", "--json"], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+
+    const strugglingIssues = issues.filter((issue: any) => {
+      const isManaged = issue.labels?.includes("ashep-managed");
+      if (!isManaged) return false;
+
+      const isBlocked = issue.status === "blocked";
+      const hasHITL = issue.labels?.some((l: string) => l.startsWith("ashep-hitl:"));
+      const isStale = new Date(issue.updated_at).getTime() < staleCutoff;
+
+      return isBlocked || hasHITL || isStale;
+    });
+
+    if (strugglingIssues.length === 0) {
+      console.log("No struggling issues found.");
+      return;
+    }
+
+    console.log(`\nStruggling Issues (${strugglingIssues.length}):`);
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬──────────────┬─────────┬──────────────────┐");
+    console.log("│ ID      │ Title                           │ Type         │ Phase        │ Status   │ Age/Reason      │");
+    console.log("├─────────┼─────────────────────────────────┼──────────────┼──────────────┼─────────┼──────────────────┤");
+
+    for (const issue of strugglingIssues) {
+      const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+
+      let ageOrReason = "";
+      const isBlocked = issue.status === "blocked";
+      const hasHITL = issue.labels?.some((l: string) => l.startsWith("ashep-hitl:"));
+      const isStale = new Date(issue.updated_at).getTime() < staleCutoff;
+
+      if (isBlocked) {
+        ageOrReason = "blocked";
+      } else if (hasHITL) {
+        const hitlLabel = issue.labels?.find((l: string) => l.startsWith("ashep-hitl:"));
+        ageOrReason = hitlLabel?.replace("ashep-hitl:", "") || "HITL";
+      } else if (isStale) {
+        const ageHours = Math.floor((Date.now() - new Date(issue.updated_at).getTime()) / (60 * 60 * 1000));
+        ageOrReason = `${ageHours}h stale`;
+      }
+
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${issue.issue_type.padEnd(12)} │ ${phase.padEnd(12)} │ ${issue.status.padEnd(8)} │ ${ageOrReason.padEnd(14)} │`);
+    }
+
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴──────────────┴─────────┴──────────────────┘");
+  } catch (error) {
+    console.error("❌ Failed to list struggling issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
  * Main CLI entry point
  */
 async function main(): Promise<void> {
@@ -1422,6 +1624,29 @@ async function main(): Promise<void> {
     case "plugin-list":
       cmdPluginList();
       break;
+
+    case "list-active":
+      await cmdListActive();
+      break;
+
+    case "list-hitl":
+      await cmdListHITL();
+      break;
+
+    case "list-ready":
+      await cmdListReady();
+      break;
+
+    case "list-struggle": {
+      let hours: number | undefined;
+
+      if (args[1] && !args[1].startsWith("--")) {
+        hours = parseInt(args[1], 10);
+      }
+
+      await cmdListStruggle(hours);
+      break;
+    }
 
     case "cleanup-metrics":
       cmdCleanupMetrics();

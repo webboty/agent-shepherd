@@ -14,6 +14,9 @@ import {
   getCurrentPhase,
   hasExcludedLabel,
   getIssue,
+  setAshepManagedLabel,
+  removeAshepManagedLabel,
+  hasAshepManagedLabel,
 } from "./beads.ts";
 import { getOpenCodeClient } from "./opencode.ts";
 import {
@@ -139,7 +142,7 @@ export class WorkerEngine {
     // Check for existing phase label to resume from
     const currentPhaseLabel = await getCurrentPhase(issue.id);
     let phase: string;
-    
+
     if (currentPhaseLabel && phases.includes(currentPhaseLabel)) {
       // Resume from existing phase
       phase = currentPhaseLabel;
@@ -149,6 +152,13 @@ export class WorkerEngine {
       phase = phases[0] || "plan";
       // Set initial phase label
       await setPhaseLabel(issue.id, phase);
+    }
+
+    // Add ashep-managed label if not already present
+    const hasManagedLabel = await hasAshepManagedLabel(issue.id);
+    if (!hasManagedLabel) {
+      await setAshepManagedLabel(issue.id);
+      console.log(`Added ashep-managed label to issue ${issue.id}`);
     }
 
     console.log(`Using policy '${policy}' at phase '${phase}'`);
@@ -594,6 +604,7 @@ ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval b
       case "close":
         await updateIssue(issueId, { status: "closed" });
         // Remove all tracking labels on close
+        await removeAshepManagedLabel(issueId);
         await removePhaseLabels(issueId);
         await clearHITLLabels(issueId);
         console.log(`Closed issue: ${transition.reason}`);

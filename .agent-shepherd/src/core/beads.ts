@@ -270,3 +270,25 @@ export async function hasExcludedLabel(issueId: string): Promise<boolean> {
   const labels = await getIssueLabels(issueId);
   return labels.includes("ashep-excluded");
 }
+
+/**
+ * Set ashep-managed label for an issue
+ */
+export async function setAshepManagedLabel(issueId: string): Promise<void> {
+  await addIssueLabel(issueId, "ashep-managed");
+}
+
+/**
+ * Remove ashep-managed label from an issue
+ */
+export async function removeAshepManagedLabel(issueId: string): Promise<void> {
+  await removeIssueLabel(issueId, "ashep-managed");
+}
+
+/**
+ * Check if issue has ashep-managed label
+ */
+export async function hasAshepManagedLabel(issueId: string): Promise<boolean> {
+  const labels = await getIssueLabels(issueId);
+  return labels.includes("ashep-managed");
+}

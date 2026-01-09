@@ -8867,7 +8867,7 @@ __export(exports_phase_messenger, {
   PhaseMessenger: () => PhaseMessenger
 });
 import { Database as Database2 } from "bun:sqlite";
-import { existsSync as existsSync4, readFileSync as readFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync2 } from "fs";
+import { existsSync as existsSync4, readFileSync as readFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync2, statSync } from "fs";
 import { join as join4 } from "path";
 function loadConfig2(dataDir) {
   const configPath = join4(dataDir || process.cwd(), ".agent-shepherd", "config", "phase-messenger.yaml");
@@ -9122,6 +9122,119 @@ class PhaseMessenger {
       read: row.read === 1,
       created_at: row.created_at,
       read_at: row.read_at || undefined
+    };
+  }
+  getArchivePath(issueId) {
+    const archiveDir = join4(this.jsonlPath, "..", "messages_archive");
+    if (!existsSync4(archiveDir)) {
+      mkdirSync2(archiveDir, { recursive: true });
+    }
+    return join4(archiveDir, `${issueId}.jsonl`);
+  }
+  archiveMessagesForIssue(issueId, reason = "cleanup") {
+    const messages = this.listMessages({ issue_id: issueId });
+    if (messages.length === 0) {
+      return { archived: 0 };
+    }
+    const archivePath = this.getArchivePath(issueId);
+    const timestamp = Date.now();
+    messages.forEach((message) => {
+      const archivedMessage = {
+        ...message,
+        archived_at: timestamp,
+        archive_reason: reason,
+        original_id: message.id
+      };
+      appendFileSync2(archivePath, JSON.stringify(archivedMessage) + `
+`);
+    });
+    return { archived: messages.length };
+  }
+  cleanupPhaseMessages(issueId, reason = "manual") {
+    const dbPath = join4(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbSizeBefore = this.getDatabaseSize(dbPath);
+    const archiveResult = this.archiveMessagesForIssue(issueId, reason);
+    this.deleteIssueMessages(issueId);
+    const dbSizeAfter = this.getDatabaseSize(dbPath);
+    this.recordCleanupMetric(issueId, reason, archiveResult.archived, archiveResult.archived, dbSizeBefore, dbSizeAfter);
+    return {
+      archived: archiveResult.archived,
+      deleted: archiveResult.archived,
+      db_size_before: dbSizeBefore,
+      db_size_after: dbSizeAfter
+    };
+  }
+  getDatabaseSize(dbPath) {
+    if (existsSync4(dbPath)) {
+      const stats = statSync(dbPath);
+      return stats.size;
+    }
+    return 0;
+  }
+  recordCleanupMetric(issueId, reason, archived, deleted, sizeBefore, sizeAfter) {
+    const cleanupMetricsPath = join4(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+    const metric = {
+      timestamp: Date.now(),
+      issue_id: issueId,
+      reason,
+      messages_archived: archived,
+      messages_deleted: deleted,
+      db_size_before_bytes: sizeBefore,
+      db_size_after_bytes: sizeAfter,
+      db_size_before_mb: sizeBefore / (1024 * 1024),
+      db_size_after_mb: sizeAfter / (1024 * 1024)
+    };
+    appendFileSync2(cleanupMetricsPath, JSON.stringify(metric) + `
+`);
+  }
+  getCleanupMetrics(issueId) {
+    const { existsSync: existsSync5, readFileSync: readFileSync7 } = __require("fs");
+    const cleanupMetricsPath = join4(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+    if (!existsSync5(cleanupMetricsPath)) {
+      return [];
+    }
+    const content = readFileSync7(cleanupMetricsPath, "utf-8");
+    const lines = content.trim().split(`
+`);
+    const metrics = [];
+    for (const line of lines) {
+      if (!line.trim())
+        continue;
+      try {
+        const metric = JSON.parse(line);
+        if (issueId === undefined || metric.issue_id === issueId) {
+          metrics.push(metric);
+        }
+      } catch (error) {
+        console.error("Failed to parse cleanup metric line:", error);
+      }
+    }
+    return metrics.sort((a, b) => b.timestamp - a.timestamp);
+  }
+  getMessageStats(issueId) {
+    let messages;
+    if (issueId) {
+      messages = this.listMessages({ issue_id: issueId });
+    } else {
+      messages = this.listMessages();
+    }
+    const total = messages.length;
+    const unread = messages.filter((m) => !m.read).length;
+    const read = total - unread;
+    const byIssue = {};
+    if (!issueId) {
+      messages.forEach((m) => {
+        byIssue[m.issue_id] = (byIssue[m.issue_id] || 0) + 1;
+      });
+    }
+    const dbPath = join4(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbSize = this.getDatabaseSize(dbPath) / (1024 * 1024);
+    return {
+      total_messages: total,
+      unread_messages: unread,
+      read_messages: read,
+      by_issue: byIssue,
+      db_size_mb: dbSize
     };
   }
 }
@@ -40333,6 +40446,16 @@ async function hasExcludedLabel(issueId) {
   const labels = await getIssueLabels(issueId);
   return labels.includes("ashep-excluded");
 }
+async function setAshepManagedLabel(issueId) {
+  await addIssueLabel(issueId, "ashep-managed");
+}
+async function removeAshepManagedLabel(issueId) {
+  await removeIssueLabel(issueId, "ashep-managed");
+}
+async function hasAshepManagedLabel(issueId) {
+  const labels = await getIssueLabels(issueId);
+  return labels.includes("ashep-managed");
+}
 
 // src/core/opencode.ts
 class OpenCodeClient {
@@ -40740,6 +40863,11 @@ class WorkerEngine {
       phase = phases[0] || "plan";
       await setPhaseLabel(issue.id, phase);
     }
+    const hasManagedLabel = await hasAshepManagedLabel(issue.id);
+    if (!hasManagedLabel) {
+      await setAshepManagedLabel(issue.id);
+      console.log(`Added ashep-managed label to issue ${issue.id}`);
+    }
     console.log(`Using policy '${policy}' at phase '${phase}'`);
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
     const agent = this.agentRegistry.selectAgent({
@@ -41002,6 +41130,16 @@ class WorkerEngine {
   }
   buildInstructions(issue, phase, policy) {
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
+    if (phaseConfig?.custom_prompt && phaseConfig.custom_prompt.trim()) {
+      let customPrompt = this.substituteVariables(phaseConfig.custom_prompt, issue, phase, phaseConfig.capabilities);
+      if (phaseConfig?.require_approval) {
+        customPrompt += `
+
+\u26A0\uFE0F This phase requires human approval before proceeding.
+`;
+      }
+      return customPrompt.trim();
+    }
     return `
 # Task: ${issue.title}
 
@@ -41028,6 +41166,17 @@ ${phaseConfig?.require_approval ? `
 \u26A0\uFE0F This phase requires human approval before proceeding.
 ` : ""}
 `.trim();
+  }
+  substituteVariables(template, issue, phase, capabilities) {
+    const capabilitiesList = capabilities?.join(", ") || "None specified";
+    let result = template;
+    result = result.replace(/\{\{issue\.title\}\}/g, issue.title || "");
+    result = result.replace(/\{\{issue\.description\}\}/g, issue.description || "");
+    result = result.replace(/\{\{issue\.id\}\}/g, issue.id || "");
+    result = result.replace(/\{\{issue\.type\}\}/g, issue.issue_type || "");
+    result = result.replace(/\{\{phase\}\}/g, phase || "");
+    result = result.replace(/\{\{capabilities\}\}/g, capabilitiesList);
+    return result;
   }
   async applyTransition(issueId, transition) {
     switch (transition.type) {
@@ -41058,6 +41207,7 @@ ${phaseConfig?.require_approval ? `
         break;
       case "close":
         await updateIssue(issueId, { status: "closed" });
+        await removeAshepManagedLabel(issueId);
         await removePhaseLabels(issueId);
         await clearHITLLabels(issueId);
         console.log(`Closed issue: ${transition.reason}`);
@@ -41974,7 +42124,7 @@ function resetCollector() {
 // src/core/cleanup-health-check.ts
 init_logging();
 import { Database as Database5 } from "bun:sqlite";
-import { existsSync as existsSync7, statSync } from "fs";
+import { existsSync as existsSync7, statSync as statSync2 } from "fs";
 import { join as join7 } from "path";
 
 class CleanupHealthChecker {
@@ -42164,7 +42314,7 @@ class CleanupHealthChecker {
       };
     }
     try {
-      const fileSize = statSync(dbPath).size;
+      const fileSize = statSync2(dbPath).size;
       const fileSizeMb = fileSize / 1048576;
       const db = new Database5(dbPath);
       const pageCountResult = db.prepare("PRAGMA page_count").get();
@@ -42259,11 +42409,11 @@ class CleanupHealthChecker {
       };
     }
     try {
-      const sizeBefore = statSync(dbPath).size;
+      const sizeBefore = statSync2(dbPath).size;
       const db = new Database5(dbPath);
       db.run("VACUUM");
       db.close();
-      const sizeAfter = statSync(dbPath).size;
+      const sizeAfter = statSync2(dbPath).size;
       const sizeSaved = sizeBefore - sizeAfter;
       const sizeSavedPercent = sizeSaved / sizeBefore * 100;
       return {
@@ -42580,7 +42730,7 @@ function resetCleanupEngine() {
 
 // src/core/size-monitor.ts
 init_logging();
-import { existsSync as existsSync8, statSync as statSync2 } from "fs";
+import { existsSync as existsSync8, statSync as statSync3 } from "fs";
 import { join as join9 } from "path";
 class SizeMonitor {
   config;
@@ -42644,11 +42794,11 @@ class SizeMonitor {
     const decisionsPath = join9(dataDir, "decisions.jsonl");
     const archiveDbPath = join9(dataDir, "archive", "archive.db");
     const archiveJsonlPath = join9(dataDir, "archive", "archive.jsonl");
-    const activeDbSize = existsSync8(activeDbPath) ? statSync2(activeDbPath).size : 0;
-    const jsonlSize = existsSync8(jsonlPath) ? statSync2(jsonlPath).size : 0;
-    const decisionsSize = existsSync8(decisionsPath) ? statSync2(decisionsPath).size : 0;
-    const archiveDbSize = existsSync8(archiveDbPath) ? statSync2(archiveDbPath).size : 0;
-    const archiveJsonlSize = existsSync8(archiveJsonlPath) ? statSync2(archiveJsonlPath).size : 0;
+    const activeDbSize = existsSync8(activeDbPath) ? statSync3(activeDbPath).size : 0;
+    const jsonlSize = existsSync8(jsonlPath) ? statSync3(jsonlPath).size : 0;
+    const decisionsSize = existsSync8(decisionsPath) ? statSync3(decisionsPath).size : 0;
+    const archiveDbSize = existsSync8(archiveDbPath) ? statSync3(archiveDbPath).size : 0;
+    const archiveJsonlSize = existsSync8(archiveJsonlPath) ? statSync3(archiveJsonlPath).size : 0;
     const totalSizeBytes = activeDbSize + jsonlSize + decisionsSize + archiveDbSize + archiveJsonlSize;
     const runCount = this.logger.queryRuns({}).length;
     const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
@@ -42826,6 +42976,10 @@ var COMMANDS = {
   ui: "Start the flow visualization server",
   "validate-policy-chain": "Validate policy-capability-agent chain integrity",
   "show-policy-tree": "Display policy-capability-agent relationship tree",
+  "list-active": "List issues currently being worked on (in_progress)",
+  "list-hitl": "List issues requiring human-in-the-loop intervention",
+  "list-ready": "List issues ready to be worked on (no blockers)",
+  "list-struggle": "List blocked issues that need attention",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
   "plugin-activate": "Activate a plugin",
@@ -43831,6 +43985,166 @@ function cmdPluginList() {
     process.exit(1);
   }
 }
+async function cmdListActive() {
+  try {
+    const proc = Bun.spawn([
+      "bd",
+      "list",
+      "--label",
+      "ashep-managed",
+      "--status",
+      "open,in_progress",
+      "--json"
+    ], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+    if (issues.length === 0) {
+      console.log("No active issues found.");
+      return;
+    }
+    console.log(`
+Active Issues (${issues.length}):`);
+    console.log("\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510");
+    console.log("\u2502 ID      \u2502 Title                           \u2502 Phase        \u2502 Priority \u2502 Updated      \u2502");
+    console.log("\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524");
+    for (const issue of issues) {
+      const phaseLabel = issue.labels?.find((l) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const updatedTime = new Date(issue.updated_at).toLocaleString();
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+      console.log(`\u2502 ${issue.id.padEnd(7)} \u2502 ${title.padEnd(31)} \u2502 ${phase.padEnd(12)} \u2502 ${`P${issue.priority}`.padEnd(7)} \u2502 ${updatedTime.padEnd(12)} \u2502`);
+    }
+    console.log("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
+  } catch (error) {
+    console.error("\u274C Failed to list active issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdListHITL() {
+  try {
+    const proc = Bun.spawn(["bd", "list", "--json"], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+    const hitlIssues = issues.filter((issue) => issue.labels?.some((l) => l.startsWith("ashep-hitl:")));
+    if (hitlIssues.length === 0) {
+      console.log("No HITL issues found.");
+      return;
+    }
+    console.log(`
+HITL Issues (${hitlIssues.length}):`);
+    console.log("\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510");
+    console.log("\u2502 ID      \u2502 Title                           \u2502 Reason       \u2502 Phase    \u2502 Status          \u2502");
+    for (const issue of hitlIssues) {
+      const hitlLabel = issue.labels?.find((l) => l.startsWith("ashep-hitl:"));
+      const reason = hitlLabel?.replace("ashep-hitl:", "") || "unknown";
+      const phaseLabel = issue.labels?.find((l) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+      console.log(`\u2502 ${issue.id.padEnd(7)} \u2502 ${title.padEnd(31)} \u2502 ${reason.padEnd(12)} \u2502 ${phase.padEnd(8)} \u2502 ${issue.status.padEnd(14)} \u2502`);
+    }
+    console.log("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
+  } catch (error) {
+    console.error("\u274C Failed to list HITL issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdListReady() {
+  try {
+    const proc = Bun.spawn([
+      "bd",
+      "list",
+      "--label",
+      "ashep-managed",
+      "--status",
+      "open",
+      "--json"
+    ], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+    if (issues.length === 0) {
+      console.log("No ready issues found.");
+      return;
+    }
+    console.log(`
+Ready Issues (${issues.length}):`);
+    console.log("\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510");
+    console.log("\u2502 ID      \u2502 Title                           \u2502 Phase        \u2502 Priority \u2502 Updated      \u2502");
+    console.log("\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524");
+    for (const issue of issues) {
+      const phaseLabel = issue.labels?.find((l) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const updatedTime = new Date(issue.updated_at).toLocaleString();
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+      console.log(`\u2502 ${issue.id.padEnd(7)} \u2502 ${title.padEnd(31)} \u2502 ${phase.padEnd(12)} \u2502 ${`P${issue.priority}`.padEnd(7)} \u2502 ${updatedTime.padEnd(12)} \u2502`);
+    }
+    console.log("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
+  } catch (error) {
+    console.error("\u274C Failed to list ready issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdListStruggle(hours) {
+  try {
+    const staleThresholdHours = hours || 24;
+    const staleCutoff = Date.now() - staleThresholdHours * 60 * 60 * 1000;
+    const proc = Bun.spawn(["bd", "list", "--json"], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+    const strugglingIssues = issues.filter((issue) => {
+      const isManaged = issue.labels?.includes("ashep-managed");
+      if (!isManaged)
+        return false;
+      const isBlocked = issue.status === "blocked";
+      const hasHITL = issue.labels?.some((l) => l.startsWith("ashep-hitl:"));
+      const isStale = new Date(issue.updated_at).getTime() < staleCutoff;
+      return isBlocked || hasHITL || isStale;
+    });
+    if (strugglingIssues.length === 0) {
+      console.log("No struggling issues found.");
+      return;
+    }
+    console.log(`
+Struggling Issues (${strugglingIssues.length}):`);
+    console.log("\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510");
+    console.log("\u2502 ID      \u2502 Title                           \u2502 Type         \u2502 Phase        \u2502 Status   \u2502 Age/Reason      \u2502");
+    console.log("\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524");
+    for (const issue of strugglingIssues) {
+      const phaseLabel = issue.labels?.find((l) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+      let ageOrReason = "";
+      const isBlocked = issue.status === "blocked";
+      const hasHITL = issue.labels?.some((l) => l.startsWith("ashep-hitl:"));
+      const isStale = new Date(issue.updated_at).getTime() < staleCutoff;
+      if (isBlocked) {
+        ageOrReason = "blocked";
+      } else if (hasHITL) {
+        const hitlLabel = issue.labels?.find((l) => l.startsWith("ashep-hitl:"));
+        ageOrReason = hitlLabel?.replace("ashep-hitl:", "") || "HITL";
+      } else if (isStale) {
+        const ageHours = Math.floor((Date.now() - new Date(issue.updated_at).getTime()) / 3600000);
+        ageOrReason = `${ageHours}h stale`;
+      }
+      console.log(`\u2502 ${issue.id.padEnd(7)} \u2502 ${title.padEnd(31)} \u2502 ${issue.issue_type.padEnd(12)} \u2502 ${phase.padEnd(12)} \u2502 ${issue.status.padEnd(8)} \u2502 ${ageOrReason.padEnd(14)} \u2502`);
+    }
+    console.log("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
+  } catch (error) {
+    console.error("\u274C Failed to list struggling issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 async function main() {
   loadPlugins();
   const args = process.argv.slice(2);
@@ -43905,6 +44219,23 @@ async function main() {
     case "plugin-list":
       cmdPluginList();
       break;
+    case "list-active":
+      await cmdListActive();
+      break;
+    case "list-hitl":
+      await cmdListHITL();
+      break;
+    case "list-ready":
+      await cmdListReady();
+      break;
+    case "list-struggle": {
+      let hours;
+      if (args[1] && !args[1].startsWith("--")) {
+        hours = parseInt(args[1], 10);
+      }
+      await cmdListStruggle(hours);
+      break;
+    }
     case "cleanup-metrics":
       cmdCleanupMetrics();
       break;
