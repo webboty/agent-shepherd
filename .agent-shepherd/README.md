@@ -936,6 +936,7 @@ DEBUG=agent-shepherd ashep worker
 
 ## Documentation
 
+- **[Phase Transition Flow](docs/phase-transition-flow.md)** - Complete visual guide to Agent Shepherd's workflow orchestration, including policy matching, agent selection, transition logic, loop prevention, and all enhanced features
 - **[Architecture Guide](docs/architecture.md)** - Detailed system architecture and design decisions
 - **[CLI Reference](docs/cli-reference.md)** - Comprehensive command-line interface documentation
 
