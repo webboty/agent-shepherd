@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { rmSync } from "fs";
 import { join } from "path";
-import { PhaseMessenger, type CreateMessageInput } from "../src/core/phase-messenger.ts";
+import { PhaseMessenger, type CreateMessageInput, type PhaseMessage, formatMessagesForCLI } from "../src/core/phase-messenger.ts";
 
 describe("PhaseMessenger", () => {
   const testDataDir = join(process.cwd(), ".test-phase-messenger");
@@ -384,4 +384,71 @@ describe("PhaseMessenger", () => {
       expect(allMessages).toHaveLength(4);
     });
   });
+
+  describe("formatMessagesForCLI", () => {
+    it("should return message when no messages found", () => {
+      const messages: PhaseMessage[] = [];
+      const result = formatMessagesForCLI(messages);
+
+      expect(result).toBe("No messages found.");
+    });
+
+    it("should format multiple messages for CLI display", () => {
+      const messages: PhaseMessage[] = [
+        {
+          id: "msg-1",
+          issue_id: "ISSUE-001",
+          from_phase: "plan",
+          to_phase: "implement",
+          run_counter: 1,
+          message_type: "context",
+          content: "Planning completed",
+          metadata: null,
+          read: true,
+          created_at: Date.now()
+        },
+        {
+          id: "msg-2",
+          issue_id: "ISSUE-001",
+          from_phase: "test",
+          to_phase: "deploy",
+          run_counter: 1,
+          message_type: "result",
+          content: "Tests passed successfully",
+          metadata: { tests: 100, failures: 0 },
+          read: false,
+          created_at: Date.now()
+        }
+      ];
+
+      const result = formatMessagesForCLI(messages);
+
+      expect(result).toContain("Messages (2):");
+      expect(result).toContain("✓");
+      expect(result).toContain("✗");
+      expect(result).toContain("Planning completed");
+      expect(result).toContain("Tests passed successfully");
+    });
+
+    it("should truncate long content with ellipsis", () => {
+      const longContent = "A".repeat(50);
+      const messages: PhaseMessage[] = [{
+        id: "msg-1",
+        issue_id: "ISSUE-001",
+        from_phase: "plan",
+        to_phase: "implement",
+        run_counter: 1,
+        message_type: "context",
+        content: longContent,
+        metadata: null,
+        read: false,
+        created_at: Date.now()
+      }];
+
+      const result = formatMessagesForCLI(messages);
+
+      expect(result).toContain("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA...");
+    });
+  });
 });
+

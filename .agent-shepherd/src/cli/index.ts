@@ -33,6 +33,7 @@ const COMMANDS: Record<string, string> = {
   "list-hitl": "List issues requiring human-in-the-loop intervention",
   "list-ready": "List issues ready to be worked on (no blockers)",
   "list-struggle": "List blocked issues that need attention",
+  "get-messages": "Get phase messages for an issue",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
   "plugin-activate": "Activate a plugin",
@@ -1539,6 +1540,46 @@ async function cmdListStruggle(hours?: number): Promise<void> {
 }
 
 /**
+ * Get messages command - get phase messages for an issue
+ */
+async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: boolean): Promise<void> {
+  if (!issueId) {
+    console.error("Usage: ashep get-messages <issue-id> [--phase <phase>] [--unread]");
+    console.error("Examples:");
+    console.error("  ashep get-messages ISSUE-123");
+    console.error("  ashep get-messages ISSUE-123 --phase test");
+    console.error("  ashep get-messages ISSUE-123 --unread");
+    process.exit(1);
+  }
+
+  try {
+    const { getPhaseMessenger, formatMessagesForCLI } = await import("../core/phase-messenger.ts");
+    const messenger = getPhaseMessenger();
+
+    const query: any = { issue_id: issueId };
+
+    if (phase) {
+      query.to_phase = phase;
+    }
+
+    if (unreadOnly) {
+      query.read = false;
+    }
+
+    const messages = messenger.listMessages(query);
+
+    if (messages.length === 0) {
+      console.log(`No messages found for issue ${issueId}${phase ? ` and phase '${phase}'` : ""}${unreadOnly ? " (unread only)" : ""}.`);
+    } else {
+      console.log(formatMessagesForCLI(messages));
+    }
+  } catch (error) {
+    console.error("❌ Failed to get messages:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
  * Main CLI entry point
  */
 async function main(): Promise<void> {
@@ -1660,6 +1701,23 @@ async function main(): Promise<void> {
       }
 
       await cmdListStruggle(hours);
+      break;
+    }
+
+    case "get-messages": {
+      let phase: string | undefined;
+      let unreadOnly = false;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--phase' && i + 1 < args.length) {
+          phase = args[i + 1];
+          i++;
+        } else if (args[i] === '--unread') {
+          unreadOnly = true;
+        }
+      }
+
+      await cmdGetMessages(args[1], phase, unreadOnly);
       break;
     }
 

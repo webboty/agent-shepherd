@@ -438,13 +438,47 @@ ashep list-struggle 48       # Custom threshold: 48 hours
 **Output:**
 ```
 Struggling Issues (3):
-┌─────────┬─────────────────────────────────┬───────────┬─────────┬──────────────────┐
-│ ID      │ Title                           │ Issue Type │ Phase    │ Issue/Reason   │
-├─────────┼─────────────────────────────────┼───────────┼─────────┼──────────────────┤
-│ bd-45   │ Database migration             │ blocked    │ test     │ blocked         │
-│ bd-78   │ Performance regression         │ hitl       │ fix      │ approval        │
-│ bd-91   │ Legacy code cleanup          │ stale      │ review   │ 72h old        │
-└─────────┴─────────────────────────────────┴───────────┴─────────┴──────────────────┘
+┌─────────┬─────────────────────────────────┬──────────────┬──────────────┬─────────┬──────────────────┐
+│ ID      │ Title                           │ Issue Type  │ Phase        │ Status   │ Age/Reason      │
+├─────────┼─────────────────────────────────┼──────────────┼──────────────┼─────────┼──────────────────┤
+│ bd-45   │ Database migration             │ blocked     │ test         │ blocked  │ blocked         │
+│ bd-78   │ Performance regression         │ hitl        │ fix      │ review   │ approval        │
+│ bd-91   │ Legacy code cleanup          │ stale       │ review   │ 72h old        │
+└─────────┴─────────────────────────────────┴──────────────┴──────────────┴─────────┴──────────────────┘
+```
+
+### `ashep get-messages <issue-id> [--phase <phase>] [--unread]`
+
+Get phase messages for an issue.
+
+**Usage:**
+```bash
+ashep get-messages ISSUE-123                                    # All messages
+ashep get-messages ISSUE-123 --phase test                      # Specific phase
+ashep get-messages ISSUE-123 --unread                           # Unread only
+ashep get-messages ISSUE-123 --phase test --unread           # Combined
+```
+
+**Options:**
+- `issue-id` (required): Issue identifier
+- `--phase <phase>` (optional): Filter messages by destination phase
+- `--unread` (optional): Show only unread messages
+
+**Behavior:**
+- Retrieves messages from the Phase Messenger system
+- Messages include: context, results, decisions, and data
+- Messages are automatically sent between phases during workflow execution
+- Useful for debugging workflows and verifying phase communication
+
+**Output:**
+```
+Messages (2):
+┌─────────────────┬───────────┬───────────┬─────────────────────────────────────┬─────────┬──────────────┐
+│ ID              │ Type      │ Read      │ Content                          │ From    │ To           │
+├─────────────────┼───────────┼───────────┼─────────────────────────────────────┼─────────┼──────────────┤
+│ msg-1234567890  │ context   │ ✓         │ Planning completed                │ plan     │ implement    │
+│ msg-9876543210  │ result    │ ✗         │ Tests passed                   │ test     │ deploy      │
+└─────────────────┴───────────┴───────────┴─────────────────────────────────────┴─────────┴──────────────┘
 ```
 
 ## Plugin Commands

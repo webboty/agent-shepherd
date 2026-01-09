@@ -569,6 +569,38 @@ export class PhaseMessenger {
   }
 }
 
+export function formatMessagesForCLI(messages: PhaseMessage[]): string {
+  if (messages.length === 0) {
+    return "No messages found.";
+  }
+
+  const lines: string[] = [];
+  lines.push(`\nMessages (${messages.length}):`);
+  lines.push("┌─────────────────┬───────────┬───────────┬─────────────────────────────────────┬─────────┬──────────────┐");
+  lines.push("│ ID              │ Type      │ Read      │ Content                          │ From    │ To           │");
+  lines.push("├─────────────────┼───────────┼───────────┼─────────────────────────────────────┼─────────┼──────────────┤");
+
+  for (const msg of messages) {
+    const id = msg.id.substring(0, 15).padEnd(15);
+    const type = msg.message_type.padEnd(9);
+    const read = msg.read ? "✓".padEnd(9) : "✗".padEnd(9);
+
+    let content = msg.content;
+    if (content.length > 34) {
+      content = content.substring(0, 31) + "...";
+    }
+    content = content.padEnd(34);
+
+    const from = msg.from_phase.padEnd(7);
+    const to = msg.to_phase.padEnd(12);
+    lines.push(`│ ${id} │ ${type} │ ${read} │ ${content} │ ${from} │ ${to} │`);
+  }
+
+  lines.push("└─────────────────┴───────────┴───────────┴─────────────────────────────────────┴─────────┴──────────────┘");
+
+  return lines.join("\n");
+}
+
 let defaultMessenger: PhaseMessenger | null = null;
 
 export function getPhaseMessenger(dataDir?: string): PhaseMessenger {

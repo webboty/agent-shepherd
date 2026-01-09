@@ -549,3 +549,47 @@ After completing the Beads Landing Plane workflow, also run:
 1. `bun run lint` and `bun run type-check`
 2. Ensure all tests pass
 3. Commit changes with descriptive messages (if not already done in workflow)
+
+## Phase Messenger
+
+Phase Messenger enables inter-phase communication, allowing phases to exchange data, context, and results.
+
+### Key Features
+- **Message passing**: Send structured data between phases
+- **Automatic delivery**: Messages delivered when phase starts
+- **Context preservation**: Keep important information across phase boundaries
+- **Size management**: Automatic cleanup of old messages
+- **Persistence**: Dual storage (JSONL + SQLite) for performance and reliability
+
+### Message Types
+- **Context**: Planning decisions, requirements clarifications, technical constraints
+- **Result**: Phase completion results, test results, performance metrics
+- **Decision**: AI decision reasoning, confidence scores, audit trail
+- **Data**: Arbitrary structured data, implementation metrics, build artifacts
+
+### CLI Commands
+- `get-messages <issue-id> [--phase <phase>] [--unread]` - Get phase messages for an issue
+
+### Usage
+```bash
+# Get all messages for an issue
+ashep get-messages ISSUE-123
+
+# Get messages for specific phase
+ashep get-messages ISSUE-123 --phase test
+
+# Get only unread messages
+ashep get-messages ISSUE-123 --unread
+
+# Combined filters
+ashep get-messages ISSUE-123 --phase test --unread
+```
+
+### Integration
+- Worker engine automatically receives pending messages before phase execution
+- Messages included in agent instructions with usage guidance
+- Result messages automatically sent on successful phase completion and advance
+- CLI tool for manual message inspection and debugging
+
+### Documentation
+See `docs/phase-messenger.md` for detailed documentation.

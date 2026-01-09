@@ -530,6 +530,9 @@ ${phaseConfig?.capabilities?.map((cap) => `- ${cap}`).join("\n") || "None specif
 Please complete the ${phase} phase for this issue. When done, provide a summary of your work.
 
 ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval before proceeding.\n" : ""}
+
+## Phase Messenger
+Previous phases may have sent messages containing context, results, or data for this phase. To view messages, use: \`ashep get-messages ${issue.id} --phase ${phase}\`
 `.trim();
   }
 

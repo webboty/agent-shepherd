@@ -8864,6 +8864,7 @@ var init_policy = __esm(() => {
 var exports_phase_messenger = {};
 __export(exports_phase_messenger, {
   getPhaseMessenger: () => getPhaseMessenger,
+  formatMessagesForCLI: () => formatMessagesForCLI,
   PhaseMessenger: () => PhaseMessenger
 });
 import { Database as Database2 } from "bun:sqlite";
@@ -9237,6 +9238,33 @@ class PhaseMessenger {
       db_size_mb: dbSize
     };
   }
+}
+function formatMessagesForCLI(messages) {
+  if (messages.length === 0) {
+    return "No messages found.";
+  }
+  const lines = [];
+  lines.push(`
+Messages (${messages.length}):`);
+  lines.push("\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510");
+  lines.push("\u2502 ID              \u2502 Type      \u2502 Read      \u2502 Content                          \u2502 From    \u2502 To           \u2502");
+  lines.push("\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524");
+  for (const msg of messages) {
+    const id = msg.id.substring(0, 15).padEnd(15);
+    const type = msg.message_type.padEnd(9);
+    const read = msg.read ? "\u2713".padEnd(9) : "\u2717".padEnd(9);
+    let content = msg.content;
+    if (content.length > 34) {
+      content = content.substring(0, 31) + "...";
+    }
+    content = content.padEnd(34);
+    const from = msg.from_phase.padEnd(7);
+    const to = msg.to_phase.padEnd(12);
+    lines.push(`\u2502 ${id} \u2502 ${type} \u2502 ${read} \u2502 ${content} \u2502 ${from} \u2502 ${to} \u2502`);
+  }
+  lines.push("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
+  return lines.join(`
+`);
 }
 function getPhaseMessenger(dataDir) {
   if (!defaultMessenger) {
@@ -40575,6 +40603,8 @@ class OpenCodeClient {
         stderr
       }
     };
+    let lastAssistantMessageId;
+    const textPartsByMessage = new Map;
     const parseLine = (line) => {
       try {
         return JSON.parse(line);
@@ -40616,6 +40646,7 @@ class OpenCodeClient {
           if (role === "assistant" || role === "user") {
             const msg = payload.info;
             if (role === "assistant") {
+              lastAssistantMessageId = this.safeGet(msg, "id");
               if (this.safeGet(msg, "time.created")) {
                 outcome.metrics.start_time_ms = this.safeGet(msg, "time.created");
               }
@@ -40669,8 +40700,9 @@ class OpenCodeClient {
           }
           break;
         }
-        case "message.part.updated":
-          if (this.safeGet(payload, "part.type") === "tool") {
+        case "message.part.updated": {
+          const partType = this.safeGet(payload, "part.type");
+          if (partType === "tool") {
             const part = payload.part;
             const toolName = this.safeGet(part, "tool");
             const toolCall = {
@@ -40692,8 +40724,19 @@ class OpenCodeClient {
               toolCall.duration_ms = end - start;
             }
             outcome.tool_calls?.push(toolCall);
+          } else if (partType === "text") {
+            const part = payload.part;
+            const messageId = this.safeGet(part, "messageID");
+            let textContent = this.safeGet(part, "text");
+            if (messageId && typeof textContent === "string" && textContent.trim().length > 0) {
+              if (!textPartsByMessage.has(messageId)) {
+                textPartsByMessage.set(messageId, []);
+              }
+              textPartsByMessage.get(messageId).push(textContent);
+            }
           }
           break;
+        }
         case "file.edited": {
           if (this.safeGet(payload, "diff")) {
             const filePath = this.safeGet(payload, "diff.file");
@@ -40760,6 +40803,14 @@ class OpenCodeClient {
     }
     if (!outcome.error && outcome.success === false) {
       outcome.error = "Agent execution failed";
+    }
+    if (lastAssistantMessageId && textPartsByMessage.has(lastAssistantMessageId)) {
+      const parts = textPartsByMessage.get(lastAssistantMessageId);
+      const combinedMessage = parts.join(`
+`).trim();
+      if (combinedMessage) {
+        outcome.message = combinedMessage;
+      }
     }
     return outcome;
   }
@@ -41053,6 +41104,7 @@ class WorkerEngine {
       console.log(`Using OpenCode agent default model`);
     }
     const instructions = this.buildInstructions(issue, phase, policy);
+    const initialPrompt = instructions;
     console.log(`Running agent ${agentId} with OpenCode CLI...`);
     const result = await this.opencode.runAgentCLI({
       directory: process.cwd(),
@@ -41115,12 +41167,12 @@ class WorkerEngine {
         ...parsedOutcome.metrics,
         duration_ms: actualDuration,
         start_time_ms: parsedOutcome.metrics?.start_time_ms || startTimestamp,
-        end_time_ms: parsedOutcome.metrics?.end_time_ms || endTimestamp
+        end_time_ms: parsedOutcome.metrics?.end_time_ms || endTimestamp,
+        tool_calls_count: parsedOutcome.tool_calls?.length || 0
       }
     };
     const metadata = {
-      messages: parsedOutcome.messages,
-      raw_cli_output: parsedOutcome.raw_output
+      initial_prompt: initialPrompt
     };
     return {
       outcome,
@@ -41165,6 +41217,9 @@ Please complete the ${phase} phase for this issue. When done, provide a summary 
 ${phaseConfig?.require_approval ? `
 \u26A0\uFE0F This phase requires human approval before proceeding.
 ` : ""}
+
+## Phase Messenger
+Previous phases may have sent messages containing context, results, or data for this phase. To view messages, use: \`ashep get-messages ${issue.id} --phase ${phase}\`
 `.trim();
   }
   substituteVariables(template, issue, phase, capabilities) {
@@ -42980,6 +43035,7 @@ var COMMANDS = {
   "list-hitl": "List issues requiring human-in-the-loop intervention",
   "list-ready": "List issues ready to be worked on (no blockers)",
   "list-struggle": "List blocked issues that need attention",
+  "get-messages": "Get phase messages for an issue",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
   "plugin-activate": "Activate a plugin",
@@ -44160,6 +44216,36 @@ Struggling Issues (${strugglingIssues.length}):`);
     process.exit(1);
   }
 }
+async function cmdGetMessages(issueId, phase, unreadOnly) {
+  if (!issueId) {
+    console.error("Usage: ashep get-messages <issue-id> [--phase <phase>] [--unread]");
+    console.error("Examples:");
+    console.error("  ashep get-messages ISSUE-123");
+    console.error("  ashep get-messages ISSUE-123 --phase test");
+    console.error("  ashep get-messages ISSUE-123 --unread");
+    process.exit(1);
+  }
+  try {
+    const { getPhaseMessenger: getPhaseMessenger2, formatMessagesForCLI: formatMessagesForCLI2 } = await Promise.resolve().then(() => (init_phase_messenger(), exports_phase_messenger));
+    const messenger = getPhaseMessenger2();
+    const query = { issue_id: issueId };
+    if (phase) {
+      query.to_phase = phase;
+    }
+    if (unreadOnly) {
+      query.read = false;
+    }
+    const messages = messenger.listMessages(query);
+    if (messages.length === 0) {
+      console.log(`No messages found for issue ${issueId}${phase ? ` and phase '${phase}'` : ""}${unreadOnly ? " (unread only)" : ""}.`);
+    } else {
+      console.log(formatMessagesForCLI2(messages));
+    }
+  } catch (error) {
+    console.error("\u274C Failed to get messages:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 async function main() {
   loadPlugins();
   const args = process.argv.slice(2);
@@ -44249,6 +44335,20 @@ async function main() {
         hours = parseInt(args[1], 10);
       }
       await cmdListStruggle(hours);
+      break;
+    }
+    case "get-messages": {
+      let phase;
+      let unreadOnly = false;
+      for (let i = 1;i < args.length; i++) {
+        if (args[i] === "--phase" && i + 1 < args.length) {
+          phase = args[i + 1];
+          i++;
+        } else if (args[i] === "--unread") {
+          unreadOnly = true;
+        }
+      }
+      await cmdGetMessages(args[1], phase, unreadOnly);
       break;
     }
     case "cleanup-metrics":

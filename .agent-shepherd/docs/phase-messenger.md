@@ -413,6 +413,48 @@ if (pendingMessages.length > 0) {
 - Marked as read automatically
 - Logged in decision history
 
+## CLI Tool
+
+### Get Messages Command
+
+View phase messages from the command line:
+
+```bash
+# Get all messages for an issue
+ashep get-messages ISSUE-123
+
+# Get messages for specific phase
+ashep get-messages ISSUE-123 --phase implement
+
+# Get only unread messages
+ashep get-messages ISSUE-123 --unread
+
+# Get unread messages for specific phase
+ashep get-messages ISSUE-123 --phase test --unread
+```
+
+**Output Format:**
+```
+Messages (2):
+┌─────────────────┬───────────┬───────────┬─────────────────────────────────────┬─────────┬──────────────┐
+│ ID              │ Type      │ Read      │ Content                          │ From    │ To           │
+├─────────────────┼───────────┼───────────┼─────────────────────────────────────┼─────────┼──────────────┤
+│ msg-1234567890  │ context   │ ✓         │ Planning completed                │ plan     │ implement    │
+│ msg-9876543210  │ result    │ ✗         │ Tests passed                   │ test     │ deploy      │
+└─────────────────┴───────────┴───────────┴─────────────────────────────────────┴─────────┴──────────────┘
+```
+
+**Use Cases:**
+- **Debug workflows**: Check what messages were sent between phases
+- **Verify communication**: Ensure messages are being delivered correctly
+- **Inspect context**: View what context/data was passed to a phase
+- **Troubleshoot**: Identify why a phase didn't receive expected messages
+
+**Tips:**
+- Use `--phase` to filter messages for a specific workflow phase
+- Use `--unread` to see only messages not yet consumed by agents
+- The Read column shows ✓ for read messages and ✗ for unread
+
 ## Cleanup and Archival
 
 ### Manual Cleanup
