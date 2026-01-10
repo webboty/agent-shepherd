@@ -48,3 +48,7 @@ retention:
       delete_after_days: 90
       keep_successful_runs: false
       keep_failed_runs: true
+
+session_continuation:
+  default_max_context_tokens: 130000
+  default_threshold: 0.8

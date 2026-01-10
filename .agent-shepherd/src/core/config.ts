@@ -73,6 +73,11 @@ export interface WorkerAssistantConfig {
   fallbackAction?: "advance" | "retry" | "block";
 }
 
+export interface SessionContinuationConfig {
+  default_max_context_tokens: number;
+  default_threshold: number;
+}
+
 export interface AgentShepherdConfig {
   version: string;
   worker?: {
@@ -92,6 +97,7 @@ export interface AgentShepherdConfig {
   cleanup?: CleanupConfig;
   retention?: RetentionConfig;
   worker_assistant?: WorkerAssistantConfig;
+  session_continuation?: SessionContinuationConfig;
 }
 
 /**
@@ -190,6 +196,13 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
         agentCapability: "worker-assistant",
         timeoutMs: 10000,
         fallbackAction: "block"
+      },
+      session_continuation: config.session_continuation ? {
+        default_max_context_tokens: config.session_continuation.default_max_context_tokens ?? 130000,
+        default_threshold: config.session_continuation.default_threshold ?? 0.8
+      } : {
+        default_max_context_tokens: 130000,
+        default_threshold: 0.8
       }
     };
   } catch (error) {

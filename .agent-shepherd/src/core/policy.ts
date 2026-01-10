@@ -28,6 +28,9 @@ export interface PhaseConfig {
   worker_assistant?: {
     enabled?: boolean;
   };
+  reuse_session_from_phase?: string;
+  context_window_threshold?: number;
+  max_context_tokens?: number;
 }
 
 export interface TransitionConfig {
@@ -71,6 +74,7 @@ export interface PolicyConfig {
   worker_assistant?: {
     enabled?: boolean;
   };
+  shared_session?: boolean;
 }
 
 export interface PoliciesFile {
