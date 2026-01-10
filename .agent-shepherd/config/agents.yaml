@@ -49,6 +49,7 @@ agents:
       - planning
       - architecture
       - analysis
+      - worker-assistant
     priority: 10
     active: true
     constraints:
@@ -162,6 +163,7 @@ agents:
       - test-clarification
       - review-decision
       - quality-decision
+      - worker-assistant
     priority: 10
     active: true
     constraints:

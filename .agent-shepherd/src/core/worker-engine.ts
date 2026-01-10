@@ -300,11 +300,56 @@ export class WorkerEngine {
     }
 
     // 6. Determine transition based on outcome
-    const transition = await this.policyEngine.determineTransition(policy, phase, {
-      success: outcome.success,
-      retry_count: retryCount,
-      requires_approval: outcome.requires_approval,
-    }, issue.id);
+    let transition: PhaseTransition;
+    
+    if (this.shouldTriggerWorkerAssistant(outcome, phase, policy)) {
+      const directive = await this.executeWorkerAssistant(issue.id, outcome, phase);
+      
+      this.logger.logDecision({
+        run_id: runId,
+        type: "worker_assistant",
+        decision: directive,
+        reasoning: `Worker assistant directive based on outcome analysis`,
+        metadata: {
+          issue_id: issue.id,
+          phase,
+          outcome_summary: {
+            success: outcome.success,
+            warnings: outcome.warnings?.length,
+            artifacts: outcome.artifacts?.length,
+            has_error: !!outcome.error
+          }
+        }
+      });
+      
+      switch (directive) {
+        case "advance":
+          transition = await this.policyEngine.determineTransition(policy, phase, {
+            success: true,
+            retry_count: retryCount,
+            requires_approval: outcome.requires_approval,
+          }, issue.id);
+          break;
+        case "retry":
+          transition = { type: "retry", reason: "Assistant recommended retry" };
+          break;
+        case "block":
+          transition = { type: "block", reason: "Assistant recommended human review" };
+          break;
+        default:
+          transition = await this.policyEngine.determineTransition(policy, phase, {
+            success: outcome.success,
+            retry_count: retryCount,
+            requires_approval: outcome.requires_approval,
+          }, issue.id);
+      }
+    } else {
+      transition = await this.policyEngine.determineTransition(policy, phase, {
+        success: outcome.success,
+        retry_count: retryCount,
+        requires_approval: outcome.requires_approval,
+      }, issue.id);
+    }
 
     // Log transition decision
     this.logger.logDecision({
@@ -643,6 +688,189 @@ Previous phases may have sent messages containing context, results, or data for 
         break;
       }
     }
+  }
+
+  /**
+   * Check if worker assistant should be triggered based on outcome and phase
+   */
+  private shouldTriggerWorkerAssistant(outcome: RunOutcome, phase: string, policy: string): boolean {
+    const config = loadConfig();
+    const workerAssistant = config.worker_assistant;
+    
+    if (!workerAssistant?.enabled) {
+      return false;
+    }
+    
+    const policyConfig = this.policyEngine.getPolicyConfig(policy);
+    const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
+    
+    const policyOptOut = policyConfig?.worker_assistant?.enabled === false;
+    const phaseOptOut = phaseConfig?.worker_assistant?.enabled === false;
+    
+    if (policyOptOut || phaseOptOut) {
+      return false;
+    }
+    
+    let triggerCount = 0;
+    
+    if (outcome.success) {
+      if (outcome.warnings && outcome.warnings.length > 0) {
+        triggerCount++;
+      }
+      
+      if (outcome.artifacts && outcome.artifacts.length > 5) {
+        triggerCount++;
+      }
+      
+      if (outcome.message && (
+        outcome.message.includes("unclear") ||
+        outcome.message.includes("partial") ||
+        outcome.message.includes("ambiguous") ||
+        outcome.message.includes("review")
+      )) {
+        triggerCount++;
+      }
+    } else {
+      if (outcome.error_details && Object.keys(outcome.error_details).length > 0) {
+        triggerCount++;
+      }
+      
+      if (outcome.message && (
+        outcome.message.includes("timeout") ||
+        outcome.message.includes("incomplete") ||
+        outcome.message.includes("partial")
+      )) {
+        triggerCount++;
+      }
+    }
+    
+    return triggerCount > 0;
+  }
+  
+  /**
+   * Execute worker assistant to determine next action
+   */
+  private async executeWorkerAssistant(
+    issueId: string,
+    outcome: RunOutcome,
+    phase: string
+  ): Promise<"advance" | "retry" | "block"> {
+    const config = loadConfig();
+    const workerAssistant = config.worker_assistant;
+    
+    if (!workerAssistant?.enabled) {
+      console.log(`Worker assistant disabled, returning fallback action: ${workerAssistant?.fallbackAction || "block"}`);
+      return workerAssistant?.fallbackAction || "block";
+    }
+    
+    const agent = this.agentRegistry.selectAgent({
+      required_capabilities: [workerAssistant.agentCapability || "worker-assistant"]
+    });
+    
+    if (!agent) {
+      console.warn(`No worker assistant agent found with capability: ${workerAssistant.agentCapability || "worker-assistant"}`);
+      return workerAssistant.fallbackAction || "block";
+    }
+    
+    const issue = await getIssue(issueId);
+    if (!issue) {
+      console.warn(`Issue ${issueId} not found`);
+      return workerAssistant.fallbackAction || "block";
+    }
+    
+    const prompt = this.buildWorkerAssistantPrompt(issue, phase, outcome);
+    
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Worker assistant timeout")), workerAssistant.timeoutMs);
+    });
+    
+    try {
+      const result = await Promise.race([
+        this.opencode.runAgentCLI({
+          directory: process.cwd(),
+          title: `Worker Assistant: ${issue.id}`,
+          agent: agent.id,
+          message: prompt
+        }),
+        timeoutPromise
+      ]) as any;
+      
+      if (!result.success) {
+        console.warn(`Worker assistant execution failed: ${result.error}`);
+        return workerAssistant.fallbackAction || "block";
+      }
+      
+      const directive = this.parseWorkerAssistantResponse(result.output);
+      
+      console.log(`Worker assistant directive: ${directive}`);
+      
+      return directive;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`Worker assistant error: ${errorMsg}`);
+      return workerAssistant.fallbackAction || "block";
+    }
+  }
+  
+  /**
+   * Build prompt for worker assistant
+   */
+  private buildWorkerAssistantPrompt(
+    issue: BeadsIssue,
+    phase: string,
+    outcome: RunOutcome
+  ): string {
+    const outcomeSummary = {
+      success: outcome.success,
+      message: outcome.message,
+      warnings: outcome.warnings?.length || 0,
+      artifacts: outcome.artifacts?.length || 0,
+      error: outcome.error
+    };
+    
+    return `
+You are a Worker Assistant. Analyze the agent execution outcome and determine the next action.
+
+# Issue Context
+- ID: ${issue.id}
+- Title: ${issue.title}
+- Type: ${issue.issue_type}
+- Current Phase: ${phase}
+
+# Agent Outcome
+${JSON.stringify(outcomeSummary, null, 2)}
+
+${outcome.error_details ? `\n# Error Details\n${JSON.stringify(outcome.error_details, null, 2)}` : ""}
+
+# Your Task
+Based on the agent outcome, determine the best next action:
+
+- ADVANCE: Move to the next phase (outcome is acceptable, minor issues only)
+- RETRY: Retry the current phase (fixable issues detected)
+- BLOCK: Block for human review (unclear outcome, complex problems, or serious issues)
+
+# Response Format
+Respond with ONLY one word: ADVANCE, RETRY, or BLOCK
+`.trim();
+  }
+  
+  /**
+   * Parse worker assistant response
+   */
+  private parseWorkerAssistantResponse(response: string): "advance" | "retry" | "block" {
+    const normalized = response.toUpperCase().trim();
+    
+    if (normalized.includes("ADVANCE")) {
+      return "advance";
+    } else if (normalized.includes("RETRY")) {
+      return "retry";
+    } else if (normalized.includes("BLOCK")) {
+      return "block";
+    }
+    
+    console.warn(`Could not parse worker assistant response: ${response}`);
+    const config = loadConfig();
+    return config.worker_assistant?.fallbackAction || "block";
   }
 
   /**

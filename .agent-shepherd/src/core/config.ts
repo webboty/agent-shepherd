@@ -66,6 +66,13 @@ export interface RetentionConfig {
   policies: RetentionPolicy[];
 }
 
+export interface WorkerAssistantConfig {
+  enabled: boolean;
+  agentCapability?: string;
+  timeoutMs?: number;
+  fallbackAction?: "advance" | "retry" | "block";
+}
+
 export interface AgentShepherdConfig {
   version: string;
   worker?: {
@@ -84,6 +91,7 @@ export interface AgentShepherdConfig {
   loop_prevention?: LoopPreventionConfig;
   cleanup?: CleanupConfig;
   retention?: RetentionConfig;
+  worker_assistant?: WorkerAssistantConfig;
 }
 
 /**
@@ -171,6 +179,17 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
       } : {
         enabled: true,
         policies: [],
+      },
+      worker_assistant: config.worker_assistant ? {
+        enabled: config.worker_assistant.enabled ?? false,
+        agentCapability: config.worker_assistant.agentCapability ?? "worker-assistant",
+        timeoutMs: config.worker_assistant.timeoutMs ?? 10000,
+        fallbackAction: config.worker_assistant.fallbackAction ?? "block"
+      } : {
+        enabled: false,
+        agentCapability: "worker-assistant",
+        timeoutMs: 10000,
+        fallbackAction: "block"
       }
     };
   } catch (error) {

@@ -96,6 +96,18 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "worker_assistant": {
+          "type": "object",
+          "description": "Worker assistant opt-out configuration for this policy",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable worker assistant for this policy. If false, worker assistant will not be triggered for any phase in this policy."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -153,6 +165,18 @@
         "custom_prompt": {
           "type": "string",
           "description": "Custom prompt template for this phase. Supports variables: {{issue.title}}, {{issue.description}}, {{issue.id}}, {{issue.type}}, {{phase}}, {{capabilities}}. If not specified, uses default template."
+        },
+        "worker_assistant": {
+          "type": "object",
+          "description": "Worker assistant opt-out configuration for this phase",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable worker assistant for this phase. If false, worker assistant will not be triggered for this phase."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

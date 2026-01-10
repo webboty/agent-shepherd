@@ -113,6 +113,90 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 - **CLI** (`src/cli/index.ts`) - Command-line interface
 - **UI Server** (`src/ui/ui-server.ts`) - ReactFlow visualization server
 
+## Worker Assistant
+
+The worker assistant provides AI-powered interpretation of complex agent outcomes when the worker engine's deterministic logic cannot determine clear advance/retry/block actions.
+
+### How It Works
+
+When an agent completes execution, the worker engine analyzes the outcome:
+
+1. **Deterministic processing**: Standard if-else logic handles clear cases (success → advance, failure → retry/block)
+2. **Trigger detection**: Ambiguous outcomes trigger the worker assistant:
+   - Successful outcome with warnings
+   - Successful outcome with many artifacts (>5)
+   - Message contains keywords: "unclear", "partial", "ambiguous", "review"
+   - Failed outcome with structured error details
+   - Failed outcome with timeout/incomplete keywords
+
+3. **Assistant execution**: Worker assistant analyzes context and returns directive:
+   - **ADVANCE**: Move to next phase (acceptable, minor issues)
+   - **RETRY**: Retry current phase (fixable issues)
+   - **BLOCK**: Block for human review (unclear, complex problems)
+
+4. **Transition conversion**: Directive converted to workflow transition and logged
+
+### Configuration
+
+The worker assistant is controlled by the `worker_assistant` configuration in `config/config.yaml`:
+
+```yaml
+worker_assistant:
+  enabled: true              # Master switch
+  agentCapability: worker-assistant
+  timeoutMs: 10000           # 10 seconds max for AI decision
+  fallbackAction: block          # Action when unavailable
+```
+
+### Per-Policy Opt-Out
+
+Policies can opt out of the worker assistant at the policy or phase level for workflows that require deterministic behavior:
+
+```yaml
+policies:
+  my-policy:
+    worker_assistant:
+      enabled: false            # Disable for entire policy
+    phases:
+      - name: implement
+        worker_assistant:
+          enabled: false          # Disable for specific phase
+```
+
+### Benefits
+
+- **Handles ambiguous outputs**: When agents return complex or unclear results
+- **Keeps logic simple**: Deterministic rules for clear cases, AI for edge cases
+- **Performance**: Only triggered for uncertain cases (<5% of runs)
+- **Graceful degradation**: Falls back to configured action if unavailable
+- **Full observability**: All decisions logged with reasoning and metadata
+
+### Capabilities
+
+Agents with the `worker-assistant` capability are eligible to serve as worker assistants. The assistant analyzes:
+- Agent outcome summary (success, warnings, artifacts, errors)
+- Issue context (ID, type, phase)
+- Error details when available
+
+Returns one-word directive: `ADVANCE`, `RETRY`, or `BLOCK`
+
+### Required Agent Capability
+
+To use the worker assistant feature, ensure your `agents.yaml` includes agents with the `worker-assistant` capability:
+
+```yaml
+agents:
+  - id: my-worker-assistant
+    name: "Worker Assistant"
+    capabilities:
+      - worker-assistant
+      - analysis
+    priority: 10
+    active: true
+```
+
+See `docs/agents-config.md` for complete agent configuration reference and `docs/config-config.md` for worker assistant settings.
+
 ## Tech Stack
 
 ### Runtime & Build

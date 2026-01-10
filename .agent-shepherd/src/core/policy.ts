@@ -25,6 +25,9 @@ export interface PhaseConfig {
   transitions?: TransitionBlock;
   max_visits?: number;
   custom_prompt?: string;
+  worker_assistant?: {
+    enabled?: boolean;
+  };
 }
 
 export interface TransitionConfig {
@@ -65,6 +68,9 @@ export interface PolicyConfig {
   fallback_enabled?: boolean;
   fallback_agent?: string;
   fallback_mappings?: Record<string, string>;
+  worker_assistant?: {
+    enabled?: boolean;
+  };
 }
 
 export interface PoliciesFile {
@@ -338,6 +344,13 @@ export class PolicyEngine {
       return [];
     }
     return policy.phases.map((p) => p.name);
+  }
+
+  /**
+   * Get policy configuration
+   */
+  getPolicyConfig(policyName: string): PolicyConfig | null {
+    return this.getPolicy(policyName);
   }
 
   /**

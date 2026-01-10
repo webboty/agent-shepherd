@@ -606,6 +606,92 @@ policies:
 2. Check HITL configuration for valid reasons
 3. Review logs for any validation errors
 
+## Worker Assistant Configuration
+
+The worker assistant provides AI-powered interpretation of complex agent outcomes when the worker engine's deterministic logic cannot determine clear advance/retry/block actions.
+
+### `worker_assistant` (object)
+**Required**: No  
+**Purpose**: AI-powered assistant for interpreting ambiguous agent outcomes  
+**Impact**: Provides intelligent decision support when deterministic logic cannot determine clear actions
+
+#### `enabled` (boolean)
+**Required**: No (default: false)  
+**Purpose**: Master switch for worker assistant feature  
+**Impact**: When false, worker assistant is never invoked regardless of outcome complexity
+
+#### `agentCapability` (string)
+**Required**: No (default: "worker-assistant")  
+**Purpose**: Agent capability to use for worker assistant selection  
+**Impact**: Controls which agents are eligible for worker assistant role  
+**Values**: Any capability name (e.g., "worker-assistant", "analysis-assistant")
+
+#### `timeoutMs` (number)
+**Required**: No (default: 10000)  
+**Purpose**: Maximum time to wait for worker assistant response (milliseconds)  
+**Impact**: Limits how long to wait for AI decision before falling back  
+**Values**: 1000-60000 (1 second to 1 minute)
+
+#### `fallbackAction` (string)
+**Required**: No (default: "block")  
+**Purpose**: Action to take when worker assistant fails or is unavailable  
+**Impact**: Determines safety behavior when AI assistance cannot be obtained
+
+**Values**:
+- `"advance"`: Move to next phase
+- `"retry"`: Retry current phase  
+- `"block"`: Block for human review (default)
+
+### Worker Assistant Configuration Example
+
+Add to `.agent-shepherd/config/config.yaml`:
+
+```yaml
+worker_assistant:
+  enabled: true
+  agentCapability: worker-assistant
+  timeoutMs: 10000
+  fallbackAction: block
+```
+
+### Worker Assistant Behavior
+
+The worker assistant is invoked automatically when agent outcomes are ambiguous:
+
+**Trigger conditions:**
+- Successful outcome with warnings (e.g., code quality issues)
+- Successful outcome with many artifacts (>5 files modified)
+- Agent message contains keywords: "unclear", "partial", "ambiguous", "review"
+- Failed outcome has error details (structured error information)
+- Failed outcome with timeout or incomplete keywords
+
+**Worker assistant process:**
+1. Receives issue context and agent outcome
+2. Analyzes complexity and determines appropriate action
+3. Returns one-word directive: ADVANCE, RETRY, or BLOCK
+4. Decision is logged for observability
+5. Falls back to configured action if unavailable or times out
+
+**Performance considerations:**
+- Worker assistant is triggered only for truly uncertain cases (<5% of runs)
+- Timeout prevents indefinite waiting (default 10 seconds)
+- Fallback action ensures graceful degradation
+
+### Worker Assistant Per-Policy Opt-Out
+
+Policies can opt out of worker assistant at policy or phase level for workflows that require deterministic behavior:
+
+```yaml
+policies:
+  my-policy:
+    worker_assistant:
+      enabled: false  # Disable for entire policy
+    phases:
+      - name: implement
+        worker_assistant:
+          enabled: false  # Disable for specific phase
+```
+
 ## Fallback Agent Configuration
 
 The fallback system allows Agent Shepherd to use a default agent when a policy requires a capability that no agent has. This is useful for:

@@ -251,6 +251,37 @@
         "enabled"
       ]
     },
+    "worker_assistant": {
+      "type": "object",
+      "description": "Worker assistant configuration for AI-powered outcome interpretation",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable worker assistant to help interpret ambiguous agent outcomes"
+        },
+        "agentCapability": {
+          "type": "string",
+          "default": "worker-assistant",
+          "description": "Agent capability for worker assistant (e.g., 'worker-assistant')"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000,
+          "default": 10000,
+          "description": "Timeout in milliseconds for worker assistant execution"
+        },
+        "fallbackAction": {
+          "type": "string",
+          "enum": ["advance", "retry", "block"],
+          "default": "block",
+          "description": "Fallback action if worker assistant is unavailable or fails"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "retention": {
       "type": "object",
       "description": "Data retention policy configuration",
