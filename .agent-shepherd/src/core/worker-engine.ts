@@ -23,6 +23,8 @@ import {
   getPolicyEngine,
   validateHITLReason,
   type PhaseTransition,
+  type PolicyConfig,
+  type PhaseConfig,
 } from "./policy.ts";
 import { getAgentRegistry } from "./agent-registry.ts";
 import { getLogger, type RunOutcome } from "./logging.ts";
@@ -1011,6 +1013,109 @@ Respond with ONLY one word: ADVANCE, RETRY, or BLOCK
   ): Promise<void> {
     const note = `🔔 HITL Required: ${reason}\n\n${details}\n\nPlease review and provide approval to proceed.`;
     await updateIssue(issueId, { notes: note });
+  }
+
+  /**
+   * Resolve session reuse target from keyword or phase name
+   */
+  private resolveReuseTarget(
+    phaseName: string,
+    keyword: string,
+    policy: PolicyConfig
+  ): string | null {
+    switch (keyword) {
+      case "@shared":
+        return policy.shared_session ? "@shared" : null;
+      case "@previous":
+        return this.getPreviousPhase(phaseName, policy);
+      case "@self":
+        return phaseName;
+      case "@first":
+        return policy.phases[0]?.name || null;
+      default:
+        return keyword;
+    }
+  }
+
+  /**
+   * Get previous phase in sequence
+   */
+  private getPreviousPhase(phaseName: string, policy: PolicyConfig): string | null {
+    const phases = policy.phases.map((p) => p.name);
+    const currentIndex = phases.indexOf(phaseName);
+    if (currentIndex <= 0) {
+      return null;
+    }
+    return phases[currentIndex - 1] || null;
+  }
+
+  /**
+   * Find reusable session based on target and threshold
+   */
+  private async findReusableSession(
+    issueId: string,
+    target: string
+  ): Promise<{ sessionId: string | null; shouldReuse: boolean }> {
+    const runs =
+      target === "@shared"
+        ? this.logger.queryRuns({ issue_id: issueId, limit: 1 })
+        : this.logger.queryRuns({
+            issue_id: issueId,
+            phase: target,
+            status: "completed",
+            limit: 1,
+          });
+
+    if (runs.length === 0) {
+      return { sessionId: null, shouldReuse: false };
+    }
+
+    const sessionId = runs[0].session_id;
+    if (!sessionId) {
+      return { sessionId: null, shouldReuse: false };
+    }
+
+    const totalTokens = this.sumTokensForSession(sessionId, issueId);
+    const maxTokens = this.getMaxTokens();
+    const threshold = this.getThreshold();
+    const shouldReuse = totalTokens < maxTokens * threshold;
+
+    return { sessionId, shouldReuse };
+  }
+
+  /**
+   * Sum all tokens for a specific session
+   */
+  private sumTokensForSession(sessionId: string, issueId: string): number {
+    const runs = this.logger.queryRuns({ issue_id: issueId });
+    let totalTokens = 0;
+
+    for (const run of runs) {
+      if (run.session_id === sessionId && run.outcome?.metrics?.tokens_used) {
+        totalTokens += run.outcome.metrics.tokens_used;
+      }
+    }
+
+    return totalTokens;
+  }
+
+  /**
+   * Get max context tokens from config
+   */
+  private getMaxTokens(): number {
+    const config = loadConfig();
+    return config.session_continuation?.default_max_context_tokens || 130000;
+  }
+
+  /**
+   * Get context window threshold from config
+   */
+  private getThreshold(phaseConfig?: PhaseConfig): number {
+    if (phaseConfig?.context_window_threshold !== undefined) {
+      return phaseConfig.context_window_threshold;
+    }
+    const config = loadConfig();
+    return config.session_continuation?.default_threshold || 0.8;
   }
 }
 
