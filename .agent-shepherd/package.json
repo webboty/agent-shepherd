@@ -11,7 +11,7 @@
     "build:ui": "bun build src/ui/AgentShepherdFlow.tsx --outdir dist --target browser --format iife --minify --define:import.meta.env={MODE:\\\"production\\\"} && sed -i.bak 's/import\\.meta\\.env?import\\.meta\\.env\\.MODE:void 0/false/g' dist/AgentShepherdFlow.js && rm -f dist/AgentShepherdFlow.js.bak",
     "dev": "bun run src/cli/index.ts",
     "test": "bun test tests/",
-    "posttest": "rm -rf tmp_test && rm -rf .agent-shepherd/.agent-shepherd",
+    "posttest": "rm -rf tmp_test .agent-shepherd",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit"
   },
