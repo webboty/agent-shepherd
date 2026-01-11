@@ -4,7 +4,6 @@
  */
 
 import {
-  getReadyIssues,
   updateIssue,
   type BeadsIssue,
   setPhaseLabel,
@@ -12,12 +11,12 @@ import {
   setHITLLabel,
   clearHITLLabels,
   getCurrentPhase,
-  hasExcludedLabel,
   getIssue,
   setAshepManagedLabel,
   removeAshepManagedLabel,
   hasAshepManagedLabel,
 } from "./beads.ts";
+import { getIssuePicker, type PickerConfig } from "./issue-picker.ts";
 import { getOpenCodeClient } from "./opencode.ts";
 import {
   getPolicyEngine,
@@ -33,6 +32,11 @@ import { loadConfig } from "./config.ts";
 export interface WorkerConfig {
   poll_interval_ms?: number;
   max_concurrent_runs?: number;
+  picking?: {
+    mode?: "simple" | "smart";
+    max_issues?: number;
+    prefer_epic_affinity?: boolean;
+  };
 }
 
 export interface ProcessResult {
@@ -115,20 +119,15 @@ export class WorkerEngine {
    * Get eligible issues (ready and not excluded)
    */
   private async getEligibleIssues(): Promise<BeadsIssue[]> {
-    const readyIssues = await getReadyIssues();
+    const config = loadConfig();
+    const pickingConfig: PickerConfig = {
+      mode: config.worker?.picking?.mode || "simple",
+      max_issues: config.worker?.picking?.max_issues || this.config.max_concurrent_runs,
+      prefer_epic_affinity: config.worker?.picking?.prefer_epic_affinity || true,
+    };
 
-    // Filter out excluded issues by label
-    const eligibleIssues: BeadsIssue[] = [];
-    for (const issue of readyIssues) {
-      const isExcluded = await hasExcludedLabel(issue.id);
-      if (!isExcluded) {
-        eligibleIssues.push(issue);
-      } else {
-        console.log(`Skipping excluded issue: ${issue.id} - ${issue.title}`);
-      }
-    }
-    
-    return eligibleIssues;
+    const issuePicker = getIssuePicker(pickingConfig);
+    return await issuePicker.pickNextIssues();
   }
 
   /**

@@ -44,6 +44,247 @@ var __export = (target, all) => {
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = import.meta.require;
 
+// src/core/beads.ts
+var exports_beads = {};
+__export(exports_beads, {
+  updateIssueLabels: () => updateIssueLabels,
+  updateIssue: () => updateIssue,
+  setPhaseLabel: () => setPhaseLabel,
+  setLeaseExpires: () => setLeaseExpires,
+  setLastHeartbeat: () => setLastHeartbeat,
+  setHITLLabel: () => setHITLLabel,
+  setEpicState: () => setEpicState,
+  setAssignedWorker: () => setAssignedWorker,
+  setAshepManagedLabel: () => setAshepManagedLabel,
+  removePhaseLabels: () => removePhaseLabels,
+  removeIssueLabel: () => removeIssueLabel,
+  removeAshepManagedLabel: () => removeAshepManagedLabel,
+  listIssues: () => listIssues,
+  isLeaseExpired: () => isLeaseExpired,
+  hasExcludedLabel: () => hasExcludedLabel,
+  hasBlockers: () => hasBlockers,
+  hasAshepManagedLabel: () => hasAshepManagedLabel,
+  getReadyIssues: () => getReadyIssues,
+  getLeaseExpires: () => getLeaseExpires,
+  getLastHeartbeat: () => getLastHeartbeat,
+  getIssueLabels: () => getIssueLabels,
+  getIssue: () => getIssue,
+  getHITLReason: () => getHITLReason,
+  getEpicState: () => getEpicState,
+  getCurrentPhase: () => getCurrentPhase,
+  getAssignedWorker: () => getAssignedWorker,
+  execBeadsCommand: () => execBeadsCommand,
+  closeIssue: () => closeIssue,
+  clearHITLLabels: () => clearHITLLabels,
+  clearEpicStates: () => clearEpicStates,
+  addIssueLabel: () => addIssueLabel
+});
+async function execBeadsCommand(args) {
+  const proc = Bun.spawn(["bd", ...args], {
+    stdout: "pipe",
+    stderr: "pipe"
+  });
+  const output = await new Response(proc.stdout).text();
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    const error = await new Response(proc.stderr).text();
+    throw new Error(`Beads command failed: ${error}`);
+  }
+  return output;
+}
+async function getReadyIssues() {
+  const output = await execBeadsCommand(["ready", "--json"]);
+  const issues = JSON.parse(output);
+  const issuesArray = Array.isArray(issues) ? issues : [];
+  for (const issue of issuesArray) {
+    issue.labels = await getIssueLabels(issue.id);
+  }
+  return issuesArray;
+}
+async function getIssue(issueId) {
+  try {
+    const output = await execBeadsCommand(["show", issueId, "--json"]);
+    const result = JSON.parse(output);
+    const issue = Array.isArray(result) ? result[0] || null : result;
+    if (issue) {
+      issue.labels = await getIssueLabels(issueId);
+    }
+    return issue;
+  } catch {
+    return null;
+  }
+}
+async function updateIssue(issueId, options) {
+  const args = ["update", issueId];
+  if (options.status) {
+    args.push("--status", options.status);
+  }
+  if (options.priority !== undefined) {
+    args.push("--priority", options.priority.toString());
+  }
+  if (options.assignee) {
+    args.push("--assignee", options.assignee);
+  }
+  if (options.notes) {
+    args.push("--notes", options.notes);
+  }
+  await execBeadsCommand(args);
+}
+async function closeIssue(issueId, reason) {
+  const args = ["close", issueId];
+  if (reason) {
+    args.push("--reason", reason);
+  }
+  await execBeadsCommand(args);
+}
+async function listIssues(filters) {
+  const args = ["list", "--json"];
+  if (filters?.status) {
+    args.push("--status", filters.status);
+  }
+  if (filters?.priority !== undefined) {
+    args.push("--priority", filters.priority.toString());
+  }
+  if (filters?.assignee) {
+    args.push("--assignee", filters.assignee);
+  }
+  const output = await execBeadsCommand(args);
+  const issues = JSON.parse(output);
+  return Array.isArray(issues) ? issues : [];
+}
+async function hasBlockers(issueId) {
+  const issue = await getIssue(issueId);
+  if (!issue) {
+    return true;
+  }
+  return (issue.dependency_count || 0) > 0;
+}
+async function getIssueLabels(issueId) {
+  try {
+    const output = await execBeadsCommand(["label", "list", issueId, "--json"]);
+    const labels = JSON.parse(output);
+    return Array.isArray(labels) ? labels : [];
+  } catch {
+    return [];
+  }
+}
+async function updateIssueLabels(issueId, addLabels = [], removeLabels = []) {
+  for (const label of addLabels) {
+    await addIssueLabel(issueId, label);
+  }
+  for (const label of removeLabels) {
+    await removeIssueLabel(issueId, label);
+  }
+}
+async function addIssueLabel(issueId, label) {
+  await execBeadsCommand(["label", "add", issueId, label]);
+}
+async function removeIssueLabel(issueId, label) {
+  await execBeadsCommand(["label", "remove", issueId, label]);
+}
+async function setPhaseLabel(issueId, phaseName) {
+  const label = `ashep-phase:${phaseName}`;
+  await addIssueLabel(issueId, label);
+}
+async function removePhaseLabels(issueId) {
+  const labels = await getIssueLabels(issueId);
+  const phaseLabels = labels.filter((label) => label.startsWith("ashep-phase:"));
+  for (const label of phaseLabels) {
+    await removeIssueLabel(issueId, label);
+  }
+}
+async function setHITLLabel(issueId, reason) {
+  const label = `ashep-hitl:${reason}`;
+  await addIssueLabel(issueId, label);
+}
+async function clearHITLLabels(issueId) {
+  const labels = await getIssueLabels(issueId);
+  const hitlLabels = labels.filter((label) => label.startsWith("ashep-hitl:"));
+  for (const label of hitlLabels) {
+    await removeIssueLabel(issueId, label);
+  }
+}
+async function getCurrentPhase(issueId) {
+  const labels = await getIssueLabels(issueId);
+  const phaseLabel = labels.find((label) => label.startsWith("ashep-phase:"));
+  if (phaseLabel) {
+    return phaseLabel.replace("ashep-phase:", "");
+  }
+  return null;
+}
+async function getHITLReason(issueId) {
+  const labels = await getIssueLabels(issueId);
+  const hitlLabel = labels.find((label) => label.startsWith("ashep-hitl:"));
+  if (hitlLabel) {
+    return hitlLabel.replace("ashep-hitl:", "");
+  }
+  return null;
+}
+async function hasExcludedLabel(issueId) {
+  const labels = await getIssueLabels(issueId);
+  return labels.includes("ashep-excluded");
+}
+async function setAshepManagedLabel(issueId) {
+  await addIssueLabel(issueId, "ashep-managed");
+}
+async function removeAshepManagedLabel(issueId) {
+  await removeIssueLabel(issueId, "ashep-managed");
+}
+async function hasAshepManagedLabel(issueId) {
+  const labels = await getIssueLabels(issueId);
+  return labels.includes("ashep-managed");
+}
+async function setEpicState(epicId, key, value) {
+  const stateString = `${key}=${value}`;
+  await execBeadsCommand(["set-state", epicId, stateString]);
+}
+async function getEpicState(epicId, key) {
+  try {
+    const output = await execBeadsCommand(["state", epicId, key]);
+    const trimmed = output.trim();
+    if (trimmed === "" || trimmed === "null") {
+      return null;
+    }
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+async function setAssignedWorker(epicId, workerId) {
+  await setEpicState(epicId, "assigned-worker", workerId);
+}
+async function getAssignedWorker(epicId) {
+  return await getEpicState(epicId, "assigned-worker");
+}
+async function setLastHeartbeat(epicId, timestamp) {
+  await setEpicState(epicId, "last-heartbeat", timestamp.toString());
+}
+async function getLastHeartbeat(epicId) {
+  const value = await getEpicState(epicId, "last-heartbeat");
+  return value ? parseInt(value, 10) : null;
+}
+async function setLeaseExpires(epicId, expiresAt) {
+  await setEpicState(epicId, "lease-expires", expiresAt.toString());
+}
+async function getLeaseExpires(epicId) {
+  const value = await getEpicState(epicId, "lease-expires");
+  return value ? parseInt(value, 10) : null;
+}
+async function isLeaseExpired(epicId) {
+  const expiresAt = await getLeaseExpires(epicId);
+  if (expiresAt === null) {
+    return true;
+  }
+  return Date.now() > expiresAt;
+}
+async function clearEpicStates(epicId) {
+  await Promise.all([
+    setEpicState(epicId, "assigned-worker", ""),
+    setEpicState(epicId, "last-heartbeat", ""),
+    setEpicState(epicId, "lease-expires", "")
+  ]);
+}
+
 // src/core/archive-logger.ts
 var exports_archive_logger = {};
 __export(exports_archive_logger, {
@@ -56,7 +297,8 @@ import { join } from "path";
 class ArchiveLogger {
   db;
   constructor(dataDir) {
-    const dir = dataDir || join(process.cwd(), ".agent-shepherd");
+    const envDataDir = process.env.ASHEP_DIR;
+    const dir = dataDir || (envDataDir ? envDataDir : join(process.cwd(), ".agent-shepherd"));
     const archiveDir = join(dir, "archive");
     if (!existsSync(archiveDir)) {
       mkdirSync(archiveDir, { recursive: true });
@@ -296,7 +538,8 @@ class Logger {
   jsonlPath;
   decisionsPath;
   constructor(dataDir) {
-    const dir = dataDir || join2(process.cwd(), ".agent-shepherd");
+    const envDataDir = process.env.ASHEP_DIR;
+    const dir = dataDir || (envDataDir ? envDataDir : join2(process.cwd(), ".agent-shepherd"));
     if (!existsSync2(dir)) {
       mkdirSync2(dir, { recursive: true });
     }
@@ -8296,6 +8539,12 @@ function loadConfig(configDir) {
       worker: {
         poll_interval_ms: 30000,
         max_concurrent_runs: 3,
+        picking: {
+          mode: "simple",
+          max_issues: 3,
+          prefer_epic_affinity: true,
+          ...config.worker?.picking
+        },
         ...config.worker
       },
       monitor: {
@@ -9475,17 +9724,23 @@ class PolicyEngine {
       return { detected: false };
     }
     const length = cycleLength || config.loop_prevention?.cycle_detection_length || 3;
-    const logger = getLogger();
+    const logger = getLogger(process.env.ASHEP_DIR);
     const recentDecisions = logger.getDecisionsForIssue(issueId, { limit: 20 });
     const transitions = recentDecisions.filter((d) => d.type === "phase_transition").map((d) => {
       const fromPhase = d.metadata?.from_phase;
       const toPhase = d.metadata?.to_phase;
       return fromPhase && toPhase ? `${fromPhase}\u2192${toPhase}` : null;
-    }).filter((t) => t !== null).slice(-10);
+    }).filter((t) => t !== null).reverse().slice(0, 10);
     for (let i = 0;i <= transitions.length - length; i++) {
       const pattern = transitions.slice(i, i + length);
-      const reversePattern = [...pattern].reverse();
-      if (pattern.join(",") === reversePattern.join(",")) {
+      let isOscillating = true;
+      for (let j = 0;j < pattern.length - 1; j++) {
+        if (pattern[j] === pattern[j + 1]) {
+          isOscillating = false;
+          break;
+        }
+      }
+      if (isOscillating && pattern[0] === pattern[pattern.length - 1]) {
         return {
           detected: true,
           reason: `Oscillating cycle detected: ${pattern.join(" \u2192 ")}`
@@ -40878,117 +41133,184 @@ var init_policy_tree_visualizer = __esm(() => {
   init_policy_capability_validator();
   policyTreeVisualizer = new PolicyTreeVisualizer;
 });
-
-// src/core/beads.ts
-async function execBeadsCommand(args) {
-  const proc = Bun.spawn(["bd", ...args], {
-    stdout: "pipe",
-    stderr: "pipe"
-  });
-  const output = await new Response(proc.stdout).text();
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    const error = await new Response(proc.stderr).text();
-    throw new Error(`Beads command failed: ${error}`);
+// src/core/issue-picker.ts
+class IssuePicker {
+  config;
+  constructor(config) {
+    this.config = {
+      mode: "simple",
+      max_issues: 3,
+      prefer_epic_affinity: true,
+      ...config
+    };
   }
-  return output;
-}
-async function getReadyIssues() {
-  const output = await execBeadsCommand(["ready", "--json"]);
-  const issues = JSON.parse(output);
-  const issuesArray = Array.isArray(issues) ? issues : [];
-  for (const issue of issuesArray) {
-    issue.labels = await getIssueLabels(issue.id);
-  }
-  return issuesArray;
-}
-async function getIssue(issueId) {
-  try {
-    const output = await execBeadsCommand(["show", issueId, "--json"]);
-    const result = JSON.parse(output);
-    const issue = Array.isArray(result) ? result[0] || null : result;
-    if (issue) {
-      issue.labels = await getIssueLabels(issueId);
+  async pickNextIssues() {
+    const allReadyIssues = await getReadyIssues();
+    if (this.config.mode === "simple") {
+      return this.simplePick(allReadyIssues);
     }
-    return issue;
-  } catch {
+    return this.smartPick(allReadyIssues);
+  }
+  simplePick(issues) {
+    const filtered = this.filterExcluded(issues);
+    filtered.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      return a.id.localeCompare(b.id);
+    });
+    return filtered.slice(0, this.config.max_issues);
+  }
+  async smartPick(issues) {
+    const filtered = this.filterExcluded(issues);
+    const available = await this.filterByCoordinationState(filtered);
+    if (available.length === 0) {
+      return [];
+    }
+    const graph = await this.buildDependencyGraph(available);
+    const ordered = this.applySmartOrdering(graph);
+    return ordered.slice(0, this.config.max_issues);
+  }
+  filterExcluded(issues) {
+    return issues.filter((issue) => !issue.labels?.includes("ashep-excluded"));
+  }
+  async filterByCoordinationState(issues) {
+    const workerId = process.env.ASHEP_WORKER_ID || "default";
+    const available = [];
+    for (const issue of issues) {
+      const epicId = this.extractEpicId(issue.id);
+      if (!epicId) {
+        available.push(issue);
+        continue;
+      }
+      const assignedWorker = await getAssignedWorker(epicId);
+      if (!assignedWorker) {
+        available.push(issue);
+      } else if (assignedWorker === workerId) {
+        const expired = await isLeaseExpired(epicId);
+        if (expired) {
+          available.push(issue);
+        }
+      }
+    }
+    return available;
+  }
+  extractEpicId(issueId) {
+    const parts = issueId.split(".");
+    if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+      return parts[0];
+    }
     return null;
   }
-}
-async function updateIssue(issueId, options) {
-  const args = ["update", issueId];
-  if (options.status) {
-    args.push("--status", options.status);
+  async buildDependencyGraph(issues) {
+    const nodes = new Map;
+    const edges = [];
+    const indegree = new Map;
+    const depth = new Map;
+    for (const issue of issues) {
+      nodes.set(issue.id, issue);
+      indegree.set(issue.id, 0);
+      depth.set(issue.id, this.calculateHierarchicalDepth(issue.id));
+    }
+    const allDeps = await Promise.all(issues.map(async (issue) => ({
+      issue,
+      deps: await this.getDependencies(issue.id)
+    })));
+    for (const { issue, deps } of allDeps) {
+      for (const dep of deps) {
+        if (nodes.has(dep.id)) {
+          edges.push({ from: dep.id, to: issue.id, type: dep.type });
+          indegree.set(issue.id, (indegree.get(issue.id) || 0) + 1);
+        }
+      }
+    }
+    return { nodes, edges, indegree, depth };
   }
-  if (options.priority !== undefined) {
-    args.push("--priority", options.priority.toString());
+  async getDependencies(issueId) {
+    const { execBeadsCommand: execBeadsCommand2 } = await Promise.resolve().then(() => exports_beads);
+    try {
+      const output = await execBeadsCommand2(["dep", "list", issueId, "--json"]);
+      const deps = JSON.parse(output);
+      if (!Array.isArray(deps)) {
+        return [];
+      }
+      return deps.map((dep) => ({
+        id: dep.id,
+        type: dep.dependency_type || "related"
+      }));
+    } catch (error) {
+      console.warn(`Failed to fetch dependencies for ${issueId}: ${error}`);
+      return [];
+    }
   }
-  if (options.assignee) {
-    args.push("--assignee", options.assignee);
+  calculateHierarchicalDepth(issueId) {
+    const parts = issueId.split(".");
+    let depth = 0;
+    for (const part of parts.slice(1)) {
+      if (/^\d+$/.test(part)) {
+        depth++;
+      }
+    }
+    return depth;
   }
-  if (options.notes) {
-    args.push("--notes", options.notes);
+  applySmartOrdering(graph) {
+    const ordered = [];
+    const queue = this.initializeQueue(graph);
+    while (queue.length > 0) {
+      queue.sort((a, b) => this.compareIssues(a, b, graph));
+      const current = queue.shift();
+      ordered.push(current);
+      this.decrementIndegrees(graph, current.id, queue);
+    }
+    return ordered;
   }
-  await execBeadsCommand(args);
-}
-async function getIssueLabels(issueId) {
-  try {
-    const output = await execBeadsCommand(["label", "list", issueId, "--json"]);
-    const labels = JSON.parse(output);
-    return Array.isArray(labels) ? labels : [];
-  } catch {
-    return [];
+  initializeQueue(graph) {
+    const queue = [];
+    for (const [issueId, indegree] of graph.indegree.entries()) {
+      if (indegree === 0) {
+        const issue = graph.nodes.get(issueId);
+        if (issue) {
+          queue.push(issue);
+        }
+      }
+    }
+    return queue;
+  }
+  compareIssues(a, b, graph) {
+    const depthA = graph.depth.get(a.id) || 0;
+    const depthB = graph.depth.get(b.id) || 0;
+    if (depthA !== depthB) {
+      return depthB - depthA;
+    }
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority;
+    }
+    return a.id.localeCompare(b.id);
+  }
+  decrementIndegrees(graph, issueId, queue) {
+    for (const edge of graph.edges) {
+      if (edge.from === issueId) {
+        const newIndegree = (graph.indegree.get(edge.to) || 0) - 1;
+        graph.indegree.set(edge.to, newIndegree);
+        if (newIndegree === 0) {
+          const issue = graph.nodes.get(edge.to);
+          if (issue && !queue.includes(issue)) {
+            queue.push(issue);
+          }
+        }
+      }
+    }
+  }
+  updateConfig(config) {
+    this.config = { ...this.config, ...config };
   }
 }
-async function addIssueLabel(issueId, label) {
-  await execBeadsCommand(["label", "add", issueId, label]);
-}
-async function removeIssueLabel(issueId, label) {
-  await execBeadsCommand(["label", "remove", issueId, label]);
-}
-async function setPhaseLabel(issueId, phaseName) {
-  const label = `ashep-phase:${phaseName}`;
-  await addIssueLabel(issueId, label);
-}
-async function removePhaseLabels(issueId) {
-  const labels = await getIssueLabels(issueId);
-  const phaseLabels = labels.filter((label) => label.startsWith("ashep-phase:"));
-  for (const label of phaseLabels) {
-    await removeIssueLabel(issueId, label);
+var defaultIssuePicker = null;
+function getIssuePicker(config) {
+  if (!defaultIssuePicker) {
+    defaultIssuePicker = new IssuePicker(config);
   }
-}
-async function setHITLLabel(issueId, reason) {
-  const label = `ashep-hitl:${reason}`;
-  await addIssueLabel(issueId, label);
-}
-async function clearHITLLabels(issueId) {
-  const labels = await getIssueLabels(issueId);
-  const hitlLabels = labels.filter((label) => label.startsWith("ashep-hitl:"));
-  for (const label of hitlLabels) {
-    await removeIssueLabel(issueId, label);
-  }
-}
-async function getCurrentPhase(issueId) {
-  const labels = await getIssueLabels(issueId);
-  const phaseLabel = labels.find((label) => label.startsWith("ashep-phase:"));
-  if (phaseLabel) {
-    return phaseLabel.replace("ashep-phase:", "");
-  }
-  return null;
-}
-async function hasExcludedLabel(issueId) {
-  const labels = await getIssueLabels(issueId);
-  return labels.includes("ashep-excluded");
-}
-async function setAshepManagedLabel(issueId) {
-  await addIssueLabel(issueId, "ashep-managed");
-}
-async function removeAshepManagedLabel(issueId) {
-  await removeIssueLabel(issueId, "ashep-managed");
-}
-async function hasAshepManagedLabel(issueId) {
-  const labels = await getIssueLabels(issueId);
-  return labels.includes("ashep-managed");
+  return defaultIssuePicker;
 }
 
 // src/core/worker-engine.ts
@@ -41041,17 +41363,14 @@ class WorkerEngine {
     }
   }
   async getEligibleIssues() {
-    const readyIssues = await getReadyIssues();
-    const eligibleIssues = [];
-    for (const issue of readyIssues) {
-      const isExcluded = await hasExcludedLabel(issue.id);
-      if (!isExcluded) {
-        eligibleIssues.push(issue);
-      } else {
-        console.log(`Skipping excluded issue: ${issue.id} - ${issue.title}`);
-      }
-    }
-    return eligibleIssues;
+    const config = loadConfig();
+    const pickingConfig = {
+      mode: config.worker?.picking?.mode || "simple",
+      max_issues: config.worker?.picking?.max_issues || this.config.max_concurrent_runs,
+      prefer_epic_affinity: config.worker?.picking?.prefer_epic_affinity || true
+    };
+    const issuePicker = getIssuePicker(pickingConfig);
+    return await issuePicker.pickNextIssues();
   }
   async processIssue(issue) {
     console.log(`Processing issue: ${issue.id} - ${issue.title}`);
@@ -41834,6 +42153,7 @@ function getWorkerEngine(config) {
 // src/core/monitor-engine.ts
 init_logging();
 init_policy();
+
 class MonitorEngine {
   config;
   logger = getLogger();
@@ -42194,7 +42514,7 @@ class GarbageCollector {
   policyManager;
   isClosed = false;
   constructor(config) {
-    this.dataDir = config.dataDir || join6(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join6(process.cwd(), ".agent-shepherd");
     this.policyManager = getRetentionPolicyManager(config.policies);
     const archiveDir = join6(this.dataDir, "archive");
     if (!existsSync6(archiveDir)) {
@@ -42609,7 +42929,7 @@ class CleanupHealthChecker {
   logger;
   config;
   constructor(config = {}) {
-    this.dataDir = config.dataDir || join7(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join7(process.cwd(), ".agent-shepherd");
     this.logger = getLogger(this.dataDir);
     this.config = {
       run_vacuum: config.run_vacuum ?? true,
@@ -42956,7 +43276,7 @@ class CleanupEngine {
       } : undefined,
       ...config
     };
-    this.dataDir = this.config.dataDir || join8(process.cwd(), ".agent-shepherd");
+    this.dataDir = this.config.dataDir || process.env.ASHEP_DIR || join8(process.cwd(), ".agent-shepherd");
     if (this.config.retentionConfig?.enabled && this.config.retentionConfig.policies.length > 0) {
       this.collector = getGarbageCollector({
         dataDir: this.config.dataDir,
@@ -43221,7 +43541,7 @@ class SizeMonitor {
     this.logger = getLogger(config.dataDir);
     this.cleanupEngine = getCleanupEngine({ dataDir: config.dataDir });
     const fullConfig = {
-      dataDir: config.dataDir || join9(process.cwd(), ".agent-shepherd"),
+      dataDir: config.dataDir || process.env.ASHEP_DIR || join9(process.cwd(), ".agent-shepherd"),
       check_interval_ms: config.check_interval_ms || 3600000,
       warning_threshold_percent: config.warning_threshold_percent || 90,
       critical_threshold_percent: config.critical_threshold_percent || 100,

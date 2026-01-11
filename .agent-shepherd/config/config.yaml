@@ -9,6 +9,10 @@ worker_assistant:
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
+  picking:
+    mode: simple  # "simple" | "smart"
+    max_issues: 3
+    prefer_epic_affinity: true
 
 monitor:
   poll_interval_ms: 10000

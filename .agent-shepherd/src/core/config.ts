@@ -83,6 +83,11 @@ export interface AgentShepherdConfig {
   worker?: {
     poll_interval_ms?: number;
     max_concurrent_runs?: number;
+    picking?: {
+      mode?: "simple" | "smart";
+      max_issues?: number;
+      prefer_epic_affinity?: boolean;
+    };
   };
   monitor?: {
     poll_interval_ms?: number;
@@ -122,6 +127,12 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
       worker: {
         poll_interval_ms: 30000,
         max_concurrent_runs: 3,
+        picking: {
+          mode: "simple",
+          max_issues: 3,
+          prefer_epic_affinity: true,
+          ...config.worker?.picking
+        },
         ...config.worker
       },
       monitor: {
