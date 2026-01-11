@@ -671,7 +671,7 @@ export class PolicyEngine {
     }
 
     const length = cycleLength || config.loop_prevention?.cycle_detection_length || 3;
-    const logger = getLogger();
+    const logger = getLogger(process.env.ASHEP_DIR);
     const recentDecisions = logger.getDecisionsForIssue(issueId, { limit: 20 });
 
     const transitions = recentDecisions
