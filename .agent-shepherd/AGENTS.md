@@ -431,6 +431,27 @@ my-plugin/
 - **Naming**: `<module>.test.ts`
 - **Run**: `bun test` or `bun test tests/<specific-test>`
 
+### Test Data Isolation
+
+Tests use the `ASHEP_DIR` environment variable to create isolated data directories. This allows tests to:
+
+1. Create temporary `.agent-shepherd` directories for each test
+2. Avoid conflicts with the main installation
+3. Clean up easily after tests complete
+
+Components that support `ASHEP_DIR`:
+- `path-utils.ts` - Directory discovery functions
+- `logging.ts` - Logger data directory
+- `worker-engine.ts` - Worker engine logger
+- `policy.ts` - Policy engine logger
+
+Example from test setup:
+```typescript
+process.env.ASHEP_DIR = tempDir;
+const logger = getLogger(tempDir);
+const workerEngine = new WorkerEngine();
+```
+
 ## Architecture Patterns
 
 ### Dual Storage

@@ -8,6 +8,51 @@ The `config.yaml` file contains core system settings for Agent Shepherd, control
 .agent-shepherd/config/config.yaml
 ```
 
+## Environment Variables
+
+Agent Shepherd supports environment variables for runtime configuration and testing.
+
+### `ASHEP_DIR`
+
+**Purpose**: Override the default `.agent-shepherd` data directory location
+
+**Impact**: When set, all components (CLI, WorkerEngine, PolicyEngine) use this directory instead of searching for or creating `.agent-shepherd` in the current working directory.
+
+**Usage**:
+```bash
+# Use a custom directory for all Agent Shepherd operations
+export ASHEP_DIR=/path/to/custom/agent-shepherd
+
+# Run CLI commands - will use the custom directory
+ashep list-sessions ISSUE-123
+
+# Start worker - will read/write to the custom directory
+ashep worker
+```
+
+**Use Cases**:
+- Testing with isolated data directories
+- Running multiple Agent Shepherd instances with different configurations
+- Custom installation layouts
+- CI/CD pipelines with isolated test environments
+
+**Priority**: Environment variable takes precedence over:
+- Directory discovery (searching parent directories for `.agent-shepherd`)
+- Default location (`./.agent-shepherd`)
+
+**Example**:
+```bash
+# Create isolated test environment
+export ASHEP_DIR=/tmp/test-agent-shepherd
+mkdir -p "$ASHEP_DIR/config"
+mkdir -p "$ASHEP_DIR/data"
+
+# Configure and use
+cd /tmp/test-agent-shepherd
+ashep init
+ashep worker
+```
+
 ## Structure
 
 ```yaml
