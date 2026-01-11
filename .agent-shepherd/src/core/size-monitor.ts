@@ -59,7 +59,7 @@ export class SizeMonitor {
     this.cleanupEngine = getCleanupEngine({ dataDir: config.dataDir });
 
     const fullConfig = {
-      dataDir: config.dataDir || join(process.cwd(), ".agent-shepherd"),
+      dataDir: config.dataDir || process.env.ASHEP_DIR || join(process.cwd(), ".agent-shepherd"),
       check_interval_ms: config.check_interval_ms || 3600000,
       warning_threshold_percent: config.warning_threshold_percent || 90,
       critical_threshold_percent: config.critical_threshold_percent || 100,

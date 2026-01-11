@@ -21,7 +21,8 @@ export function archiveOldRuns(
   policy?: RetentionPolicy
 ): ArchiveResult {
   const logger = getLogger(dataDir);
-  const dir = dataDir || join(process.cwd(), ".agent-shepherd");
+  const envDataDir = process.env.ASHEP_DIR;
+  const dir = dataDir || (envDataDir ? envDataDir : join(process.cwd(), ".agent-shepherd"));
 
   const archiveDir = join(dir, "archive");
   if (!existsSync(archiveDir)) {

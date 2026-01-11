@@ -65,7 +65,7 @@ export class CleanupEngine {
       ...config,
     };
 
-    this.dataDir = this.config.dataDir || join(process.cwd(), ".agent-shepherd");
+    this.dataDir = this.config.dataDir || process.env.ASHEP_DIR || join(process.cwd(), ".agent-shepherd");
 
     if (
       this.config.retentionConfig?.enabled &&

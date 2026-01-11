@@ -688,9 +688,15 @@ export class PolicyEngine {
     for (let i = 0; i <= transitions.length - length; i++) {
       const pattern = transitions.slice(i, i + length);
 
-      const reversePattern = [...pattern].reverse();
+      let isOscillating = true;
+      for (let j = 0; j < pattern.length - 1; j++) {
+        if (pattern[j] === pattern[j + 1]) {
+          isOscillating = false;
+          break;
+        }
+      }
 
-      if (pattern.join(",") === reversePattern.join(",")) {
+      if (isOscillating && pattern[0] === pattern[pattern.length - 1]) {
         return {
           detected: true,
           reason: `Oscillating cycle detected: ${pattern.join(" → ")}`,

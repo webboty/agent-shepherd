@@ -15,6 +15,7 @@ _bmad*
 /CLINE.md
 .perles/*
 .beads/daemon*.log.gz
+.test-loop-prevention/*
 # Dependencies
 node_modules/
 

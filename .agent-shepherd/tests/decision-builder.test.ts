@@ -3,12 +3,16 @@
  * Tests for template loading, prompt generation, response validation, and analytics
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
-import { mkdirSync, writeFileSync, unlinkSync, existsSync } from "fs";
-import { join } from "path";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, writeFileSync, unlinkSync, existsSync, rmSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { DecisionPromptBuilder, getDecisionPromptBuilder, type TemplateContext } from "../src/core/decision-builder";
 import { type RunOutcome } from "../src/core/logging";
 import { type BeadsIssue } from "../src/core/beads";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe("DecisionPromptBuilder", () => {
   let tempDir: string;
@@ -40,10 +44,10 @@ describe("DecisionPromptBuilder", () => {
   };
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), ".test-temp");
-    if (!existsSync(tempDir)) {
-      mkdirSync(tempDir, { recursive: true });
-    }
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(7);
+    tempDir = join(TEMP_DIR, `temp-decision-test-${timestamp}-${random}`);
+    mkdirSync(tempDir, { recursive: true });
 
     testConfigPath = join(tempDir, "decision-prompts-test.yaml");
 
@@ -721,5 +725,11 @@ default_template: "fallback-template"
       const systemPrompt = builder.getSystemPrompt("non-existent");
       expect(systemPrompt).toBe("Fallback agent");
     });
+  });
+
+  afterEach(() => {
+    if (tempDir && existsSync(tempDir)) {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

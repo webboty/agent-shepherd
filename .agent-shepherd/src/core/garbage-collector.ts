@@ -37,7 +37,7 @@ export class GarbageCollector {
   private isClosed = false;
 
   constructor(config: GarbageCollectorConfig) {
-    this.dataDir = config.dataDir || join(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join(process.cwd(), ".agent-shepherd");
     this.policyManager = getRetentionPolicyManager(config.policies);
 
     const archiveDir = join(this.dataDir, "archive");

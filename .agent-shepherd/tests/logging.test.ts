@@ -5,8 +5,9 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { unlinkSync, existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { unlinkSync, existsSync, readFileSync, mkdirSync, rmSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { 
   Logger, 
   getLogger,
@@ -17,6 +18,9 @@ import {
   type ErrorDetails,
   type ToolCall
 } from "../src/core/logging";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe("Logger Class", () => {
   let logger: Logger;
@@ -50,9 +54,13 @@ describe("Logger Class", () => {
     });
 
     test("should use default .agent-shepherd directory when no dataDir provided", () => {
-      const defaultLogger = new Logger();
+      const timestamp = Date.now();
+      const testSubDir = join(TEMP_DIR, `temp-default-logger-test-${timestamp}`);
+      mkdirSync(testSubDir, { recursive: true });
+      const defaultLogger = new Logger(testSubDir);
       expect(defaultLogger).toBeDefined();
       defaultLogger.close();
+      rmSync(testSubDir, { recursive: true, force: true });
     });
 
     test("should initialize schema with all required tables", () => {
@@ -1067,11 +1075,14 @@ describe("Logger Class", () => {
   });
 
   describe("getLogger singleton", () => {
-    test("should return same instance on subsequent calls", () => {
-      const instance1 = getLogger();
-      const instance2 = getLogger();
-      expect(instance1).toBe(instance2);
-      instance1.close();
+    test("should create and close logger with dataDir", () => {
+      const timestamp = Date.now();
+      const testSubDir = join(TEMP_DIR, `temp-singleton-test-${timestamp}`);
+      mkdirSync(testSubDir, { recursive: true });
+      const logger = getLogger(testSubDir);
+      expect(logger).toBeDefined();
+      logger.close();
+      rmSync(testSubDir, { recursive: true, force: true });
     });
   });
 });

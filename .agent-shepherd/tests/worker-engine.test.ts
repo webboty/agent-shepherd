@@ -11,7 +11,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEMP_DIR = join(TEMP_DIR, '..', 'tmp_test');
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('WorkerEngine Session Continuation', () => {
   let tempDirs: string[] = [];

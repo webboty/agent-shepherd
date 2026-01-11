@@ -192,7 +192,7 @@ describe("Cross-Database Queries", () => {
   });
 
   it("should return null for non-existent run history", () => {
-    const history = getRunHistory("non-existent-run");
+    const history = getRunHistory("non-existent-run", TEST_DIR);
     expect(history).toBeNull();
   });
 

@@ -30,3 +30,6 @@ decisions.jsonl
 *.tmp
 *.temp
 .DS_Store
+.beads/*tmp*
+.agent-shepherd/tmp_test/*
+.agent-shepherd/.agent-shepherd/*

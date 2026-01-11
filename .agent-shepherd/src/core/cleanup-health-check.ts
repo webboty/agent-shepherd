@@ -47,7 +47,7 @@ export class CleanupHealthChecker {
   private config: HealthCheckConfig;
 
   constructor(config: HealthCheckConfig = {}) {
-    this.dataDir = config.dataDir || join(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join(process.cwd(), ".agent-shepherd");
     this.logger = getLogger(this.dataDir);
     this.config = {
       run_vacuum: config.run_vacuum ?? true,
