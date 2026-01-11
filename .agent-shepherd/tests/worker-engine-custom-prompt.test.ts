@@ -6,7 +6,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { WorkerEngine } from '../src/core/worker-engine.ts';
 import { PolicyEngine } from '../src/core/policy.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('WorkerEngine Custom Prompts', () => {
   let tempDir: string;
@@ -15,7 +18,7 @@ describe('WorkerEngine Custom Prompts', () => {
   let policyEngine: PolicyEngine;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-worker-test');
+    tempDir = join(__dirname, 'temp-worker-test');
     policiesPath = join(tempDir, 'policies.yaml');
 
     mkdirSync(tempDir, { recursive: true });

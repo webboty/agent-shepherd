@@ -5,8 +5,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { PolicyEngine } from '../src/core/policy.ts';
 import { writeFileSync, rmSync, mkdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import Ajv from 'ajv';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('PolicyEngine', () => {
   let policyEngine: PolicyEngine;
@@ -14,10 +17,9 @@ describe('PolicyEngine', () => {
   let policiesPath: string;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-test');
+    tempDir = join(__dirname, 'temp-test');
     policiesPath = join(tempDir, 'policies.yaml');
     
-    // Create temp directory
     mkdirSync(tempDir, { recursive: true });
     
     // Create test policies file

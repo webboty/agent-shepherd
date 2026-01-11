@@ -5,14 +5,16 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { Database } from "bun:sqlite";
 import { resetManager } from "../src/core/retention-policy.ts";
 import { resetCollector } from "../src/core/garbage-collector.ts";
 import { resetCleanupEngine } from "../src/core/cleanup-engine.ts";
 import { Logger, getLogger, type RunRecord } from "../src/core/logging.ts";
 
-const TEST_DIR = join(process.cwd(), ".test-garbage-collection");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEST_DIR = join(__dirname, ".test-garbage-collection");
 
 describe("RetentionPolicyManager", () => {
   const policies = [

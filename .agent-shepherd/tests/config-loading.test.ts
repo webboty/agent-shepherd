@@ -4,15 +4,18 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { loadConfig } from '../src/core/config.ts';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('Config Loading - Workflow and HITL', () => {
   let tempDir: string;
   let configDir: string;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-config-test');
+    tempDir = join(__dirname, 'temp-config-test');
     configDir = join(tempDir, '.agent-shepherd');
     mkdirSync(configDir, { recursive: true });
   });

@@ -7,7 +7,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { PolicyEngine } from '../src/core/policy.ts';
 import { Logger } from '../src/core/logging.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('Retry Counting - Integration Tests', () => {
   let policyEngine: PolicyEngine;
@@ -17,11 +20,10 @@ describe('Retry Counting - Integration Tests', () => {
   let loggerDir: string;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-retry-integration-test');
+    tempDir = join(__dirname, 'temp-retry-integration-test');
     policiesPath = join(tempDir, 'policies.yaml');
     loggerDir = join(tempDir, '.agent-shepherd');
 
-    // Create temp directories
     mkdirSync(tempDir, { recursive: true });
     mkdirSync(loggerDir, { recursive: true });
 

@@ -5,12 +5,14 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { Logger, getLogger, queryAllRuns, getRunHistory, getRunWithArchival, type RunRecord } from "../src/core/logging.ts";
 import { ArchiveLogger } from "../src/core/archive-logger.ts";
 import { archiveOldRuns } from "../src/core/archive-util.ts";
 
-const TEST_DIR = join(process.cwd(), ".test-archive-system");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEST_DIR = join(__dirname, ".test-archive-system");
 
 describe("ArchiveLogger", () => {
   let testLogger: Logger;

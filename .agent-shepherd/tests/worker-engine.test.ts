@@ -7,7 +7,10 @@ import { WorkerEngine } from '../src/core/worker-engine.ts';
 import { PolicyEngine } from '../src/core/policy.ts';
 import { getLogger } from '../src/core/logging.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('WorkerEngine Session Continuation', () => {
   let tempDirs: string[] = [];
@@ -19,7 +22,7 @@ describe('WorkerEngine Session Continuation', () => {
   beforeEach(() => {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+    const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
     policiesPath = join(tempDir, 'policies.yaml');
 
     mkdirSync(tempDir, { recursive: true });
@@ -197,7 +200,7 @@ default_policy: test-policy
     it('should sum tokens for a session across multiple runs', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -265,7 +268,7 @@ default_policy: test-policy
     it('should ignore runs from different sessions', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -334,7 +337,7 @@ default_policy: test-policy
     it('should return 0 for session with no token data', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -388,7 +391,7 @@ default_policy: test-policy
     it('should return 0 for non-existent session', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -460,7 +463,7 @@ default_policy: test-policy
     it('should find and reuse session when under threshold', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -515,7 +518,7 @@ default_policy: test-policy
     it('should not reuse session when exceeding threshold', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -574,7 +577,7 @@ default_policy: test-policy
     it('should return null when no runs exist for phase', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -612,7 +615,7 @@ default_policy: test-policy
     it('should return null for failed runs', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -666,7 +669,7 @@ default_policy: test-policy
     it('should respect phase-specific threshold', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });
@@ -725,7 +728,7 @@ default_policy: test-policy
     it('should return null when session_id is missing', async () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(7);
-      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
       const testPoliciesPath = join(tempDir, 'policies.yaml');
 
       mkdirSync(tempDir, { recursive: true });

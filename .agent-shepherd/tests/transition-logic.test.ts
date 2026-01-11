@@ -6,7 +6,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { PolicyEngine, type PhaseTransition } from '../src/core/policy.ts';
 import { getAgentRegistry } from '../src/core/agent-registry.ts';
 import { writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('Enhanced Transition Logic', () => {
   let policyEngine: PolicyEngine;
@@ -14,10 +17,9 @@ describe('Enhanced Transition Logic', () => {
   let policiesPath: string;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-transition-test');
+    tempDir = join(__dirname, 'temp-transition-test');
     policiesPath = join(tempDir, 'policies.yaml');
     
-    // Create temp directory
     if (!existsSync(tempDir)) {
       mkdirSync(tempDir, { recursive: true });
     }

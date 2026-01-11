@@ -5,10 +5,12 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { rmSync, existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { PhaseMessenger, type CreateMessageInput } from "../src/core/phase-messenger.ts";
 
-const TEST_DIR = join(process.cwd(), ".test-message-cleanup");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEST_DIR = join(__dirname, ".test-message-cleanup");
 
 describe("Message Cleanup on Issue Completion", () => {
   let messenger: PhaseMessenger;

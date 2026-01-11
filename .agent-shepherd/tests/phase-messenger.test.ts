@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { rmSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { PhaseMessenger, type CreateMessageInput, type PhaseMessage, formatMessagesForCLI } from "../src/core/phase-messenger.ts";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 describe("PhaseMessenger", () => {
-  const testDataDir = join(process.cwd(), ".test-phase-messenger");
+  const testDataDir = join(__dirname, ".test-phase-messenger");
   let messenger: PhaseMessenger;
 
   beforeEach(() => {
