@@ -10,17 +10,20 @@ import { writeFileSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 describe('WorkerEngine Session Continuation', () => {
-  let tempDir: string;
+  let tempDirs: string[] = [];
   let policiesPath: string;
   let workerEngine: WorkerEngine;
   let policyEngine: PolicyEngine;
   let logger: ReturnType<typeof getLogger>;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), '.agent-shepherd', 'temp-session-test');
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(7);
+    const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
     policiesPath = join(tempDir, 'policies.yaml');
 
     mkdirSync(tempDir, { recursive: true });
+    tempDirs.push(tempDir);
 
     const testPolicies = `
 policies:
@@ -58,7 +61,10 @@ default_policy: test-policy
   });
 
   afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
+    for (const dir of tempDirs) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    tempDirs = [];
   });
 
   describe('resolveReuseTarget', () => {
@@ -189,11 +195,39 @@ default_policy: test-policy
   });
 
   describe('sumTokensForSession', () => {
-    it('should sum tokens for a session across multiple runs', () => {
+    it('should sum tokens for a session across multiple runs', async () => {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
+
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
       const issueId = 'TEST-001';
       const sessionId = 'session-123';
 
-      logger.createRun({
+      testLogger.createRun({
         id: 'run-1',
         issue_id: issueId,
         session_id: sessionId,
@@ -207,7 +241,7 @@ default_policy: test-policy
         }
       });
 
-      logger.createRun({
+      testLogger.createRun({
         id: 'run-2',
         issue_id: issueId,
         session_id: sessionId,
@@ -221,17 +255,47 @@ default_policy: test-policy
         }
       });
 
-      const result = (workerEngine as any).sumTokensForSession(sessionId, issueId);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = (testWorkerEngine as any).sumTokensForSession(sessionId, issueId);
 
       expect(result).toBe(8000);
     });
 
-    it('should ignore runs from different sessions', () => {
-      const issueId = 'TEST-001';
+    it('should ignore runs from different sessions', async () => {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
+
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-002';
       const sessionId1 = 'session-123';
       const sessionId2 = 'session-456';
 
-      logger.createRun({
+      testLogger.createRun({
         id: 'run-1',
         issue_id: issueId,
         session_id: sessionId1,
@@ -245,7 +309,7 @@ default_policy: test-policy
         }
       });
 
-      logger.createRun({
+      testLogger.createRun({
         id: 'run-2',
         issue_id: issueId,
         session_id: sessionId2,
@@ -259,16 +323,46 @@ default_policy: test-policy
         }
       });
 
-      const result = (workerEngine as any).sumTokensForSession(sessionId1, issueId);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = (testWorkerEngine as any).sumTokensForSession(sessionId1, issueId);
 
       expect(result).toBe(5000);
     });
 
-    it('should return 0 for session with no token data', () => {
-      const issueId = 'TEST-001';
+    it('should return 0 for session with no token data', async () => {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
+
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-003';
       const sessionId = 'session-123';
 
-      logger.createRun({
+      testLogger.createRun({
         id: 'run-1',
         issue_id: issueId,
         session_id: sessionId,
@@ -282,16 +376,46 @@ default_policy: test-policy
         }
       });
 
-      const result = (workerEngine as any).sumTokensForSession(sessionId, issueId);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = (testWorkerEngine as any).sumTokensForSession(sessionId, issueId);
 
       expect(result).toBe(0);
     });
 
-    it('should return 0 for non-existent session', () => {
-      const issueId = 'TEST-001';
+    it('should return 0 for non-existent session', async () => {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
+
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-004';
       const sessionId = 'nonexistent-session';
 
-      const result = (workerEngine as any).sumTokensForSession(sessionId, issueId);
+      const result = (testWorkerEngine as any).sumTokensForSession(sessionId, issueId);
 
       expect(result).toBe(0);
     });
@@ -331,10 +455,38 @@ default_policy: test-policy
 
   describe('findReusableSession', () => {
     it('should find and reuse session when under threshold', async () => {
-      const issueId = 'TEST-001';
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
+
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-005';
       const sessionId = 'session-123';
 
-      logger.createRun({
+      testLogger.createRun({
         id: 'run-1',
         issue_id: issueId,
         session_id: sessionId,
@@ -348,17 +500,51 @@ default_policy: test-policy
         }
       });
 
-      const result = await (workerEngine as any).findReusableSession(issueId, 'plan');
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = await (testWorkerEngine as any).findReusableSession(issueId, 'plan');
 
       expect(result.sessionId).toBe(sessionId);
       expect(result.shouldReuse).toBe(true);
     });
 
     it('should not reuse session when exceeding threshold', async () => {
-      const issueId = 'TEST-001';
-      const sessionId = 'session-123';
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
 
-      logger.createRun({
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+      - name: test
+        capabilities: [testing]
+        reuse_session_from_phase: "@shared"
+        context_window_threshold: 0.9
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-006';
+      const sessionId = 'session-456';
+
+      testLogger.createRun({
         id: 'run-1',
         issue_id: issueId,
         session_id: sessionId,
@@ -372,25 +558,83 @@ default_policy: test-policy
         }
       });
 
-      const result = await (workerEngine as any).findReusableSession(issueId, 'test');
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = await (testWorkerEngine as any).findReusableSession(issueId, 'test');
 
       expect(result.sessionId).toBe(sessionId);
       expect(result.shouldReuse).toBe(false);
     });
 
     it('should return null when no runs exist for phase', async () => {
-      const issueId = 'TEST-001';
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
 
-      const result = await (workerEngine as any).findReusableSession(issueId, 'nonexistent');
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-007';
+
+      const result = await (testWorkerEngine as any).findReusableSession(issueId, 'plan');
 
       expect(result.sessionId).toBeNull();
       expect(result.shouldReuse).toBe(false);
     });
 
     it('should return null for failed runs', async () => {
-      const issueId = 'TEST-001';
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
 
-      logger.createRun({
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-008';
+
+      testLogger.createRun({
         id: 'run-1',
         issue_id: issueId,
         session_id: 'session-123',
@@ -404,17 +648,51 @@ default_policy: test-policy
         }
       });
 
-      const result = await (workerEngine as any).findReusableSession(issueId, 'plan');
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = await (testWorkerEngine as any).findReusableSession(issueId, 'plan');
 
       expect(result.sessionId).toBeNull();
       expect(result.shouldReuse).toBe(false);
     });
 
     it('should respect phase-specific threshold', async () => {
-      const issueId = 'TEST-001';
-      const sessionId = 'session-123';
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
 
-      logger.createRun({
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+      - name: test
+        capabilities: [testing]
+        reuse_session_from_phase: "@shared"
+        context_window_threshold: 0.9
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-009';
+      const sessionId = 'session-789';
+
+      testLogger.createRun({
         id: 'run-1',
         issue_id: issueId,
         session_id: sessionId,
@@ -428,16 +706,46 @@ default_policy: test-policy
         }
       });
 
-      const result = await (workerEngine as any).findReusableSession(issueId, 'test');
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = await (testWorkerEngine as any).findReusableSession(issueId, 'test');
 
       expect(result.sessionId).toBe(sessionId);
       expect(result.shouldReuse).toBe(false);
     });
 
     it('should return null when session_id is missing', async () => {
-      const issueId = 'TEST-001';
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const tempDir = join(process.cwd(), '.agent-shepherd', `temp-session-test-${timestamp}-${random}`);
+      const testPoliciesPath = join(tempDir, 'policies.yaml');
 
-      logger.createRun({
+      mkdirSync(tempDir, { recursive: true });
+      tempDirs.push(tempDir);
+
+      const testPolicies = `
+policies:
+  test-policy:
+    name: "Test Policy"
+    shared_session: true
+    phases:
+      - name: plan
+        capabilities: [planning]
+    retry:
+      max_attempts: 3
+    timeout_base_ms: 300000
+
+default_policy: test-policy
+      `.trim();
+
+      writeFileSync(testPoliciesPath, testPolicies);
+
+      const testLogger = getLogger(tempDir);
+      const testWorkerEngine = new WorkerEngine();
+
+      const issueId = 'TEST-010';
+
+      testLogger.createRun({
         id: 'run-1',
         issue_id: issueId,
         session_id: '',
@@ -451,7 +759,9 @@ default_policy: test-policy
         }
       });
 
-      const result = await (workerEngine as any).findReusableSession(issueId, 'plan');
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const result = await (testWorkerEngine as any).findReusableSession(issueId, 'plan');
 
       expect(result.sessionId).toBeNull();
       expect(result.shouldReuse).toBe(false);
