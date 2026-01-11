@@ -79,39 +79,6 @@ export interface SessionContinuationConfig {
   default_threshold: number;
 }
 
-export interface AgentShepherdConfigRaw {
-  version: string;
-  worker?: {
-    poll_interval_ms?: number;
-    max_concurrent_runs?: number;
-    worker_id?: string;
-    picking?: {
-      mode?: "simple" | "smart";
-      max_issues?: number;
-      prefer_epic_affinity?: boolean;
-    };
-    crash_detection?: {
-      heartbeat_threshold_ms?: number;
-      lease_duration_ms?: number;
-      fallback_to_lease?: boolean;
-    };
-  };
-  monitor?: {
-    poll_interval_ms?: number;
-    stall_threshold_ms?: number;
-    timeout_multiplier?: number;
-  };
-  ui?: UIConfig;
-  fallback?: FallbackConfig;
-  workflow?: WorkflowConfig;
-  hitl?: HITLConfig;
-  loop_prevention?: LoopPreventionConfig;
-  cleanup?: CleanupConfig;
-  retention?: RetentionConfig;
-  worker_assistant?: WorkerAssistantConfig;
-  session_continuation?: SessionContinuationConfig;
-}
-
 export interface AgentShepherdConfig {
   version: string;
   worker?: {
@@ -142,36 +109,6 @@ export interface AgentShepherdConfig {
 }
 
 /**
- * Convert snake_case to camelCase
- */
-function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-}
-
-/**
- * Convert an object with snake_case keys to camelCase
- */
-function convertToCamelCase<T>(obj: any): T {
-  if (!obj || typeof obj !== 'object') {
-    return obj;
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertToCamelCase(item)) as any;
-  }
-  
-  const result: any = {};
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      const camelKey = toCamelCase(key);
-      result[camelKey] = convertToCamelCase(obj[key]);
-    }
-  }
-  
-  return result;
-}
-
-/**
  * Load configuration from .agent-shepherd/config.yaml
  */
 export function loadConfig(configDir?: string): AgentShepherdConfig {
@@ -185,9 +122,7 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
 
   try {
     const content = readFileSync(configPath, "utf-8");
-    const rawConfig = parseYAML(content) as AgentShepherdConfigRaw;
-    
-    const config = convertToCamelCase<AgentShepherdConfig>(rawConfig);
+    const config = parseYAML(content) as AgentShepherdConfig;
 
     // Set defaults for missing values
     return {
@@ -195,18 +130,12 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
       worker: {
         poll_interval_ms: 30000,
         max_concurrent_runs: 3,
-        worker_id: config.worker?.worker_id,
         picking: {
           mode: "simple",
           max_issues: 3,
           prefer_epic_affinity: true,
           ...config.worker?.picking
         },
-        crash_detection: config.worker?.crash_detection ? {
-          heartbeatThresholdMs: config.worker.crash_detection.heartbeatThresholdMs ?? 300000,
-          leaseDurationMs: config.worker.crash_detection.leaseDurationMs ?? 1800000,
-          fallbackToLease: config.worker.crash_detection.fallbackToLease ?? true,
-        } : undefined,
         ...config.worker
       },
       monitor: {

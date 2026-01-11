@@ -9,9 +9,9 @@ import { getLogger, type RunOutcome } from "./logging.ts";
 import { getIssue } from "./beads.ts";
 
 export interface CrashDetectionConfig {
-  heartbeatThresholdMs?: number;
-  leaseDurationMs?: number;
-  fallbackToLease?: boolean;
+  heartbeat_threshold_ms?: number;
+  lease_duration_ms?: number;
+  fallback_to_lease?: boolean;
 }
 
 export interface AbandonmentStatus {
@@ -41,9 +41,9 @@ export class CrashDetector {
 
   constructor(config?: CrashDetectionConfig) {
     this.config = {
-      heartbeatThresholdMs: config?.heartbeatThresholdMs || 5 * 60 * 1000, // 5 minutes default
-      leaseDurationMs: config?.leaseDurationMs || 30 * 60 * 1000, // 30 minutes default
-      fallbackToLease: config?.fallbackToLease !== false,
+      heartbeat_threshold_ms: config?.heartbeat_threshold_ms || 5 * 60 * 1000, // 5 minutes default
+      lease_duration_ms: config?.lease_duration_ms || 30 * 60 * 1000, // 30 minutes default
+      fallback_to_lease: config?.fallback_to_lease !== false,
     };
 
     this.policyEngine = getPolicyEngine();
@@ -65,10 +65,10 @@ export class CrashDetector {
     try {
       const lastHeartbeat = await getLastHeartbeat(epicId);
 
-      if (lastHeartbeat !== null) {
-        heartbeatAge = now - lastHeartbeat;
-        heartbeatStale = heartbeatAge > this.config.heartbeatThresholdMs;
-      }
+        if (lastHeartbeat !== null) {
+          heartbeatAge = now - lastHeartbeat;
+          heartbeatStale = heartbeatAge > this.config.heartbeat_threshold_ms;
+        }
 
       // Check lease as backup/secondary check
       const leaseExpires = await getLeaseExpires(epicId);
@@ -76,7 +76,7 @@ export class CrashDetector {
     } catch (error) {
       console.warn(`Failed to check abandonment for ${epicId}:`, error);
       
-      if (this.config.fallbackToLease) {
+      if (this.config.fallback_to_lease) {
         leaseExpired = await this.checkLeaseExpiryOnly(epicId);
         heartbeatStale = null;
       }
@@ -87,8 +87,9 @@ export class CrashDetector {
       if (heartbeatStale) {
         return {
           abandoned: true,
-          reason: `Heartbeat stale (${heartbeatAge !== null ? this.formatDuration(heartbeatAge) : 'unknown'} > ${this.formatDuration(this.config.heartbeatThresholdMs)})`,
+          reason: `Heartbeat stale (${heartbeatAge !== null ? this.formatDuration(heartbeatAge) : 'unknown'} > ${this.formatDuration(this.config.heartbeat_threshold_ms)})`,
           heartbeatAge: heartbeatAge ?? undefined,
+          leaseExpired: leaseExpired ?? undefined,
           detectedMethod: leaseExpired ?? false ? "both" : "heartbeat",
         };
       }
@@ -369,7 +370,7 @@ export class CrashDetector {
 
       // Set coordination states
       await setAssignedWorker(epicId, this.workerId);
-      const leaseExpires = Date.now() + this.config.leaseDurationMs;
+      const leaseExpires = Date.now() + this.config.lease_duration_ms;
       await setLeaseExpires(epicId, leaseExpires);
 
       console.log(
