@@ -8,6 +8,7 @@ import { getWorkerEngine } from "../core/worker-engine.ts";
 import { getMonitorEngine } from "../core/monitor-engine.ts";
 import { getIssue } from "../core/beads.ts";
 import { findAgentShepherdDir, findInstallDir } from "../core/path-utils.ts";
+import { getAssignedWorker, getLastHeartbeat, getLeaseExpires, listIssues, getReadyIssues } from "../core/beads.ts";
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync, cpSync, rmSync } from "fs";
 import { join } from "path";
 import path from "path";
@@ -35,6 +36,7 @@ const COMMANDS: Record<string, string> = {
   "list-struggle": "List blocked issues that need attention",
   "list-sessions": "List OpenCode sessions for an issue",
   "get-messages": "Get phase messages for an issue",
+  "heartbeat": "Show heartbeat-checker status and active heartbeats",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
   "plugin-activate": "Activate a plugin",
@@ -221,9 +223,29 @@ async function cmdMonitor(): Promise<void> {
 }
 
 /**
+ * Work command - process specific issue or epic
+ */
+async function cmdWork(issueIdOrEpic: string, epicMode: boolean = false): Promise<void> {
+  if (!issueIdOrEpic) {
+    console.error("Error: Issue ID or Epic ID required");
+    console.log("Usage: ashep work <issue-id>");
+    console.log("       ashep work --epic <epic-id>");
+    process.exit(1);
+  }
+
+  if (epicMode) {
+    // Epic-focused processing: get all ready issues in epic subtree
+    await cmdWorkEpic(issueIdOrEpic);
+  } else {
+    // Single issue processing
+    await cmdWorkIssue(issueIdOrEpic);
+  }
+}
+
+/**
  * Work command - process specific issue
  */
-async function cmdWork(issueId: string): Promise<void> {
+async function cmdWorkIssue(issueId: string): Promise<void> {
   if (!issueId) {
     console.error("Error: Issue ID required");
     console.log("Usage: ashep work <issue-id>");
@@ -249,6 +271,88 @@ async function cmdWork(issueId: string): Promise<void> {
   }
   if (result.next_phase) {
     console.log(`  Next Phase: ${result.next_phase}`);
+  }
+}
+
+/**
+ * Work command - process all ready issues in epic subtree
+ */
+async function cmdWorkEpic(epicId: string): Promise<void> {
+  if (!epicId) {
+    console.error("Error: Epic ID required");
+    console.log("Usage: ashep work --epic <epic-id>");
+    process.exit(1);
+  }
+
+  console.log(`Epic-focused processing: ${epicId}`);
+
+  const epic = await getIssue(epicId);
+  if (!epic) {
+    console.error(`Error: Epic ${epicId} not found`);
+    process.exit(1);
+  }
+
+  if (epic.issue_type !== "epic") {
+    console.error(`Error: ${epicId} is not an epic`);
+    process.exit(1);
+  }
+
+  // Get all ready issues in the project
+  const readyIssues = await getReadyIssues();
+  
+  // Filter for issues in this epic subtree
+  const epicSubtreeIssues = readyIssues.filter(issue => 
+    issue.id.startsWith(epicId) && issue.id !== epicId
+  );
+
+  if (epicSubtreeIssues.length === 0) {
+    console.log(`No ready issues found in epic ${epicId}`);
+    return;
+  }
+
+  console.log(`Found ${epicSubtreeIssues.length} ready issues in epic ${epicId}`);
+  
+  const worker = getWorkerEngine();
+  const results: Array<{
+    issue_id: string;
+    success: boolean;
+    message?: string;
+    next_phase?: string;
+  }> = [];
+
+  // Process each issue
+  for (const issue of epicSubtreeIssues) {
+    console.log(`\nProcessing issue: ${issue.id} - ${issue.title}`);
+    
+    try {
+      const result = await worker.processIssue(issue);
+      results.push({
+        issue_id: issue.id,
+        success: result.success,
+        message: result.message,
+        next_phase: result.next_phase,
+      });
+    } catch (error) {
+      console.error(`Error processing issue ${issue.id}:`, error);
+      results.push({
+        issue_id: issue.id,
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Show summary
+  console.log(`\n=== Epic Processing Summary ===`);
+  console.log(`Epic: ${epicId} - ${epic.title}`);
+  console.log(`Issues processed: ${results.length}`);
+  console.log(`Successful: ${results.filter(r => r.success).length}`);
+  console.log(`Failed: ${results.filter(r => !r.success).length}`);
+  
+  console.log(`\nDetails:`);
+  for (const result of results) {
+    const status = result.success ? "✓" : "✗";
+    console.log(`  ${status} ${result.issue_id}: ${result.message || "OK"} ${result.next_phase ? `-> ${result.next_phase}` : ""}`);
   }
 }
 
@@ -1366,21 +1470,51 @@ async function cmdListActive(): Promise<void> {
       return;
     }
 
+    const workerId = process.env.ASHEP_WORKER_ID || "default";
+
+    // Build issue assignments map from epics
+    const epicAssignments: Map<string, string> = new Map();
+    
+    // Find all epics and get their assigned workers
+    for (const issue of issues) {
+      const isEpic = !issue.id.includes(".");
+      if (isEpic) {
+        const assignedWorker = await getAssignedWorker(issue.id);
+        if (assignedWorker) {
+          epicAssignments.set(issue.id, assignedWorker);
+        }
+      }
+    }
+
     console.log(`\nActive Issues (${issues.length}):`);
-    console.log("┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┐");
-    console.log("│ ID      │ Title                           │ Phase        │ Priority │ Updated      │");
-    console.log("├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┤");
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┬──────────────┐");
+    console.log("│ ID      │ Title                           │ Phase        │ Priority │ Updated      │ Epic Worker  │");
+    console.log("├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┼──────────────┤");
 
     for (const issue of issues) {
       const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
       const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
       const updatedTime = new Date(issue.updated_at).toLocaleString();
 
+      // Get epic assignment
+      const epicId = issue.id.includes(".") ? issue.id.split(".")[0] : issue.id;
+      const assignedWorker = epicAssignments.get(epicId);
+      let workerIndicator = "";
+      
+      if (assignedWorker) {
+        if (assignedWorker === workerId) {
+          workerIndicator = "✓";
+        } else {
+          workerIndicator = "•";
+        }
+      }
+
       const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
-      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${phase.padEnd(12)} │ ${`P${issue.priority}`.padEnd(7)} │ ${updatedTime.padEnd(12)} │`);
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${phase.padEnd(12)} │ ${`P${issue.priority}`.padEnd(7)} │ ${updatedTime.padEnd(12)} │ ${workerIndicator.padEnd(12)} │`);
     }
 
-    console.log("└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┘");
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┴──────────────┘");
+    console.log(`Legend: ✓ = Owned by this worker (${workerId}), • = Owned by another worker`);
   } catch (error) {
     console.error("❌ Failed to list active issues:", error instanceof Error ? error.message : String(error));
     process.exit(1);
@@ -1428,6 +1562,139 @@ async function cmdListHITL(): Promise<void> {
     console.error("❌ Failed to list HITL issues:", error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
+}
+
+/**
+ * Heartbeat status command - show checker health and active heartbeats
+ */
+async function cmdHeartbeat(): Promise<void> {
+  try {
+    const workerId = process.env.ASHEP_WORKER_ID || "default";
+    
+    console.log(`\nHeartbeat Checker Status`);
+    console.log(`Worker ID: ${workerId}`);
+    console.log(``);
+    
+    // Get all epics with assigned workers (issues with assigned-worker state)
+    const allIssues = await listIssues();
+    const epicIssues = allIssues.filter((issue: any) => !issue.id.includes(".") && issue.issue_type === "epic");
+    
+    if (epicIssues.length === 0) {
+      console.log("No epics found with active assignments.");
+      return;
+    }
+    
+    // Build epic assignment status table
+    const epicAssignments: Array<{
+      epicId: string;
+      title: string;
+      assignedWorker: string | null;
+      lastHeartbeat: number | null;
+      leaseExpires: number | null;
+      status: string;
+    }> = [];
+    
+    for (const epic of epicIssues) {
+      const assignedWorker = await getAssignedWorker(epic.id);
+      const lastHeartbeat = await getLastHeartbeat(epic.id);
+      const leaseExpires = await getLeaseExpires(epic.id);
+      
+      let status: string;
+      const now = Date.now();
+      
+      if (assignedWorker) {
+        if (assignedWorker === workerId) {
+          // We own this epic
+          if (lastHeartbeat && (now - lastHeartbeat) < 5 * 60 * 1000) {
+            status = "owned";
+          } else if (lastHeartbeat) {
+            status = "stale";
+          } else {
+            status = "leased";
+          }
+        } else {
+          // Another worker owns this epic
+          if (lastHeartbeat && (now - lastHeartbeat) < 5 * 60 * 1000) {
+            status = "active";
+          } else if (lastHeartbeat) {
+            status = "stale";
+          } else if (leaseExpires && now < leaseExpires) {
+            status = "leased";
+          } else {
+            status = "abandoned";
+          }
+        }
+      } else {
+        status = "unassigned";
+      }
+      
+      const title = epic.title.substring(0, 25) + (epic.title.length > 25 ? "..." : "");
+      epicAssignments.push({
+        epicId: epic.id,
+        title,
+        assignedWorker,
+        lastHeartbeat,
+        leaseExpires,
+        status,
+      });
+    }
+    
+    // Filter out unassigned and only show assigned epics
+    const activeAssignments = epicAssignments.filter(a => a.assignedWorker !== null);
+    
+    if (activeAssignments.length === 0) {
+      console.log("No active epic assignments found.");
+      return;
+    }
+    
+    console.log(`Active Epic Assignments (${activeAssignments.length}):`);
+    console.log("┌──────────────┬──────────────────────────┬───────────────┬──────────────┬──────────────────────┐");
+    console.log("│ Epic         │ Title                   │ Assigned To   │ Last Heart   │ Status              │");
+    console.log("├──────────────┼──────────────────────────┼───────────────┼──────────────┼──────────────────────┤");
+    
+    for (const assignment of activeAssignments) {
+      const epicShort = assignment.epicId.substring(0, 12) + (assignment.epicId.length > 12 ? "..." : "");
+      const assignedTo = assignment.assignedWorker === workerId 
+        ? `${assignment.assignedWorker} ✓` 
+        : (assignment.assignedWorker || "none");
+      const heartbeatAge = assignment.lastHeartbeat 
+        ? formatAge(Date.now() - assignment.lastHeartbeat) 
+        : "never";
+      
+      const isOwned = assignment.assignedWorker === workerId;
+      const statusDisplay = isOwned ? `${assignment.status} ✓` : assignment.status;
+      
+      console.log(`│ ${epicShort.padEnd(12)} │ ${assignment.title.padEnd(22)} │ ${assignedTo.padEnd(13)} │ ${heartbeatAge.padEnd(12)} │ ${statusDisplay.padEnd(18)} │`);
+    }
+    
+    console.log("└──────────────┴──────────────────────────┴───────────────┴──────────────┴──────────────────────┘");
+    console.log(``);
+    console.log(`Legend: ✓ = Owned by current worker`);
+  } catch (error) {
+    console.error("❌ Failed to show heartbeat status:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Format age in milliseconds to human-readable string
+ */
+function formatAge(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (days > 0) {
+    return `${days}d ${hours % 24}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  }
+  return `${seconds}s`;
 }
 
 /**
@@ -1665,9 +1932,24 @@ async function main(): Promise<void> {
       await cmdMonitor();
       break;
 
-    case "work":
-      await cmdWork(args[1]);
+    case "work": {
+      // Parse --epic flag
+      let epicMode = false;
+      let targetId: string | undefined;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--epic' && i + 1 < args.length) {
+          epicMode = true;
+          targetId = args[i + 1];
+          i++; // skip next arg
+        } else if (!args[i].startsWith('--') && !targetId) {
+          targetId = args[i];
+        }
+      }
+
+      await cmdWork(targetId || "", epicMode);
       break;
+    }
 
     case "init":
       cmdInit();
@@ -1785,6 +2067,10 @@ async function main(): Promise<void> {
 
     case "list-sessions":
       await cmdListSessions(args[1]);
+      break;
+
+    case "heartbeat":
+      await cmdHeartbeat();
       break;
 
     case "cleanup-metrics":

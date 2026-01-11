@@ -28,15 +28,18 @@ import {
 import { getAgentRegistry } from "./agent-registry.ts";
 import { getLogger, type RunOutcome } from "./logging.ts";
 import { loadConfig } from "./config.ts";
+import type { CrashDetectionConfig } from "./crash-detector";
 
 export interface WorkerConfig {
   poll_interval_ms?: number;
   max_concurrent_runs?: number;
+  worker_id?: string;
   picking?: {
     mode?: "simple" | "smart";
     max_issues?: number;
     prefer_epic_affinity?: boolean;
   };
+  crash_detection?: CrashDetectionConfig;
 }
 
 export interface ProcessResult {
@@ -59,13 +62,30 @@ export class WorkerEngine {
   private isRunning = false;
   private currentRunId: string | null = null;
   private currentPhase: string | null = null;
+  private workerId: string;
 
   constructor(config?: WorkerConfig) {
+    const systemConfig = loadConfig();
+    const workerConfig = systemConfig.worker || {};
+    
     this.config = {
-      poll_interval_ms: 30000, // 30 seconds default
+      poll_interval_ms: 30000,
       max_concurrent_runs: 3,
+      worker_id: workerConfig.worker_id,
+      picking: {
+        mode: workerConfig.picking?.mode || "simple",
+        max_issues: workerConfig.picking?.max_issues || 3,
+        prefer_epic_affinity: workerConfig.picking?.prefer_epic_affinity ?? true,
+      },
+      crash_detection: workerConfig.crash_detection,
       ...config,
     };
+    
+    this.workerId = this.config.worker_id || process.env.ASHEP_WORKER_ID || "default";
+    
+    if (!process.env.ASHEP_WORKER_ID) {
+      process.env.ASHEP_WORKER_ID = this.workerId;
+    }
   }
 
   /**
@@ -124,6 +144,7 @@ export class WorkerEngine {
       mode: config.worker?.picking?.mode || "simple",
       max_issues: config.worker?.picking?.max_issues || this.config.max_concurrent_runs,
       prefer_epic_affinity: config.worker?.picking?.prefer_epic_affinity || true,
+      crash_detection: config.worker?.crash_detection,
     };
 
     const issuePicker = getIssuePicker(pickingConfig);

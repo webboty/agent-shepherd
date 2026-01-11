@@ -30,6 +30,61 @@
           "maximum": 10,
           "default": 3,
           "description": "Maximum number of concurrent agent runs"
+        },
+        "worker_id": {
+          "type": "string",
+          "description": "Worker identifier for multi-worker coordination. Defaults to 'default' if not specified."
+        },
+        "picking": {
+          "type": "object",
+          "description": "Issue picking configuration for smart mode",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["simple", "smart"],
+              "default": "simple",
+              "description": "Issue picking mode: 'simple' (first ready issue) or 'smart' (epic-affinity aware)"
+            },
+            "max_issues": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 3,
+              "description": "Maximum number of issues to pick in one cycle"
+            },
+            "prefer_epic_affinity": {
+              "type": "boolean",
+              "default": true,
+              "description": "Prefer issues from epics already owned by this worker"
+            }
+          },
+          "additionalProperties": false
+        },
+        "crash_detection": {
+          "type": "object",
+          "description": "Crash detection and recovery configuration",
+          "properties": {
+            "heartbeat_threshold_ms": {
+              "type": "integer",
+              "minimum": 60000,
+              "maximum": 3600000,
+              "default": 300000,
+              "description": "Time threshold (in milliseconds) for detecting stale heartbeats (default: 5 minutes)"
+            },
+            "lease_duration_ms": {
+              "type": "integer",
+              "minimum": 600000,
+              "maximum": 7200000,
+              "default": 1800000,
+              "description": "Duration (in milliseconds) for epic lease before considered abandoned (default: 30 minutes)"
+            },
+            "fallback_to_lease": {
+              "type": "boolean",
+              "default": true,
+              "description": "Fall back to lease expiry when heartbeat data is unavailable"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -385,7 +440,18 @@
       "version": "1.0",
       "worker": {
         "poll_interval_ms": 30000,
-        "max_concurrent_runs": 3
+        "max_concurrent_runs": 3,
+        "worker_id": "default",
+        "picking": {
+          "mode": "simple",
+          "max_issues": 3,
+          "prefer_epic_affinity": true
+        },
+        "crash_detection": {
+          "heartbeat_threshold_ms": 300000,
+          "lease_duration_ms": 1800000,
+          "fallback_to_lease": true
+        }
       },
       "monitor": {
         "poll_interval_ms": 10000,
