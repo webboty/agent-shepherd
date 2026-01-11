@@ -27,7 +27,7 @@ export interface BeadsUpdateOptions {
 /**
  * Execute a bd command and return output
  */
-async function execBeadsCommand(args: string[]): Promise<string> {
+export async function execBeadsCommand(args: string[]): Promise<string> {
   const proc = Bun.spawn(["bd", ...args], {
     stdout: "pipe",
     stderr: "pipe",
@@ -285,10 +285,138 @@ export async function removeAshepManagedLabel(issueId: string): Promise<void> {
   await removeIssueLabel(issueId, "ashep-managed");
 }
 
-/**
- * Check if issue has ashep-managed label
- */
-export async function hasAshepManagedLabel(issueId: string): Promise<boolean> {
-  const labels = await getIssueLabels(issueId);
-  return labels.includes("ashep-managed");
-}
+  /**
+   * Check if issue has ashep-managed label
+   */
+  export async function hasAshepManagedLabel(issueId: string): Promise<boolean> {
+    const labels = await getIssueLabels(issueId);
+    return labels.includes("ashep-managed");
+  }
+
+  /**
+   * Set epic coordination state using bd set-state
+   * 
+   * Coordination states:
+   * - assigned-worker: Worker ID currently assigned to epic
+   * - last-heartbeat: Timestamp of last heartbeat activity
+   * - lease-expires: Unix timestamp when lease expires
+   * 
+   * @param epicId - The epic issue ID
+   * @param key - State dimension name (e.g., "assigned-worker", "last-heartbeat")
+   * @param value - State value
+   */
+  export async function setEpicState(epicId: string, key: string, value: string): Promise<void> {
+    const stateString = `${key}=${value}`;
+    await execBeadsCommand(["set-state", epicId, stateString]);
+  }
+
+  /**
+   * Get epic coordination state using bd state
+   * 
+   * @param epicId - The epic issue ID
+   * @param key - State dimension name (e.g., "assigned-worker", "last-heartbeat")
+   * @returns State value, or null if not set
+   */
+  export async function getEpicState(epicId: string, key: string): Promise<string | null> {
+    try {
+      const output = await execBeadsCommand(["state", epicId, key]);
+      const trimmed = output.trim();
+
+      if (trimmed === "" || trimmed === "null") {
+        return null;
+      }
+
+      return trimmed;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Set assigned worker state for an epic
+   * 
+   * @param epicId - The epic issue ID
+   * @param workerId - Worker identifier
+   */
+  export async function setAssignedWorker(epicId: string, workerId: string): Promise<void> {
+    await setEpicState(epicId, "assigned-worker", workerId);
+  }
+
+  /**
+   * Get assigned worker for an epic
+   * 
+   * @param epicId - The epic issue ID
+   * @returns Worker ID, or null if not assigned
+   */
+  export async function getAssignedWorker(epicId: string): Promise<string | null> {
+    return await getEpicState(epicId, "assigned-worker");
+  }
+
+  /**
+   * Set last heartbeat timestamp for an epic
+   * 
+   * @param epicId - The epic issue ID
+   * @param timestamp - Unix timestamp in milliseconds
+   */
+  export async function setLastHeartbeat(epicId: string, timestamp: number): Promise<void> {
+    await setEpicState(epicId, "last-heartbeat", timestamp.toString());
+  }
+
+  /**
+   * Get last heartbeat timestamp for an epic
+   * 
+   * @param epicId - The epic issue ID
+   * @returns Unix timestamp in milliseconds, or null if not set
+   */
+  export async function getLastHeartbeat(epicId: string): Promise<number | null> {
+    const value = await getEpicState(epicId, "last-heartbeat");
+    return value ? parseInt(value, 10) : null;
+  }
+
+  /**
+   * Set lease expiration time for an epic
+   * 
+   * @param epicId - The epic issue ID
+   * @param expiresAt - Unix timestamp in milliseconds
+   */
+  export async function setLeaseExpires(epicId: string, expiresAt: number): Promise<void> {
+    await setEpicState(epicId, "lease-expires", expiresAt.toString());
+  }
+
+  /**
+   * Get lease expiration time for an epic
+   * 
+   * @param epicId - The epic issue ID
+   * @returns Unix timestamp in milliseconds, or null if not set
+   */
+  export async function getLeaseExpires(epicId: string): Promise<number | null> {
+    const value = await getEpicState(epicId, "lease-expires");
+    return value ? parseInt(value, 10) : null;
+  }
+
+  /**
+   * Check if a lease has expired
+   * 
+   * @param epicId - The epic issue ID
+   * @returns True if lease is expired or not set, false otherwise
+   */
+  export async function isLeaseExpired(epicId: string): Promise<boolean> {
+    const expiresAt = await getLeaseExpires(epicId);
+    if (expiresAt === null) {
+      return true; // No lease means expired
+    }
+    return Date.now() > expiresAt;
+  }
+
+  /**
+   * Clear all coordination states for an epic
+   * 
+   * @param epicId - The epic issue ID
+   */
+  export async function clearEpicStates(epicId: string): Promise<void> {
+    await Promise.all([
+      setEpicState(epicId, "assigned-worker", ""),
+      setEpicState(epicId, "last-heartbeat", ""),
+      setEpicState(epicId, "lease-expires", ""),
+    ]);
+  }
