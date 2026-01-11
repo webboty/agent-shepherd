@@ -161,7 +161,17 @@ worker:
 
   describe('Init Command', () => {
     it('should skip existing files', async () => {
-      const outputs = await runCLICommand('init');
+      // Create a temp directory with existing config files
+      const skipTestDir = join(testDataDir, 'skip-test');
+      const skipConfigDir = join(skipTestDir, '.agent-shepherd', 'config');
+      mkdirSync(skipConfigDir, { recursive: true });
+
+      // Create existing config files
+      writeFileSync(join(skipConfigDir, 'config.yaml'), 'version: "1.0"');
+      writeFileSync(join(skipConfigDir, 'policies.yaml'), 'policies: []');
+      writeFileSync(join(skipConfigDir, 'agents.yaml'), 'agents: []');
+
+      const outputs = await runCLICommand('init', [], skipTestDir);
       const output = outputs.join(' ');
 
       expect(output).toContain('Skipped (exists)');

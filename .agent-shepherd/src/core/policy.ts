@@ -682,7 +682,8 @@ export class PolicyEngine {
         return fromPhase && toPhase ? `${fromPhase}→${toPhase}` : null;
       })
       .filter((t): t is string => t !== null)
-      .slice(-10);
+      .reverse()
+      .slice(0, 10);
 
     for (let i = 0; i <= transitions.length - length; i++) {
       const pattern = transitions.slice(i, i + length);
