@@ -452,6 +452,71 @@ const logger = getLogger(tempDir);
 const workerEngine = new WorkerEngine();
 ```
 
+### Writing Tests: Best Practices
+
+When writing tests for Agent Shepherd, follow these guidelines:
+
+#### Use `tmp_test` for Runtime Storage
+
+All test temporary files should go in the `tests/tmp_test/` directory. This keeps test artifacts isolated from the source code:
+
+```typescript
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+import { mkdirSync, rmSync, existsSync } from "fs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
+
+describe("Feature Tests", () => {
+  let testDataDir: string;
+
+  beforeEach(() => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(7);
+    testDataDir = join(TEMP_DIR, `.test-my-feature-${timestamp}-${random}`);
+    mkdirSync(testDataDir, { recursive: true });
+    process.env.ASHEP_DIR = testDataDir;
+    // Reset any singletons
+    Logger.resetInstance();
+  });
+
+  afterEach(() => {
+    if (existsSync(testDataDir)) {
+      rmSync(testDataDir, { recursive: true, force: true });
+    }
+  });
+});
+```
+
+#### Test Integrity Rules
+
+**NEVER** delete tests to make tests pass. Deleting tests without human confirmation is cheating and undermines test coverage.
+
+**NEVER** mock infrastructure components (databases, file systems, external services) to make tests pass. Tests should:
+
+- Use real SQLite databases with temporary, isolated directories
+- Use real file system operations with proper cleanup
+- Test against the actual infrastructure the code runs in production
+- Only mock external APIs or services that would require network access or real credentials
+
+**ACCEPTABLE** test preparation:
+- Creating temporary test databases in `tmp_test/`
+- Seeding test data to verify scenarios
+- Using isolated data directories per test or test suite
+
+The goal is to test the actual behavior of the system, not to test mock implementations that may not reflect real-world conditions.
+
+#### Auto-Cleanup with `posttest`
+
+The `package.json` includes a `posttest` script that automatically cleans up `tmp_test` and nested `.agent-shepherd` directories:
+
+```bash
+bun run test  # Runs tests + posttest cleanup automatically
+```
+
+Do not commit test artifacts or temporary files to the repository.
+
 ## Architecture Patterns
 
 ### Dual Storage
