@@ -5,15 +5,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
-import { getLogger } from '../src/core/logging.ts';
+import { getLogger, Logger } from '../src/core/logging.ts';
+import { OpenCodeClient } from '../src/core/opencode.ts';
 
 // Run CLI command by spawning the built binary
 async function runCLICommand(command: string, args: string[] = [], cwd?: string, stdinInput?: string): Promise<string[]> {
-  const { spawn } = await import('child_process');
-
   const cliPath = join(__dirname, '..', 'bin', 'ashep');
   const proc = spawn(cliPath, [command, ...args], {
-    cwd: cwd || process.cwd(),
+    cwd: cwd || (cliClient?.directory ?? process.cwd()),
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, NODE_ENV: 'test' }
   });
@@ -52,6 +51,7 @@ describe('CLI Integration Tests', () => {
   let testDataDir: string;
   let configDir: string;
   let logger: ReturnType<typeof getLogger>;
+  let cliClient: OpenCodeClient;
 
   beforeEach(async () => {
     const timestamp = Date.now();
@@ -71,53 +71,60 @@ worker:
     writeFileSync(join(configDir, 'config.yaml'), testConfig);
 
     logger = getLogger(configDir);
+    cliClient = new OpenCodeClient({ directory: testDataDir });
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
     logger.createRun({
-      id: 'run-cli-test-001',
-      issue_id: 'TEST-001',
-      session_id: 'session-plan-abc123',
-      agent_id: 'test-agent',
-      policy_name: 'test-policy',
-      phase: 'plan',
-      status: 'completed',
-      outcome: {
-        success: true,
-        message: 'Plan completed',
-        metrics: { tokens_used: 5000 }
-      }
-    });
+        id: 'run-cli-test-001',
+        issue_id: 'TEST-001',
+        session_id: 'session-plan-abc123',
+        agent_id: 'test-agent',
+        policy_name: 'test-policy',
+        phase: 'plan',
+        status: 'completed',
+        outcome: {
+          success: true,
+          message: 'Plan completed',
+          metrics: { tokens_used: 5000 }
+        }
+      });
 
-    logger.createRun({
-      id: 'run-cli-test-002',
-      issue_id: 'TEST-001',
-      session_id: 'session-implement-def456',
-      agent_id: 'test-agent',
-      policy_name: 'test-policy',
-      phase: 'implement',
-      status: 'completed',
-      outcome: {
-        success: true,
-        message: 'Implementation completed',
-        metrics: { tokens_used: 15000 }
-      }
-    });
+      await new Promise(resolve => setTimeout(resolve, 100));
 
-    logger.createRun({
-      id: 'run-cli-test-003',
-      issue_id: 'TEST-001',
-      session_id: 'session-test-xyz789',
-      agent_id: 'test-agent',
-      policy_name: 'test-policy',
-      phase: 'test',
-      status: 'completed',
-      outcome: {
-        success: true,
-        message: 'Tests passed',
-        metrics: { tokens_used: 8000 }
-      }
-    });
+      logger.createRun({
+        id: 'run-cli-test-002',
+        issue_id: 'TEST-001',
+        session_id: 'session-implement-def456',
+        agent_id: 'test-agent',
+        policy_name: 'test-policy',
+        phase: 'implement',
+        status: 'completed',
+        outcome: {
+          success: true,
+          message: 'Implementation completed',
+          metrics: { tokens_used: 15000 }
+        }
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      logger.createRun({
+        id: 'run-cli-test-003',
+        issue_id: 'TEST-001',
+        session_id: 'session-test-xyz789',
+        agent_id: 'test-agent',
+        policy_name: 'test-policy',
+        phase: 'test',
+        status: 'completed',
+        outcome: {
+          success: true,
+          message: 'Tests passed',
+          metrics: { tokens_used: 8000 }
+        }
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
 
     await new Promise(resolve => setTimeout(resolve, 100));
   });
