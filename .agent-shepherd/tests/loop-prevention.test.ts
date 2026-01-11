@@ -3,12 +3,15 @@
  * Tests phase visit limits, transition limits, and cycle detection
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterAll } from "bun:test";
 import { PolicyEngine } from "../src/core/policy.ts";
 import { getLogger, Logger } from "../src/core/logging.ts";
 import { loadConfig } from "../src/core/config.ts";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { mkdirSync, rmSync, existsSync } from "fs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe("Loop Prevention Integration Tests", () => {
   let policyEngine: PolicyEngine;
@@ -16,20 +19,25 @@ describe("Loop Prevention Integration Tests", () => {
   let testDataDir: string;
 
   beforeEach(() => {
-    testDataDir = join(process.cwd(), ".test-loop-prevention");
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(7);
+    testDataDir = join(__dirname, `.test-loop-prevention-${timestamp}-${random}`);
 
-    if (existsSync(testDataDir)) {
-      rmSync(testDataDir, { recursive: true, force: true });
-    }
     mkdirSync(testDataDir, { recursive: true });
 
     process.env.ASHEP_DIR = testDataDir;
     Logger.resetInstance();
     policyEngine = new PolicyEngine();
-    const policiesPath = join(process.cwd(), ".agent-shepherd", "config", "policies.yaml");
+    const policiesPath = join(__dirname, "..", "config", "policies.yaml");
     policyEngine.loadPolicies(policiesPath);
 
     logger = getLogger(testDataDir);
+  });
+
+  afterAll(() => {
+    if (existsSync(testDataDir)) {
+      rmSync(testDataDir, { recursive: true, force: true });
+    }
   });
 
   describe("2.3.1 Phase Visit Tracking", () => {
