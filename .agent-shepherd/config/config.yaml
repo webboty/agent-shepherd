@@ -13,6 +13,10 @@ worker:
     mode: simple  # "simple" | "smart"
     max_issues: 3
     prefer_epic_affinity: true
+  crash_detection:
+    heartbeat_threshold_ms: 300000  # 5 minutes default
+    lease_duration_ms: 1800000  # 30 minutes default
+    fallback_to_lease: true
 
 monitor:
   poll_interval_ms: 10000

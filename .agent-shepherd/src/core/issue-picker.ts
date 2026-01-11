@@ -9,6 +9,7 @@ import {
   getAssignedWorker,
   isLeaseExpired,
 } from "./beads.ts";
+import { getCrashDetector, type CrashDetectionConfig } from "./crash-detector.js";
 
 export interface DependencyEdge {
   from: string;
@@ -27,6 +28,7 @@ export interface PickerConfig {
   mode: "simple" | "smart";
   max_issues?: number;
   prefer_epic_affinity?: boolean;
+  crash_detection?: CrashDetectionConfig;
 }
 
 /**
@@ -40,6 +42,7 @@ export class IssuePicker {
       mode: "simple",
       max_issues: 3,
       prefer_epic_affinity: true,
+      crash_detection: undefined,
       ...config,
     };
   }
@@ -98,13 +101,18 @@ export class IssuePicker {
   }
 
   /**
-   * Filter issues by coordination state (check epic assignments)
-   */
+     * Filter issues by coordination state (check epic assignments)
+     */
   private async filterByCoordinationState(
     issues: BeadsIssue[]
   ): Promise<BeadsIssue[]> {
+    const crashDetector = this.config.crash_detection
+      ? getCrashDetector(this.config.crash_detection)
+      : undefined;
+
     const workerId = process.env.ASHEP_WORKER_ID || "default";
     const available: BeadsIssue[] = [];
+    const epicGroups = new Map<string, BeadsIssue[]>();
 
     for (const issue of issues) {
       const epicId = this.extractEpicId(issue.id);
@@ -114,14 +122,35 @@ export class IssuePicker {
         continue;
       }
 
+      if (!epicGroups.has(epicId)) {
+        epicGroups.set(epicId, []);
+      }
+      epicGroups.get(epicId)!.push(issue);
+    }
+
+    for (const [epicId, epicIssues] of epicGroups.entries()) {
       const assignedWorker = await getAssignedWorker(epicId);
 
       if (!assignedWorker) {
-        available.push(issue);
-      } else if (assignedWorker === workerId) {
+        available.push(...epicIssues);
+        continue;
+      }
+
+      if (assignedWorker === workerId) {
         const expired = await isLeaseExpired(epicId);
         if (expired) {
-          available.push(issue);
+          available.push(...epicIssues);
+        }
+        continue;
+      }
+
+      // Another worker owns this epic, check for abandonment
+      if (crashDetector) {
+        const abandonment = await crashDetector.checkAbandonment(epicId);
+
+        if (abandonment.abandoned) {
+          console.log(`Epic ${epicId} abandoned by ${assignedWorker}: ${abandonment.reason}`);
+          available.push(...epicIssues);
         }
       }
     }
@@ -304,6 +333,37 @@ export class IssuePicker {
    */
   updateConfig(config: Partial<PickerConfig>): void {
     this.config = { ...this.config, ...config };
+  }
+
+  /**
+   * Claim an epic with crash detection and recovery
+   * Checks for active assignments, recovers abandoned tasks, sets coordination states
+   */
+  async claimEpic(epicId: string, subtreeIssues: BeadsIssue[]): Promise<{
+    claimed: boolean;
+    reason?: string;
+    recoveredIssues?: string[];
+  }> {
+    const crashDetector = this.config.crash_detection
+      ? getCrashDetector(this.config.crash_detection)
+      : null;
+
+    if (!crashDetector) {
+      // No crash detection, just set assignment
+      const { setAssignedWorker, setLeaseExpires } = await import("./beads.ts");
+      const workerId = process.env.ASHEP_WORKER_ID || "default";
+      const leaseDurationMs = 30 * 60 * 1000; // 30 minutes default
+
+      await setAssignedWorker(epicId, workerId);
+      await setLeaseExpires(epicId, Date.now() + leaseDurationMs);
+
+      return {
+        claimed: true,
+        reason: "Epic claimed without crash detection",
+      };
+    }
+
+    return await crashDetector.claimEpic(epicId, subtreeIssues);
   }
 }
 
