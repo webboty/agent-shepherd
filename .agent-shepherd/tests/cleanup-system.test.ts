@@ -5,7 +5,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync, writeFileSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { resetManager } from "../src/core/retention-policy.ts";
 import { resetCollector } from "../src/core/garbage-collector.ts";
 import { resetCleanupEngine } from "../src/core/cleanup-engine.ts";
@@ -13,7 +14,8 @@ import { Logger, getLogger, type RunRecord } from "../src/core/logging.ts";
 import { resetHealthChecker } from "../src/core/cleanup-health-check.ts";
 import { resetSizeMonitor } from "../src/core/size-monitor.ts";
 
-const TEST_DIR = join(process.cwd(), ".test-cleanup-system");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+let TEST_DIR: string;
 
 describe("Startup Cleanup", () => {
   const policies = [
@@ -33,14 +35,14 @@ describe("Startup Cleanup", () => {
   ];
 
   beforeEach(() => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(7);
+    TEST_DIR = join(__dirname, `.test-cleanup-system-${timestamp}-${random}`);
+    
     Logger.resetInstance();
     resetManager();
     resetCollector();
     resetCleanupEngine();
-
-    if (existsSync(TEST_DIR)) {
-      rmSync(TEST_DIR, { recursive: true });
-    }
 
     mkdirSync(TEST_DIR, { recursive: true });
   });
