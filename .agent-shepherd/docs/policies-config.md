@@ -810,3 +810,151 @@ phases:
 ```
 
 For complete phase messenger information, see [Phase Messenger Documentation](./phase-messenger.md).
+
+## Session Continuation
+
+### Overview
+
+Session continuation enables OpenCode sessions to be reused across workflow phases instead of creating new sessions for each phase. This provides significant benefits:
+
+- **Context Preservation**: Agents continue working in the same session, maintaining conversation history and accumulated context
+- **Token Efficiency**: Reuses accumulated context instead of starting fresh, reducing token usage for multi-phase workflows
+- **Improved Agent Performance**: Agents can reference previous work and decisions without re-explaining context
+
+### How It Works
+
+When a phase completes, Agent Shepherd can optionally continue the next phase in the same OpenCode session instead of creating a new one. This is controlled by the `reuse_session_from_phase` configuration.
+
+**Session Reuse Decision**:
+1. Check if `reuse_session_from_phase` is configured for the current phase
+2. Resolve the target phase using keywords (`@previous`, `@shared`, `@self`, `@first`) or explicit phase name
+3. Find the most recent completed run in the target phase
+4. Calculate total tokens used across all runs in that session
+5. Compare against `max_context_tokens * threshold`
+6. Reuse session if within threshold, otherwise create new session
+
+### Configuration
+
+#### Global Configuration
+
+Configure defaults in `.agent-shepherd/config/config.yaml`:
+
+```yaml
+session_continuation:
+  default_max_context_tokens: 130000  # Max context before creating new session
+  default_threshold: 0.8              # 80% threshold for reuse decision
+```
+
+#### Policy-Level Configuration
+
+Enable shared sessions across all phases in a policy:
+
+```yaml
+policies:
+  my-policy:
+    shared_session: true              # Enable @shared session for all phases
+    phases:
+      - name: implement
+        capabilities: [coding]
+      - name: test
+        capabilities: [testing]
+```
+
+#### Phase-Level Configuration
+
+Configure session reuse per phase:
+
+```yaml
+policies:
+  my-policy:
+    phases:
+      - name: implement
+        capabilities: [coding]
+        reuse_session_from_phase: "@previous"  # Reuse from previous phase
+
+      - name: test
+        capabilities: [testing]
+        reuse_session_from_phase: "implement"  # Explicit phase reference
+        context_window_threshold: 0.7          # Override default threshold
+        max_context_tokens: 100000              # Override default max tokens
+```
+
+### Keywords
+
+| Keyword | Description |
+|---------|-------------|
+| `@previous` | Reuse session from the immediately preceding phase in sequence |
+| `@self` | Continue in the current phase's existing session (rarely used) |
+| `@first` | Reuse session from the first phase in the policy |
+| `@shared` | Reuse any previous session for this issue (requires `shared_session: true` on policy) |
+| `<phase-name>` | Explicit phase name to reuse session from |
+
+### Threshold Calculation
+
+The system decides whether to reuse a session based on:
+
+```
+shouldReuse = totalTokens < maxContextTokens * threshold
+```
+
+**Example**:
+- `default_max_context_tokens`: 130,000
+- `default_threshold`: 0.8
+- Current session tokens: 100,000
+
+```
+shouldReuse = 100,000 < 130,000 * 0.8
+shouldReuse = 100,000 < 104,000
+shouldReuse = false  # Create new session
+```
+
+### Overrides
+
+Per-phase configuration overrides global defaults:
+
+```yaml
+session_continuation:
+  default_max_context_tokens: 130000
+  default_threshold: 0.8
+
+policies:
+  my-policy:
+    phases:
+      - name: complex-implementation
+        capabilities: [coding]
+        reuse_session_from_phase: "@previous"
+        max_context_tokens: 200000       # Override for complex work
+        context_window_threshold: 0.9    # More aggressive reuse
+```
+
+### CLI Command
+
+View sessions for an issue:
+
+```bash
+ashep list-sessions ISSUE-123
+```
+
+This displays all OpenCode sessions associated with an issue, including:
+- Session ID
+- Title
+- Phase
+- Token count
+
+Example output:
+```
+Sessions for issue ISSUE-123 (2):
+┌───────────────────────────────────────┬───────────────────────────────────────────────┬──────────────┬──────────┐
+│ Session ID                            │ Title                                     │ Phase        │ Tokens   │
+├───────────────────────────────────────┼───────────────────────────────────────────────┼──────────────┼──────────┤
+│ session-abc123def456...               │ Implement user authentication              │ implement    │ 85000    │
+│ session-xyz789abc012...               │ Test user authentication                   │ test         │ 42000    │
+└───────────────────────────────────────┴───────────────────────────────────────────────┴──────────────┴──────────┘
+```
+
+### Best Practices
+
+1. **Multi-phase workflows**: Use `@previous` for sequential phases that build on each other
+2. **Planning to implementation**: Use `@first` to preserve planning context during implementation
+3. **Token management**: Set lower thresholds for long-running workflows to avoid context overflow
+4. **Independent phases**: Don't enable session continuation for phases that don't benefit from previous context

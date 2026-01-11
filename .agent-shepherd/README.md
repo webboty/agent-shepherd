@@ -9,6 +9,7 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 - **Intelligent Agent Selection**: Automatically matches issues to the best available AI agents based on capabilities and requirements
 - **Workflow Orchestration**: Manages complex development workflows with phases, retries, and human-in-the-loop approval
 - **Label-Based Workflows**: Automatic workflow selection via Beads labels with explicit assignment, issue type matching, and phase tracking
+- **Session Continuation**: Reuses OpenCode sessions across workflow phases to preserve context and reduce token usage
 - **Configuration Validation**: Validates policy-capability-agent relationships to prevent dead ends and ensure workflow integrity
 - **Visual Relationship Tree**: ASCII/JSON tree visualization showing policy-capability-agent mappings and health status
 - **Real-time Monitoring**: Supervises agent execution with stall detection and timeout management
@@ -438,6 +439,64 @@ fallback:
 
 See [Configuration Customization (Advanced)](#configuration-customization-advanced) for more details on configuring fallback at different levels.
 
+## Session Continuation
+
+Agent Shepherd can reuse OpenCode sessions across workflow phases instead of creating new sessions for each phase.
+
+### Benefits
+
+- **Context Preservation**: Agents continue working in the same session, maintaining conversation history
+- **Token Efficiency**: Reuses accumulated context instead of starting fresh
+- **Improved Workflow**: Phases build on previous work without re-explaining context
+
+### How It Works
+
+When a phase completes, the next phase can optionally continue in the same OpenCode session:
+
+```bash
+# Worker creates session for "plan" phase
+# When "implement" phase starts, it reuses the same session
+# Context from planning is preserved
+```
+
+### Configuration
+
+Enable session continuation in your policy:
+
+```yaml
+policies:
+  my-policy:
+    shared_session: true              # Enable @shared session for all phases
+    phases:
+      - name: plan
+        capabilities: [planning]
+        reuse_session_from_phase: "@first"  # First phase starts fresh
+      - name: implement
+        capabilities: [coding]
+        reuse_session_from_phase: "@previous"  # Reuse from plan phase
+```
+
+### Keywords
+
+| Keyword | Description |
+|---------|-------------|
+| `@previous` | Reuse session from immediately preceding phase |
+| `@self` | Continue in current phase's session |
+| `@first` | Reuse session from first phase |
+| `@shared` | Reuse any previous session (requires `shared_session: true`) |
+
+### View Sessions
+
+Monitor session usage for an issue:
+
+```bash
+ashep list-sessions ISSUE-123
+```
+
+This displays all OpenCode sessions associated with the issue, including token counts and phases.
+
+For detailed configuration, see [Policy Configuration](docs/policies-config.md#session-continuation).
+
 ---
 
 After you have a working setup, customize Agent Shepherd to your needs:
@@ -753,6 +812,7 @@ For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.m
 - **`ashep sync-agents`** - Sync agent registry with OpenCode
 - **`ashep validate-policy-chain`** - Validate policy-capability-agent relationships
 - **`ashep show-policy-tree`** - Display relationship tree visualization
+- **`ashep list-sessions <issue-id>`** - List OpenCode sessions for an issue
 - **`ashep version`** - Show installed version
 - **`ashep update [version]`** - Update to latest or specific version
 - **`ashep help`** - Show all available commands

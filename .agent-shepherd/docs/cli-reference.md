@@ -481,6 +481,44 @@ Messages (2):
 └─────────────────┴───────────┴───────────┴─────────────────────────────────────┴─────────┴──────────────┘
 ```
 
+### `ashep list-sessions <issue-id>`
+
+List OpenCode sessions associated with an issue.
+
+**Usage:**
+```bash
+ashep list-sessions ISSUE-123
+```
+
+**Behavior:**
+- Queries OpenCode for all sessions associated with the issue
+- Displays session ID, title, phase, and token count
+- Useful for monitoring session continuation and token usage
+- Helps identify which phases reused sessions
+
+**Output:**
+```
+Sessions for issue ISSUE-123 (2):
+┌───────────────────────────────────────┬───────────────────────────────────────────────┬──────────────┬──────────┐
+│ Session ID                            │ Title                                     │ Phase        │ Tokens   │
+├───────────────────────────────────────┼───────────────────────────────────────────────┼──────────────┼──────────┤
+│ session-abc123def456...               │ Implement user authentication              │ implement    │ 85000    │
+│ session-xyz789abc012...               │ Test user authentication                   │ test         │ 42000    │
+└───────────────────────────────────────┴───────────────────────────────────────────────┴──────────────┴──────────┘
+```
+
+**Empty Output:**
+```
+No sessions found for issue ISSUE-456
+```
+
+### Use Cases
+
+- **Debug workflow issues**: Verify sessions are being reused correctly
+- **Monitor token usage**: Track accumulated context across phases
+- **Audit session continuity**: Ensure multi-phase workflows maintain context
+- **Optimize workflows**: Identify phases that may benefit from session continuation
+
 ## Plugin Commands
 
 ### `ashep plugin-install <path-or-url>`
