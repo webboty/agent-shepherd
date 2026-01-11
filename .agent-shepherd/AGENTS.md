@@ -458,7 +458,7 @@ When writing tests for Agent Shepherd, follow these guidelines:
 
 #### Use `tmp_test` for Runtime Storage
 
-All test temporary files should go in the `tests/tmp_test/` directory. This keeps test artifacts isolated from the source code:
+All test temporary files should go in the `tmp_test/` directory (at the project root, alongside `tests/`). This keeps the `tests/` directory clean with only source files (*.test.ts), while runtime artifacts stay isolated in tmp_test:
 
 ```typescript
 import { join, dirname } from "path";
@@ -466,7 +466,7 @@ import { fileURLToPath } from "url";
 import { mkdirSync, rmSync, existsSync } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEMP_DIR = join(__dirname, '..', 'tmp_test');
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');  // Up from tests/ to .agent-shepherd/
 
 describe("Feature Tests", () => {
   let testDataDir: string;
