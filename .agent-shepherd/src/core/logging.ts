@@ -787,10 +787,24 @@ export class Logger {
 let defaultLogger: Logger | null = null;
 
 export function getLogger(dataDir?: string): Logger {
+  if (dataDir) {
+    return new Logger(dataDir);
+  }
+  const envDataDir = process.env.ASHEP_DIR;
+  if (envDataDir) {
+    return new Logger(envDataDir);
+  }
   if (!defaultLogger) {
-    defaultLogger = new Logger(dataDir);
+    defaultLogger = new Logger();
   }
   return defaultLogger;
+}
+
+export function resetLogger(): void {
+  if (defaultLogger) {
+    defaultLogger.close();
+    defaultLogger = null;
+  }
 }
 
 export function queryAllRuns(query: RunQuery, dataDir?: string): RunRecord[] {

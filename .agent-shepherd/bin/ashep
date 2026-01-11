@@ -280,6 +280,7 @@ var init_archive_logger = () => {};
 // src/core/logging.ts
 var exports_logging = {};
 __export(exports_logging, {
+  resetLogger: () => resetLogger,
   queryAllRuns: () => queryAllRuns,
   getRunWithArchival: () => getRunWithArchival,
   getRunHistory: () => getRunHistory,
@@ -742,10 +743,23 @@ class Logger {
   }
 }
 function getLogger(dataDir) {
+  if (dataDir) {
+    return new Logger(dataDir);
+  }
+  const envDataDir = process.env.ASHEP_DIR;
+  if (envDataDir) {
+    return new Logger(envDataDir);
+  }
   if (!defaultLogger) {
-    defaultLogger = new Logger(dataDir);
+    defaultLogger = new Logger;
   }
   return defaultLogger;
+}
+function resetLogger() {
+  if (defaultLogger) {
+    defaultLogger.close();
+    defaultLogger = null;
+  }
 }
 function queryAllRuns(query, dataDir) {
   const logger = dataDir ? new Logger(dataDir) : getLogger();
@@ -8187,6 +8201,10 @@ function findLocalAgentShepherdDir() {
   return null;
 }
 function findInstallDir() {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync3(envOverride)) {
+    return envOverride;
+  }
   const local = findLocalAgentShepherdDir();
   if (local && existsSync3(join3(local, "src"))) {
     return local;
@@ -8198,6 +8216,10 @@ function findInstallDir() {
   throw new Error("Agent Shepherd not installed. Run the installer or 'ashep init'");
 }
 function findConfigDir() {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync3(join3(envOverride, "config"))) {
+    return join3(envOverride, "config");
+  }
   const local = findLocalAgentShepherdDir();
   if (local && existsSync3(join3(local, "config"))) {
     return join3(local, "config");
@@ -8210,6 +8232,10 @@ function findConfigDir() {
   throw new Error("No configuration found. Run 'ashep init' in your project.");
 }
 function findPluginsDir() {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync3(join3(envOverride, "plugins"))) {
+    return join3(envOverride, "plugins");
+  }
   const local = findLocalAgentShepherdDir();
   if (local && existsSync3(join3(local, "plugins"))) {
     return join3(local, "plugins");
@@ -8218,6 +8244,12 @@ function findPluginsDir() {
   return join3(global2, "plugins");
 }
 function findAgentShepherdDir() {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync3(envOverride)) {
+    console.error(`DEBUG: Using ASHEP_DIR override: ${envOverride}`);
+    return envOverride;
+  }
+  console.error(`DEBUG: ASHEP_DIR not set or path invalid, searching locally...`);
   const local = findLocalAgentShepherdDir();
   if (local)
     return local;
@@ -40970,7 +41002,7 @@ class WorkerEngine {
   policyEngine = getPolicyEngine();
   agentRegistry = getAgentRegistry();
   opencode = getOpenCodeClient();
-  logger = getLogger();
+  logger = getLogger(process.env.ASHEP_DIR);
   isRunning = false;
   currentRunId = null;
   currentPhase = null;

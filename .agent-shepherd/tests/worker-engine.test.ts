@@ -220,6 +220,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -287,6 +288,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -355,6 +357,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -408,6 +411,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -479,6 +483,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -537,6 +542,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -591,6 +597,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -628,6 +635,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -685,6 +693,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 
@@ -739,6 +748,7 @@ default_policy: test-policy
 
       writeFileSync(testPoliciesPath, testPolicies);
 
+      process.env.ASHEP_DIR = tempDir;
       const testLogger = getLogger(tempDir);
       const testWorkerEngine = new WorkerEngine();
 

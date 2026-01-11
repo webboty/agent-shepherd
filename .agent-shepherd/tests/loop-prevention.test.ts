@@ -23,6 +23,7 @@ describe("Loop Prevention Integration Tests", () => {
     }
     mkdirSync(testDataDir, { recursive: true });
 
+    process.env.ASHEP_DIR = testDataDir;
     Logger.resetInstance();
     policyEngine = new PolicyEngine();
     const policiesPath = join(process.cwd(), ".agent-shepherd", "config", "policies.yaml");

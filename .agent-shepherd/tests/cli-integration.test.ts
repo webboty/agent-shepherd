@@ -4,17 +4,23 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
-import { getLogger, Logger } from '../src/core/logging.ts';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
+import { Logger } from '../src/core/logging.ts';
 import { OpenCodeClient } from '../src/core/opencode.ts';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 // Run CLI command by spawning the built binary
-async function runCLICommand(command: string, args: string[] = [], cwd?: string, stdinInput?: string): Promise<string[]> {
+async function runCLICommand(command: string, args: string[] = [], testDir?: string, stdinInput?: string): Promise<string[]> {
   const cliPath = join(__dirname, '..', 'bin', 'ashep');
+  const workingDir = testDir || process.cwd();
+  console.log(`DEBUG: Spawning CLI with ASHEP_DIR=${workingDir}`);
   const proc = spawn(cliPath, [command, ...args], {
-    cwd: cwd || (cliClient?.directory ?? process.cwd()),
+    cwd: workingDir,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test', ASHEP_DIR: workingDir }
   });
 
   if (stdinInput) {
@@ -50,13 +56,12 @@ async function runCLICommand(command: string, args: string[] = [], cwd?: string,
 describe('CLI Integration Tests', () => {
   let testDataDir: string;
   let configDir: string;
-  let logger: ReturnType<typeof getLogger>;
-  let cliClient: OpenCodeClient;
+  let logger: Logger;
 
   beforeEach(async () => {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    testDataDir = join(process.cwd(), '.agent-shepherd', `temp-cli-test-${timestamp}-${random}`);
+    testDataDir = join(process.cwd(), `temp-cli-test-${timestamp}-${random}`);
     configDir = join(testDataDir, '.agent-shepherd');
 
     mkdirSync(configDir, { recursive: true });
@@ -70,8 +75,11 @@ worker:
 
     writeFileSync(join(configDir, 'config.yaml'), testConfig);
 
-    logger = getLogger(configDir);
-    cliClient = new OpenCodeClient({ directory: testDataDir });
+    logger = new Logger(configDir);
+
+    console.log('Test configDir:', configDir);
+    console.log('Test jsonlPath:', (logger as any).jsonlPath);
+    console.log('CLI will run with cwd:', configDir);
 
     await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -126,6 +134,8 @@ worker:
 
       await new Promise(resolve => setTimeout(resolve, 100));
 
+    console.log('runs.jsonl exists after createRun:', existsSync((logger as any).jsonlPath));
+    console.log('runs.db exists after createRun:', existsSync(join(configDir, 'runs.db')));
     await new Promise(resolve => setTimeout(resolve, 100));
   });
 

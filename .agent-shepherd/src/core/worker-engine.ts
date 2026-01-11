@@ -51,7 +51,7 @@ export class WorkerEngine {
   private policyEngine = getPolicyEngine();
   private agentRegistry = getAgentRegistry();
   private opencode = getOpenCodeClient();
-  private logger = getLogger();
+  private logger = getLogger(process.env.ASHEP_DIR);
   private isRunning = false;
   private currentRunId: string | null = null;
   private currentPhase: string | null = null;
