@@ -69,6 +69,14 @@ export interface SessionMessage {
   }>;
 }
 
+export interface SessionInfo {
+  sessionId: string;
+  title: string;
+  phase: string;
+  tokens: number;
+  created: number;
+}
+
 export interface ParsedRunOutcome {
   success: boolean;
   message?: string;
@@ -512,6 +520,39 @@ export class OpenCodeClient {
 
   async abortSession(): Promise<void> {
     // No-op for CLI approach
+  }
+
+  /**
+   * List sessions for a specific issue
+   */
+  async listSessionsForIssue(issueId: string): Promise<SessionInfo[]> {
+    const { getLogger } = await import("./logging.ts");
+    const logger = getLogger();
+
+    const runs = logger.queryRuns({ issue_id: issueId });
+
+    const sessionMap = new Map<string, SessionInfo>();
+
+    for (const run of runs) {
+      const sessionId = run.session_id;
+      const existing = sessionMap.get(sessionId);
+
+      const runTokens = run.outcome?.metrics?.tokens_used || 0;
+
+      if (existing) {
+        existing.tokens += runTokens;
+      } else {
+        sessionMap.set(sessionId, {
+          sessionId,
+          title: `${issueId}: ${run.phase}`,
+          phase: run.phase,
+          tokens: runTokens,
+          created: run.created_at,
+        });
+      }
+    }
+
+    return Array.from(sessionMap.values()).sort((a, b) => a.created - b.created);
   }
 }
 

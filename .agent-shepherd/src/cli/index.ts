@@ -33,6 +33,7 @@ const COMMANDS: Record<string, string> = {
   "list-hitl": "List issues requiring human-in-the-loop intervention",
   "list-ready": "List issues ready to be worked on (no blockers)",
   "list-struggle": "List blocked issues that need attention",
+  "list-sessions": "List OpenCode sessions for an issue",
   "get-messages": "Get phase messages for an issue",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
@@ -145,12 +146,13 @@ ${Object.entries(COMMANDS)
   .map(([cmd, desc]) => `  ${cmd.padEnd(15)} ${desc}`)
   .join("\n")}
 
- Examples:
+  Examples:
     ashep quickstart          # One-command onboarding
     ashep init                # Initialize configuration
     ashep worker              # Start autonomous worker
     ashep work ISSUE-123      # Process specific issue
     ashep ui                  # Start visualization UI
+    ashep list-sessions ISSUE-123  # List sessions for an issue
     ashep validate-policy-chain  # Validate policy relationships
     ashep show-policy-tree    # Show relationship tree
 
@@ -1580,6 +1582,66 @@ async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: bool
 }
 
 /**
+ * List sessions command - list OpenCode sessions for an issue
+ */
+async function cmdListSessions(issueId?: string): Promise<void> {
+  try {
+    const { getOpenCodeClient } = await import("../core/opencode.ts");
+
+    const opencode = getOpenCodeClient();
+
+    if (!issueId) {
+      issueId = await promptForIssueId();
+    }
+
+    if (!issueId) {
+      console.error("Error: Issue ID is required");
+      console.log("Usage: ashep list-sessions [issue-id]");
+      process.exit(1);
+    }
+
+    const sessions = await opencode.listSessionsForIssue(issueId);
+
+    if (sessions.length === 0) {
+      console.log(`No sessions found for issue ${issueId}`);
+    } else {
+      console.log(`\nSessions for issue ${issueId} (${sessions.length}):`);
+      console.log("┌───────────────────────────────────────┬───────────────────────────────────────────────┬──────────────┬──────────┐");
+      console.log("│ Session ID                            │ Title                                     │ Phase        │ Tokens   │");
+      console.log("├───────────────────────────────────────┼───────────────────────────────────────────────┼──────────────┼──────────┤");
+
+      for (const session of sessions) {
+        const sessionId = session.sessionId.substring(0, 38) + (session.sessionId.length > 38 ? "..." : "");
+        const title = session.title.substring(0, 42) + (session.title.length > 42 ? "..." : "");
+        const phase = session.phase.substring(0, 12) + (session.phase.length > 12 ? "..." : "");
+        console.log(`│ ${sessionId.padEnd(37)} │ ${title.padEnd(42)} │ ${phase.padEnd(12)} │ ${String(session.tokens).padEnd(8)} │`);
+      }
+
+      console.log("└───────────────────────────────────────┴───────────────────────────────────────────────┴──────────────┴──────────┘");
+    }
+  } catch (error) {
+    console.error("❌ Failed to list sessions:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Simple prompt for issue ID using Bun's built-in readline
+ */
+async function promptForIssueId(): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdout.write("Enter issue ID: ");
+    process.stdin.setEncoding("utf-8");
+    process.stdin.on("data", (data) => {
+      const input = data.toString().trim();
+      resolve(input);
+      process.stdin.pause();
+    });
+    process.stdin.resume();
+  });
+}
+
+/**
  * Main CLI entry point
  */
 async function main(): Promise<void> {
@@ -1720,6 +1782,10 @@ async function main(): Promise<void> {
       await cmdGetMessages(args[1], phase, unreadOnly);
       break;
     }
+
+    case "list-sessions":
+      await cmdListSessions(args[1]);
+      break;
 
     case "cleanup-metrics":
       cmdCleanupMetrics();
