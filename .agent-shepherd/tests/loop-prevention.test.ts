@@ -12,6 +12,7 @@ import { fileURLToPath } from "url";
 import { mkdirSync, rmSync, existsSync } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe("Loop Prevention Integration Tests", () => {
   let policyEngine: PolicyEngine;
@@ -21,7 +22,7 @@ describe("Loop Prevention Integration Tests", () => {
   beforeEach(() => {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    testDataDir = join(__dirname, `.test-loop-prevention-${timestamp}-${random}`);
+    testDataDir = join(TEMP_DIR, `.test-loop-prevention-${timestamp}-${random}`);
 
     mkdirSync(testDataDir, { recursive: true });
 

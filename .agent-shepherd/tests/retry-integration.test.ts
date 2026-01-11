@@ -11,6 +11,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('Retry Counting - Integration Tests', () => {
   let policyEngine: PolicyEngine;
@@ -20,7 +21,7 @@ describe('Retry Counting - Integration Tests', () => {
   let loggerDir: string;
 
   beforeEach(() => {
-    tempDir = join(__dirname, 'temp-retry-integration-test');
+    tempDir = join(TEMP_DIR, 'temp-retry-integration-test');
     policiesPath = join(tempDir, 'policies.yaml');
     loggerDir = join(tempDir, '.agent-shepherd');
 

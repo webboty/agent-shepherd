@@ -9,13 +9,14 @@ import { fileURLToPath } from 'url';
 import { loadConfig } from '../src/core/config.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('Config Loading - Workflow and HITL', () => {
   let tempDir: string;
   let configDir: string;
 
   beforeEach(() => {
-    tempDir = join(__dirname, 'temp-config-test');
+    tempDir = join(TEMP_DIR, 'temp-config-test');
     configDir = join(tempDir, '.agent-shepherd');
     mkdirSync(configDir, { recursive: true });
   });

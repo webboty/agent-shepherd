@@ -9,6 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('Trigger System', () => {
   let policyEngine: PolicyEngine;
@@ -16,7 +17,7 @@ describe('Trigger System', () => {
   let policiesPath: string;
 
   beforeEach(() => {
-    tempDir = join(__dirname, 'temp-test');
+    tempDir = join(TEMP_DIR, 'temp-test');
     policiesPath = join(tempDir, 'policies.yaml');
     
     mkdirSync(tempDir, { recursive: true });

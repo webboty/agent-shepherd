@@ -11,6 +11,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('WorkerEngine Session Continuation', () => {
   let tempDirs: string[] = [];
@@ -22,7 +23,7 @@ describe('WorkerEngine Session Continuation', () => {
   beforeEach(() => {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    const tempDir = join(__dirname, `temp-session-test-${timestamp}-${random}`);
+    const tempDir = join(TEMP_DIR, `temp-session-test-${timestamp}-${random}`);
     policiesPath = join(tempDir, 'policies.yaml');
 
     mkdirSync(tempDir, { recursive: true });

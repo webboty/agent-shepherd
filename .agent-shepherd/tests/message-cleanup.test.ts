@@ -10,7 +10,8 @@ import { fileURLToPath } from "url";
 import { PhaseMessenger, type CreateMessageInput } from "../src/core/phase-messenger.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEST_DIR = join(__dirname, ".test-message-cleanup");
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
+const TEST_DIR = join(TEMP_DIR, ".test-message-cleanup");
 
 describe("Message Cleanup on Issue Completion", () => {
   let messenger: PhaseMessenger;

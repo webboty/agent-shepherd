@@ -5,9 +5,10 @@ import { fileURLToPath } from "url";
 import { PhaseMessenger, type CreateMessageInput, type PhaseMessage, formatMessagesForCLI } from "../src/core/phase-messenger.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe("PhaseMessenger", () => {
-  const testDataDir = join(__dirname, ".test-phase-messenger");
+  const testDataDir = join(TEMP_DIR, ".test-phase-messenger");
   let messenger: PhaseMessenger;
 
   beforeEach(() => {

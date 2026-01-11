@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import Ajv from 'ajv';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('PolicyEngine', () => {
   let policyEngine: PolicyEngine;
@@ -17,7 +18,7 @@ describe('PolicyEngine', () => {
   let policiesPath: string;
 
   beforeEach(() => {
-    tempDir = join(__dirname, 'temp-test');
+    tempDir = join(TEMP_DIR, 'temp-test');
     policiesPath = join(tempDir, 'policies.yaml');
     
     mkdirSync(tempDir, { recursive: true });

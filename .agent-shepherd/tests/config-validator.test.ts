@@ -9,6 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('ConfigurationValidator', () => {
   let validator: ConfigurationValidator;
@@ -16,7 +17,7 @@ describe('ConfigurationValidator', () => {
 
   beforeEach(() => {
     validator = new ConfigurationValidator();
-    tempDir = join(__dirname, 'temp-test');
+    tempDir = join(TEMP_DIR, 'temp-test');
     
     mkdirSync(tempDir, { recursive: true });
   });

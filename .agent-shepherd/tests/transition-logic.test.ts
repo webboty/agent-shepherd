@@ -10,6 +10,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('Enhanced Transition Logic', () => {
   let policyEngine: PolicyEngine;
@@ -17,7 +18,7 @@ describe('Enhanced Transition Logic', () => {
   let policiesPath: string;
 
   beforeEach(() => {
-    tempDir = join(__dirname, 'temp-transition-test');
+    tempDir = join(TEMP_DIR, 'temp-transition-test');
     policiesPath = join(tempDir, 'policies.yaml');
     
     if (!existsSync(tempDir)) {

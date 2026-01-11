@@ -15,6 +15,7 @@ import { resetHealthChecker } from "../src/core/cleanup-health-check.ts";
 import { resetSizeMonitor } from "../src/core/size-monitor.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 let TEST_DIR: string;
 
 describe("Startup Cleanup", () => {
@@ -37,7 +38,7 @@ describe("Startup Cleanup", () => {
   beforeEach(() => {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    TEST_DIR = join(__dirname, `.test-cleanup-system-${timestamp}-${random}`);
+    TEST_DIR = join(TEMP_DIR, `.test-cleanup-system-${timestamp}-${random}`);
     
     Logger.resetInstance();
     resetManager();

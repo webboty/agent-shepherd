@@ -12,7 +12,8 @@ import { ArchiveLogger } from "../src/core/archive-logger.ts";
 import { archiveOldRuns } from "../src/core/archive-util.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEST_DIR = join(__dirname, ".test-archive-system");
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
+const TEST_DIR = join(TEMP_DIR, ".test-archive-system");
 
 describe("ArchiveLogger", () => {
   let testLogger: Logger;

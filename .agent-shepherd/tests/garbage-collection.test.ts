@@ -14,7 +14,8 @@ import { resetCleanupEngine } from "../src/core/cleanup-engine.ts";
 import { Logger, getLogger, type RunRecord } from "../src/core/logging.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEST_DIR = join(__dirname, ".test-garbage-collection");
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
+const TEST_DIR = join(TEMP_DIR, ".test-garbage-collection");
 
 describe("RetentionPolicyManager", () => {
   const policies = [

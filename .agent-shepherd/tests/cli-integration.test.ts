@@ -11,6 +11,7 @@ import { Logger } from '../src/core/logging.ts';
 import { OpenCodeClient } from '../src/core/opencode.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 // Run CLI command by spawning the built binary
 async function runCLICommand(command: string, args: string[] = [], testDir?: string, stdinInput?: string): Promise<string[]> {
@@ -61,7 +62,7 @@ describe('CLI Integration Tests', () => {
   beforeEach(async () => {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    testDataDir = join(process.cwd(), `temp-cli-test-${timestamp}-${random}`);
+    testDataDir = join(TEMP_DIR, `temp-cli-test-${timestamp}-${random}`);
     configDir = join(testDataDir, '.agent-shepherd');
 
     mkdirSync(configDir, { recursive: true });

@@ -8,7 +8,11 @@ import { PolicyEngine } from '../src/core/policy.ts';
 import { getAgentRegistry } from '../src/core/agent-registry.ts';
 import { getLogger } from '../src/core/logging.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('Session Continuation Integration', () => {
   let tempDir: string;
@@ -20,7 +24,7 @@ describe('Session Continuation Integration', () => {
   beforeEach(() => {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
-    tempDir = join(process.cwd(), `temp-session-test-${timestamp}-${random}`);
+    tempDir = join(TEMP_DIR, `temp-session-test-${timestamp}-${random}`);
     policiesPath = join(tempDir, 'policies.yaml');
     agentsPath = join(tempDir, 'agents.yaml');
 
