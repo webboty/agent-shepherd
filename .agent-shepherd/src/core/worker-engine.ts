@@ -431,6 +431,7 @@ export class WorkerEngine {
     }
 
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
+    const policyConfig = this.policyEngine.getPolicyConfig(policy);
 
     let modelToUse: string | undefined;
     if (phaseConfig?.model) {
@@ -449,13 +450,53 @@ export class WorkerEngine {
 
     console.log(`Running agent ${agentId} with OpenCode CLI...`);
 
-    const result = await this.opencode.runAgentCLI({
-      directory: process.cwd(),
-      title: `${issue.id}: ${issue.title}`,
-      agent: agentId,
-      model: modelToUse,
-      message: instructions,
-    });
+    // Check for session reuse
+    let sessionIdToUse: string | undefined;
+    if (phaseConfig?.reuse_session_from_phase && policyConfig) {
+      const resolvedTarget = this.resolveReuseTarget(
+        phase,
+        phaseConfig.reuse_session_from_phase,
+        policyConfig
+      );
+
+      if (resolvedTarget) {
+        const reuseConfig = await this.findReusableSession(issue.id, resolvedTarget);
+
+        if (reuseConfig.shouldReuse && reuseConfig.sessionId) {
+          sessionIdToUse = reuseConfig.sessionId;
+          console.log(`Reusing session ${sessionIdToUse} from target '${resolvedTarget}'`);
+        } else if (reuseConfig.sessionId && !reuseConfig.shouldReuse) {
+          console.log(`Session ${reuseConfig.sessionId} exists but exceeds token threshold, creating new session`);
+        }
+      }
+    }
+
+    // Execute agent with or without session reuse
+    let result;
+    try {
+      result = await this.opencode.runAgentCLI({
+        directory: process.cwd(),
+        title: `${issue.id}: ${issue.title}`,
+        agent: agentId,
+        model: modelToUse,
+        message: instructions,
+        sessionId: sessionIdToUse,
+      });
+    } catch (error) {
+      // Fallback to new session if reuse fails
+      if (sessionIdToUse) {
+        console.warn(`Session reuse failed, falling back to new session: ${error}`);
+        result = await this.opencode.runAgentCLI({
+          directory: process.cwd(),
+          title: `${issue.id}: ${issue.title}`,
+          agent: agentId,
+          model: modelToUse,
+          message: instructions,
+        });
+      } else {
+        throw error;
+      }
+    }
 
     const endTimestamp = Date.now();
     const wallClockDurationMs = endTimestamp - startTimestamp;
@@ -527,6 +568,13 @@ export class WorkerEngine {
     const metadata: any = {
       initial_prompt: initialPrompt,
     };
+
+    if (sessionIdToUse) {
+      metadata.session_reuse = {
+        reused_session_id: sessionIdToUse,
+        fallback_to_new: result.sessionId !== sessionIdToUse
+      };
+    }
 
     return {
       outcome,

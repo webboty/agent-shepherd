@@ -9,6 +9,7 @@ export interface SessionConfig {
   agent?: string;
   model?: string;
   message?: string;
+  sessionId?: string;
 }
 
 export interface RunResult {
@@ -121,6 +122,11 @@ export class OpenCodeClient {
     // Add model override if specified
     if (config.model) {
       args.push("--model", config.model);
+    }
+
+    // Add session ID if specified
+    if (config.sessionId) {
+      args.push("--session", config.sessionId);
     }
 
     if (config.message) {
