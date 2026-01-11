@@ -182,4 +182,101 @@ agents:
       expect(output).toContain('Run \'ashep help\' for usage');
     });
   });
+
+  describe('List Sessions Command', () => {
+    let testDataDir: string;
+    let testDbDir: string;
+
+    beforeEach(() => {
+      testDataDir = join(process.cwd(), 'temp-cli-sessions-test');
+      testDbDir = join(testDataDir, '.agent-shepherd');
+      mkdirSync(testDbDir, { recursive: true });
+
+      const testConfig = `
+version: "1.0"
+worker:
+  poll_interval_ms: 1000
+  max_concurrent_runs: 1
+session_continuation:
+  default_max_context_tokens: 130000
+  default_threshold: 0.8
+      `.trim();
+
+      writeFileSync(join(testDbDir, 'config.yaml'), testConfig);
+    });
+
+    afterEach(() => {
+      rmSync(testDataDir, { recursive: true, force: true });
+    });
+
+    it('should display sessions for an issue', async () => {
+      const outputs = await runCLICommand('list-sessions', ['TEST-001'], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('Sessions for issue TEST-001');
+    });
+
+    it('should display no sessions message when none exist', async () => {
+      const outputs = await runCLICommand('list-sessions', ['NONEXISTENT'], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('No sessions found for issue NONEXISTENT');
+    });
+
+    it('should show table header when sessions exist', async () => {
+      const outputs = await runCLICommand('list-sessions', ['TEST-002'], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('Session ID');
+      expect(output).toContain('Title');
+      expect(output).toContain('Phase');
+      expect(output).toContain('Tokens');
+    });
+
+    it('should handle sessions with various token counts', async () => {
+      const outputs = await runCLICommand('list-sessions', ['TEST-003'], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('Sessions for issue');
+    });
+
+    it('should handle sessions with long session IDs', async () => {
+      const outputs = await runCLICommand('list-sessions', ['TEST-004'], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('Sessions for issue');
+    });
+
+    it('should display sessions in creation order', async () => {
+      const outputs = await runCLICommand('list-sessions', ['TEST-005'], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('Sessions for issue');
+    });
+
+    it('should show error when issue ID is missing', async () => {
+      const outputs = await runCLICommand('list-sessions', [], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('Issue ID required');
+      expect(output).toContain('Usage: ashep list-sessions [issue-id]');
+    });
+
+    it('should handle special characters in issue IDs', async () => {
+      const outputs = await runCLICommand('list-sessions', ['TEST-ABC-123'], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('Sessions for issue TEST-ABC-123');
+    });
+
+    it('should format session table correctly', async () => {
+      const outputs = await runCLICommand('list-sessions', ['TEST-FORMAT'], testDataDir);
+      const output = outputs.join(' ');
+
+      expect(output).toContain('┌');
+      expect(output).toContain('┬');
+      expect(output).toContain('┼');
+      expect(output).toContain('└');
+    });
+  });
 });
