@@ -18,7 +18,8 @@ describe('Session Continuation Integration', () => {
   let policyEngine: PolicyEngine;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-session-integration-test');
+    const baseDir = join(process.cwd(), '.agent-shepherd');
+    tempDir = join(baseDir, 'temp-session-integration-test');
     policiesPath = join(tempDir, 'policies.yaml');
     agentsPath = join(tempDir, 'agents.yaml');
 

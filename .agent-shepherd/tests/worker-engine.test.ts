@@ -17,7 +17,7 @@ describe('WorkerEngine Session Continuation', () => {
   let logger: ReturnType<typeof getLogger>;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-session-test');
+    tempDir = join(process.cwd(), '.agent-shepherd', 'temp-session-test');
     policiesPath = join(tempDir, 'policies.yaml');
 
     mkdirSync(tempDir, { recursive: true });

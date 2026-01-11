@@ -44,6 +44,1157 @@ var __export = (target, all) => {
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = import.meta.require;
 
+// src/core/archive-logger.ts
+var exports_archive_logger = {};
+__export(exports_archive_logger, {
+  ArchiveLogger: () => ArchiveLogger
+});
+import { Database } from "bun:sqlite";
+import { existsSync, mkdirSync } from "fs";
+import { join } from "path";
+
+class ArchiveLogger {
+  db;
+  constructor(dataDir) {
+    const dir = dataDir || join(process.cwd(), ".agent-shepherd");
+    const archiveDir = join(dir, "archive");
+    if (!existsSync(archiveDir)) {
+      mkdirSync(archiveDir, { recursive: true });
+    }
+    const archiveDbPath = join(archiveDir, "archive.db");
+    this.db = new Database(archiveDbPath);
+    this.initializeArchiveSchema();
+    this.db.run("PRAGMA journal_mode = WAL");
+    this.db.run("PRAGMA synchronous = NORMAL");
+    this.db.run("PRAGMA cache_size = -2000");
+    this.db.run("PRAGMA temp_store = MEMORY");
+    this.db.run("PRAGMA mmap_size = 268435456");
+  }
+  initializeArchiveSchema() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS runs_archive (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        policy_name TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        outcome TEXT,
+        metadata TEXT,
+        archived_at INTEGER NOT NULL,
+        retention_policy TEXT NOT NULL,
+        scheduled_delete_at INTEGER
+      )
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_id ON runs_archive(issue_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_agent_id ON runs_archive(agent_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_status ON runs_archive(status)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_phase_status ON runs_archive(issue_id, phase, status)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_phase_completed ON runs_archive(phase, completed_at)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_phase ON runs_archive(issue_id, phase)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_archived_at ON runs_archive(archived_at)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_archive_scheduled_delete ON runs_archive(scheduled_delete_at)
+    `);
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS decisions_archive (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reasoning TEXT,
+        metadata TEXT,
+        FOREIGN KEY (run_id) REFERENCES runs_archive(id)
+      )
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_archive_run_id ON decisions_archive(run_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_archive_type ON decisions_archive(type)
+    `);
+  }
+  rowToRunRecord(row) {
+    return {
+      id: row.id,
+      issue_id: row.issue_id,
+      session_id: row.session_id,
+      agent_id: row.agent_id,
+      policy_name: row.policy_name,
+      phase: row.phase,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at || undefined,
+      outcome: row.outcome ? JSON.parse(row.outcome) : undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    };
+  }
+  rowToDecisionRecord(row) {
+    return {
+      id: row.id,
+      run_id: row.run_id,
+      timestamp: row.timestamp,
+      type: row.type,
+      decision: row.decision,
+      reasoning: row.reasoning || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    };
+  }
+  getRun(runId) {
+    const stmt = this.db.prepare("SELECT * FROM runs_archive WHERE id = ?");
+    const row = stmt.get(runId);
+    if (!row) {
+      return null;
+    }
+    return this.rowToRunRecord(row);
+  }
+  queryRuns(query) {
+    let sql = "SELECT * FROM runs_archive WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    sql += " ORDER BY created_at DESC";
+    if (query.limit) {
+      sql += " LIMIT ?";
+      params.push(query.limit);
+    }
+    if (query.offset) {
+      sql += " OFFSET ?";
+      params.push(query.offset);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToRunRecord(row));
+  }
+  getDecisions(runId) {
+    const stmt = this.db.prepare("SELECT * FROM decisions_archive WHERE run_id = ? ORDER BY timestamp ASC");
+    const rows = stmt.all(runId);
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+  getDecisionsForIssue(issueId, options) {
+    let sql = `
+      SELECT d.*
+      FROM decisions_archive d
+      INNER JOIN runs_archive r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+      ORDER BY d.timestamp DESC
+    `;
+    const params = [issueId];
+    if (options?.limit) {
+      sql += " LIMIT ?";
+      params.push(options.limit);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+  getPhaseRetryCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs_archive
+      WHERE issue_id = ? AND phase = ? AND status = 'failed'
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
+  getPhaseVisitCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs_archive
+      WHERE issue_id = ? AND phase = ?
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
+  getArchivedRuns() {
+    const stmt = this.db.prepare("SELECT * FROM runs_archive ORDER BY archived_at DESC");
+    const rows = stmt.all();
+    return rows.map((row) => this.rowToRunRecord(row));
+  }
+  getArchivedRunCount() {
+    const stmt = this.db.prepare("SELECT COUNT(*) as count FROM runs_archive");
+    const result = stmt.get();
+    return result?.count || 0;
+  }
+  getArchiveSize() {
+    const stmt = this.db.prepare("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()");
+    const result = stmt.get();
+    return result?.size || 0;
+  }
+  cleanupArchive(retentionDays) {
+    const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const stmt = this.db.prepare(`
+      SELECT id FROM runs_archive
+      WHERE scheduled_delete_at IS NOT NULL AND scheduled_delete_at <= ?
+    `);
+    const toDelete = stmt.all(cutoffTime);
+    let deletedCount = 0;
+    for (const row of toDelete) {
+      this.db.run("DELETE FROM decisions_archive WHERE run_id = ?", [row.id]);
+      this.db.run("DELETE FROM runs_archive WHERE id = ?", [row.id]);
+      deletedCount++;
+    }
+    this.db.run("VACUUM");
+    return deletedCount;
+  }
+  close() {
+    this.db.close();
+  }
+}
+var init_archive_logger = () => {};
+
+// src/core/logging.ts
+var exports_logging = {};
+__export(exports_logging, {
+  queryAllRuns: () => queryAllRuns,
+  getRunWithArchival: () => getRunWithArchival,
+  getRunHistory: () => getRunHistory,
+  getLogger: () => getLogger,
+  Logger: () => Logger
+});
+import { Database as Database2 } from "bun:sqlite";
+import { appendFileSync, existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync } from "fs";
+import { join as join2 } from "path";
+
+class Logger {
+  db;
+  jsonlPath;
+  decisionsPath;
+  constructor(dataDir) {
+    const dir = dataDir || join2(process.cwd(), ".agent-shepherd");
+    if (!existsSync2(dir)) {
+      mkdirSync2(dir, { recursive: true });
+    }
+    this.jsonlPath = join2(dir, "runs.jsonl");
+    this.decisionsPath = join2(dir, "decisions.jsonl");
+    const dbPath = join2(dir, "runs.db");
+    this.db = new Database2(dbPath);
+    this.initializeSchema();
+    this.syncFromJSONL();
+  }
+  initializeSchema() {
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY,
+        issue_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        policy_name TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        outcome TEXT,
+        metadata TEXT
+      )
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_id ON runs(issue_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_agent_id ON runs(agent_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase_status ON runs(issue_id, phase, status)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_phase_completed ON runs(phase, completed_at)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase ON runs(issue_id, phase)
+    `);
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS decisions (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        reasoning TEXT,
+        metadata TEXT,
+        FOREIGN KEY (run_id) REFERENCES runs(id)
+      )
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_run_id ON decisions(run_id)
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(type)
+    `);
+  }
+  syncFromJSONL() {
+    if (!existsSync2(this.jsonlPath)) {
+      return;
+    }
+    const content = readFileSync(this.jsonlPath, "utf-8");
+    const lines = content.trim().split(`
+`);
+    for (const line of lines) {
+      if (!line.trim())
+        continue;
+      try {
+        const record = JSON.parse(line);
+        this.upsertToSQLite(record);
+      } catch (error) {
+        console.error("Failed to parse JSONL line:", error);
+      }
+    }
+    if (existsSync2(this.decisionsPath)) {
+      const decisionsContent = readFileSync(this.decisionsPath, "utf-8");
+      const decisionLines = decisionsContent.trim().split(`
+`);
+      for (const line of decisionLines) {
+        if (!line.trim())
+          continue;
+        try {
+          const decision = JSON.parse(line);
+          this.upsertDecisionToSQLite(decision);
+        } catch (error) {
+          console.error("Failed to parse decision JSONL line:", error);
+        }
+      }
+    }
+  }
+  upsertToSQLite(record) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO runs (
+        id, issue_id, session_id, agent_id, policy_name, phase,
+        status, created_at, updated_at, completed_at, outcome, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(record.id, record.issue_id, record.session_id, record.agent_id, record.policy_name, record.phase, record.status, record.created_at, record.updated_at, record.completed_at || null, record.outcome ? JSON.stringify(record.outcome) : null, record.metadata ? JSON.stringify(record.metadata) : null);
+  }
+  upsertDecisionToSQLite(decision) {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO decisions (
+        id, run_id, timestamp, type, decision, reasoning, metadata
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(decision.id, decision.run_id, decision.timestamp, decision.type, decision.decision, decision.reasoning || null, decision.metadata ? JSON.stringify(decision.metadata) : null);
+  }
+  createRun(record) {
+    const now = Date.now();
+    const fullRecord = {
+      ...record,
+      created_at: now,
+      updated_at: now
+    };
+    appendFileSync(this.jsonlPath, JSON.stringify(fullRecord) + `
+`);
+    this.upsertToSQLite(fullRecord);
+    return fullRecord;
+  }
+  updateRun(runId, updates) {
+    const existing = this.getRun(runId);
+    if (!existing) {
+      return null;
+    }
+    const updated = {
+      ...existing,
+      ...updates,
+      updated_at: Date.now()
+    };
+    appendFileSync(this.jsonlPath, JSON.stringify(updated) + `
+`);
+    this.upsertToSQLite(updated);
+    return updated;
+  }
+  getRun(runId) {
+    const stmt = this.db.prepare("SELECT * FROM runs WHERE id = ?");
+    const row = stmt.get(runId);
+    if (!row) {
+      return null;
+    }
+    return this.rowToRunRecord(row);
+  }
+  queryRuns(query) {
+    let sql = "SELECT * FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    sql += " ORDER BY created_at DESC";
+    if (query.limit) {
+      sql += " LIMIT ?";
+      params.push(query.limit);
+    }
+    if (query.offset) {
+      sql += " OFFSET ?";
+      params.push(query.offset);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToRunRecord(row));
+  }
+  getPhaseRetryCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ? AND status = 'failed'
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
+  getPhaseVisitCount(issueId, phaseName) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ?
+    `);
+    const result = stmt.get(issueId, phaseName);
+    return result?.count || 0;
+  }
+  getTotalDuration(query) {
+    let sql = "SELECT SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return result?.total || 0;
+  }
+  getAverageDuration(query) {
+    let sql = "SELECT AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return result?.avg || 0;
+  }
+  getMinDuration(query) {
+    let sql = "SELECT MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return result?.min || null;
+  }
+  getMaxDuration(query) {
+    let sql = "SELECT MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max FROM runs WHERE 1=1";
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return result?.max || null;
+  }
+  getDurationStats(query) {
+    let sql = `
+      SELECT 
+        SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total,
+        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg,
+        MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min,
+        MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max,
+        COUNT(*) as count
+      FROM runs
+      WHERE 1=1
+    `;
+    const params = [];
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params);
+    return {
+      total: result?.total || 0,
+      average: result?.avg || 0,
+      min: result?.min || null,
+      max: result?.max || null,
+      count: result?.count || 0
+    };
+  }
+  getPhaseTotalDuration(issueId, phaseName) {
+    return this.getTotalDuration({ issue_id: issueId, phase: phaseName });
+  }
+  getPhaseAverageDuration(issueId, phaseName) {
+    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
+  }
+  async getAveragePhaseDuration(issueId, phaseName) {
+    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
+  }
+  async getTotalIssueDuration(issueId) {
+    const total = this.getTotalDuration({ issue_id: issueId });
+    return total;
+  }
+  async getSlowestPhases(issueId, limit = 10) {
+    const stmt = this.db.prepare(`
+      SELECT 
+        phase,
+        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg_duration_ms
+      FROM runs
+      WHERE issue_id = ? 
+        AND outcome IS NOT NULL 
+        AND json_extract(outcome, '$.metrics.duration_ms') IS NOT NULL
+      GROUP BY phase
+      ORDER BY avg_duration_ms DESC
+      LIMIT ?
+    `);
+    const rows = stmt.all(issueId, limit);
+    return rows.map((row) => ({
+      phase: row.phase,
+      avg_duration_ms: row.avg_duration_ms || 0
+    }));
+  }
+  logDecision(decision) {
+    const fullDecision = {
+      ...decision,
+      id: `decision-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+      timestamp: Date.now()
+    };
+    appendFileSync(this.decisionsPath, JSON.stringify(fullDecision) + `
+`);
+    this.upsertDecisionToSQLite(fullDecision);
+    return fullDecision;
+  }
+  getDecisions(runId) {
+    const stmt = this.db.prepare("SELECT * FROM decisions WHERE run_id = ? ORDER BY timestamp ASC");
+    const rows = stmt.all(runId);
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+  deleteRun(runId) {
+    this.db.run("DELETE FROM runs WHERE id = ?", [runId]);
+    this.db.run("DELETE FROM decisions WHERE run_id = ?", [runId]);
+  }
+  getDecisionsForIssue(issueId, options) {
+    let sql = `
+      SELECT d.*
+      FROM decisions d
+      INNER JOIN runs r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+      ORDER BY d.timestamp DESC
+    `;
+    const params = [issueId];
+    if (options?.limit) {
+      sql += " LIMIT ?";
+      params.push(options.limit);
+    }
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params);
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+  getTransitionCount(issueId, fromPhase, toPhase) {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM decisions d
+      INNER JOIN runs r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+        AND d.type = 'phase_transition'
+        AND json_extract(d.metadata, '$.from_phase') = ?
+        AND json_extract(d.metadata, '$.to_phase') = ?
+    `);
+    const result = stmt.get(issueId, fromPhase, toPhase);
+    return result?.count || 0;
+  }
+  rowToRunRecord(row) {
+    return {
+      id: row.id,
+      issue_id: row.issue_id,
+      session_id: row.session_id,
+      agent_id: row.agent_id,
+      policy_name: row.policy_name,
+      phase: row.phase,
+      status: row.status,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      completed_at: row.completed_at || undefined,
+      outcome: row.outcome ? JSON.parse(row.outcome) : undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    };
+  }
+  rowToDecisionRecord(row) {
+    return {
+      id: row.id,
+      run_id: row.run_id,
+      timestamp: row.timestamp,
+      type: row.type,
+      decision: row.decision,
+      reasoning: row.reasoning || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    };
+  }
+  close() {
+    this.db.close();
+  }
+  static resetInstance() {
+    defaultLogger = null;
+  }
+}
+function getLogger(dataDir) {
+  if (!defaultLogger) {
+    defaultLogger = new Logger(dataDir);
+  }
+  return defaultLogger;
+}
+function queryAllRuns(query, dataDir) {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger: ArchiveLogger2 } = (init_archive_logger(), __toCommonJS(exports_archive_logger));
+  const archiveLogger = new ArchiveLogger2(dataDir);
+  try {
+    const activeRuns = logger.queryRuns(query);
+    const archiveRuns = archiveLogger.queryRuns(query);
+    const allRunsMap = new Map;
+    for (const run of activeRuns) {
+      allRunsMap.set(run.id, run);
+    }
+    for (const run of archiveRuns) {
+      if (!allRunsMap.has(run.id)) {
+        allRunsMap.set(run.id, run);
+      }
+    }
+    const allRuns = Array.from(allRunsMap.values());
+    allRuns.sort((a, b) => b.created_at - a.created_at);
+    if (query.limit) {
+      const offset = query.offset || 0;
+      return allRuns.slice(offset, offset + query.limit);
+    }
+    return allRuns;
+  } finally {
+    archiveLogger.close();
+  }
+}
+function getRunHistory(runId, dataDir) {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger: ArchiveLogger2 } = (init_archive_logger(), __toCommonJS(exports_archive_logger));
+  const archiveLogger = new ArchiveLogger2(dataDir);
+  try {
+    const activeRun = logger.getRun(runId);
+    if (activeRun) {
+      return activeRun;
+    }
+    return archiveLogger.getRun(runId);
+  } finally {
+    archiveLogger.close();
+  }
+}
+function getRunWithArchival(runId, dataDir) {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger: ArchiveLogger2 } = (init_archive_logger(), __toCommonJS(exports_archive_logger));
+  const archiveLogger = new ArchiveLogger2(dataDir);
+  try {
+    const activeRun = logger.getRun(runId);
+    if (activeRun) {
+      return { run: activeRun, location: "active" };
+    }
+    const archivedRun = archiveLogger.getRun(runId);
+    if (archivedRun) {
+      return { run: archivedRun, location: "archive" };
+    }
+    return { run: null, location: "not_found" };
+  } finally {
+    archiveLogger.close();
+  }
+}
+var defaultLogger = null;
+var init_logging = () => {};
+
+// src/core/opencode.ts
+var exports_opencode = {};
+__export(exports_opencode, {
+  getOpenCodeClient: () => getOpenCodeClient,
+  OpenCodeClient: () => OpenCodeClient
+});
+
+class OpenCodeClient {
+  directory;
+  constructor(config) {
+    this.directory = config?.directory || process.cwd();
+  }
+  async runAgentCLI(config) {
+    const { spawn } = await Promise.resolve(globalThis.Bun);
+    const args = [
+      "run",
+      "--agent",
+      config.agent || "default",
+      "--format",
+      "json",
+      "--title",
+      config.title || "Agent Shepherd Run"
+    ];
+    if (config.model) {
+      args.push("--model", config.model);
+    }
+    if (config.sessionId) {
+      args.push("--session", config.sessionId);
+    }
+    if (config.message) {
+      args.push(config.message);
+    }
+    console.log(`Running: opencode ${args.join(" ")}`);
+    const proc = spawn(["opencode", ...args], {
+      cwd: this.directory,
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+    let stdout = "";
+    let stderr = "";
+    const stdoutReader = proc.stdout?.getReader();
+    if (stdoutReader) {
+      try {
+        while (true) {
+          const { done, value } = await stdoutReader.read();
+          if (done)
+            break;
+          stdout += new TextDecoder().decode(value);
+        }
+      } finally {
+        stdoutReader.releaseLock();
+      }
+    }
+    const stderrReader = proc.stderr?.getReader();
+    if (stderrReader) {
+      try {
+        while (true) {
+          const { done, value } = await stderrReader.read();
+          if (done)
+            break;
+          stderr += new TextDecoder().decode(value);
+        }
+      } finally {
+        stderrReader.releaseLock();
+      }
+    }
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      return {
+        success: false,
+        output: stdout,
+        error: stderr || `Process exited with code ${exitCode}`
+      };
+    }
+    return {
+      success: true,
+      output: stdout,
+      sessionId: this.extractSessionId(stdout)
+    };
+  }
+  async runAgent(config) {
+    return this.runAgentCLI(config);
+  }
+  extractSessionId(output) {
+    try {
+      const lines = output.split(`
+`);
+      for (const line of lines) {
+        if (line.trim()) {
+          const data = JSON.parse(line);
+          if (data.sessionId || data.session_id) {
+            return data.sessionId || data.session_id;
+          }
+        }
+      }
+    } catch {}
+    return;
+  }
+  safeGet(obj, path, defaultValue) {
+    try {
+      const keys = path.split(".");
+      let result = obj;
+      for (const key of keys) {
+        if (result && typeof result === "object" && key in result) {
+          result = result[key];
+        } else {
+          return defaultValue;
+        }
+      }
+      return result;
+    } catch {
+      return defaultValue;
+    }
+  }
+  parseRunOutput(stdout, stderr) {
+    const outcome = {
+      success: true,
+      artifacts: [],
+      tool_calls: [],
+      warnings: [],
+      metrics: {},
+      messages: [],
+      raw_output: {
+        stdout,
+        stderr
+      }
+    };
+    let lastAssistantMessageId;
+    const textPartsByMessage = new Map;
+    const parseLine = (line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    };
+    const processEvent = (event) => {
+      if (!event)
+        return;
+      const payload = event.payload || event.properties;
+      switch (event.type) {
+        case "session.created":
+        case "session.updated":
+          if (this.safeGet(payload, "info.id")) {
+            outcome.session_id = this.safeGet(payload, "info.id");
+          }
+          break;
+        case "session.status":
+          if (this.safeGet(payload, "status.type") === "retry") {
+            outcome.warnings?.push(`Session retry: ${this.safeGet(payload, "status.message", "")} (attempt ${this.safeGet(payload, "status.attempt", 0)})`);
+          }
+          break;
+        case "session.error":
+          outcome.success = false;
+          outcome.error = this.safeGet(payload, "error.message", "Session error occurred");
+          if (this.safeGet(payload, "error")) {
+            outcome.error_details = {
+              type: this.safeGet(payload, "error.name", "SessionError"),
+              message: this.safeGet(payload, "error.message"),
+              stack_trace: this.safeGet(payload, "error.stack"),
+              code: this.safeGet(payload, "error.code"),
+              context: this.safeGet(payload, "error.context")
+            };
+          }
+          break;
+        case "message.updated": {
+          const role = this.safeGet(payload, "info.role");
+          if (role === "assistant" || role === "user") {
+            const msg = payload.info;
+            if (role === "assistant") {
+              lastAssistantMessageId = this.safeGet(msg, "id");
+              if (this.safeGet(msg, "time.created")) {
+                outcome.metrics.start_time_ms = this.safeGet(msg, "time.created");
+              }
+              if (this.safeGet(msg, "time.completed")) {
+                outcome.metrics.end_time_ms = this.safeGet(msg, "time.completed");
+              }
+              if (this.safeGet(msg, "tokens")) {
+                outcome.metrics.tokens_used = (this.safeGet(msg, "tokens.input", 0) || 0) + (this.safeGet(msg, "tokens.output", 0) || 0);
+                const tokens = this.safeGet(msg, "tokens");
+                if (tokens && tokens.cache) {
+                  outcome.metrics.cache_reads = this.safeGet(tokens, "cache.read", 0) || 0;
+                  outcome.metrics.cache_writes = this.safeGet(tokens, "cache.write", 0) || 0;
+                }
+              }
+              if (this.safeGet(msg, "cost")) {
+                outcome.metrics.cost = this.safeGet(msg, "cost");
+              }
+              const modelID = this.safeGet(msg, "modelID");
+              const providerID = this.safeGet(msg, "providerID");
+              if (modelID && providerID) {
+                outcome.metrics.model_name = `${providerID}/${modelID}`;
+              }
+              if (this.safeGet(msg, "error")) {
+                outcome.success = false;
+                outcome.error = this.safeGet(msg, "error.data.message", "Message error occurred");
+                outcome.error_details = {
+                  type: this.safeGet(msg, "error.name", "MessageError"),
+                  message: this.safeGet(msg, "error.data.message"),
+                  stack_trace: this.safeGet(msg, "error.data.stack"),
+                  file_path: this.safeGet(msg, "error.data.file_path"),
+                  line_number: this.safeGet(msg, "error.data.line_number"),
+                  code: this.safeGet(msg, "error.data.code")
+                };
+              }
+            }
+            const message = {
+              id: this.safeGet(msg, "id"),
+              role,
+              content: this.safeGet(msg, "content"),
+              timestamp: this.safeGet(msg, "time.created")
+            };
+            if (role === "assistant") {
+              message.tokens = {
+                input: this.safeGet(msg, "tokens.input"),
+                output: this.safeGet(msg, "tokens.output"),
+                reasoning: this.safeGet(msg, "tokens.reasoning"),
+                total: this.safeGet(msg, "tokens.total")
+              };
+            }
+            outcome.messages?.push(message);
+          }
+          break;
+        }
+        case "message.part.updated": {
+          const partType = this.safeGet(payload, "part.type");
+          if (partType === "tool") {
+            const part = payload.part;
+            const toolName = this.safeGet(part, "tool");
+            const toolCall = {
+              name: toolName || "",
+              inputs: this.safeGet(part, "state.input"),
+              status: this.safeGet(part, "state.status", "completed")
+            };
+            const status = this.safeGet(part, "state.status");
+            if (status === "completed") {
+              const output = this.safeGet(part, "state.output");
+              if (output) {
+                toolCall.outputs = output;
+              }
+            }
+            const timeObj = this.safeGet(part, "state.time");
+            if (timeObj) {
+              const start = this.safeGet(timeObj, "start", 0) || 0;
+              const end = this.safeGet(timeObj, "end", start) || start;
+              toolCall.duration_ms = end - start;
+            }
+            outcome.tool_calls?.push(toolCall);
+          } else if (partType === "text") {
+            const part = payload.part;
+            const messageId = this.safeGet(part, "messageID");
+            let textContent = this.safeGet(part, "text");
+            if (messageId && typeof textContent === "string" && textContent.trim().length > 0) {
+              if (!textPartsByMessage.has(messageId)) {
+                textPartsByMessage.set(messageId, []);
+              }
+              textPartsByMessage.get(messageId).push(textContent);
+            }
+          }
+          break;
+        }
+        case "file.edited": {
+          if (this.safeGet(payload, "diff")) {
+            const filePath = this.safeGet(payload, "diff.file");
+            if (filePath) {
+              const artifact = {
+                path: filePath,
+                operation: "modified",
+                size: this.safeGet(payload, "diff.size"),
+                type: this.safeGet(payload, "diff.type")
+              };
+              const additions = this.safeGet(payload, "diff.additions", 0) || 0;
+              const deletions = this.safeGet(payload, "diff.deletions", 0) || 0;
+              if (additions > 0 || deletions > 0) {
+                artifact.operation = "modified";
+              }
+              outcome.artifacts?.push(artifact);
+            }
+          }
+          break;
+        }
+        case "permission.updated":
+          outcome.warnings?.push(`Permission required: ${this.safeGet(payload, "title", "")}`);
+          break;
+        case "command.executed": {
+          const timeObj = this.safeGet(payload, "time");
+          const startTime = this.safeGet(timeObj, "start");
+          const endTime = this.safeGet(timeObj, "end");
+          outcome.tool_calls?.push({
+            name: "bash",
+            inputs: { command: this.safeGet(payload, "command", "") },
+            outputs: this.safeGet(payload, "stdout"),
+            status: this.safeGet(payload, "exitCode", 0) === 0 ? "completed" : "error",
+            duration_ms: startTime !== undefined && endTime !== undefined ? endTime - startTime : undefined
+          });
+          break;
+        }
+      }
+    };
+    const lines = stdout.split(`
+`);
+    for (const line of lines) {
+      if (line.trim()) {
+        const event = parseLine(line);
+        if (event) {
+          processEvent(event);
+        }
+      }
+    }
+    const stderrLines = stderr.split(`
+`);
+    for (const line of stderrLines) {
+      if (line.trim()) {
+        const event = parseLine(line);
+        if (event) {
+          processEvent(event);
+        }
+      }
+    }
+    if (outcome.metrics.start_time_ms && outcome.metrics.end_time_ms) {
+      outcome.metrics.duration_ms = outcome.metrics.end_time_ms - outcome.metrics.start_time_ms;
+    }
+    if (outcome.tool_calls && outcome.tool_calls.length > 0) {
+      outcome.metrics.api_calls_count = outcome.tool_calls.length;
+    }
+    if (!outcome.error && outcome.success === false) {
+      outcome.error = "Agent execution failed";
+    }
+    if (lastAssistantMessageId && textPartsByMessage.has(lastAssistantMessageId)) {
+      const parts = textPartsByMessage.get(lastAssistantMessageId);
+      const combinedMessage = parts.join(`
+`).trim();
+      if (combinedMessage) {
+        outcome.message = combinedMessage;
+      }
+    }
+    return outcome;
+  }
+  async createSession() {
+    throw new Error("Use runAgentCLI() instead - SDK methods not implemented");
+  }
+  async sendMessage() {
+    throw new Error("Use runAgentCLI() instead - SDK methods not implemented");
+  }
+  async getMessages() {
+    return [];
+  }
+  async waitForCompletion() {
+    throw new Error("Use runAgentCLI() instead - SDK methods not implemented");
+  }
+  isHumanMessage() {
+    return false;
+  }
+  async abortSession() {}
+  async listSessionsForIssue(issueId) {
+    const { getLogger: getLogger2 } = await Promise.resolve().then(() => (init_logging(), exports_logging));
+    const logger = getLogger2();
+    const runs = logger.queryRuns({ issue_id: issueId });
+    const sessionMap = new Map;
+    for (const run of runs) {
+      const sessionId = run.session_id;
+      const existing = sessionMap.get(sessionId);
+      const runTokens = run.outcome?.metrics?.tokens_used || 0;
+      if (existing) {
+        existing.tokens += runTokens;
+      } else {
+        sessionMap.set(sessionId, {
+          sessionId,
+          title: `${issueId}: ${run.phase}`,
+          phase: run.phase,
+          tokens: runTokens,
+          created: run.created_at
+        });
+      }
+    }
+    return Array.from(sessionMap.values()).sort((a, b) => a.created - b.created);
+  }
+}
+function getOpenCodeClient(config) {
+  if (!defaultClient) {
+    defaultClient = new OpenCodeClient(config);
+  }
+  return defaultClient;
+}
+var defaultClient = null;
+
 // node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS((exports) => {
   var ALIAS = Symbol.for("yaml.alias");
@@ -7007,11 +8158,11 @@ __export(exports_path_utils, {
   findConfigDir: () => findConfigDir,
   findAgentShepherdDir: () => findAgentShepherdDir
 });
-import { existsSync } from "fs";
-import { join, dirname } from "path";
+import { existsSync as existsSync3 } from "fs";
+import { join as join3, dirname } from "path";
 import { homedir } from "os";
 function getGlobalInstallDir() {
-  return join(homedir(), ".agent-shepherd");
+  return join3(homedir(), ".agent-shepherd");
 }
 function findLocalAgentShepherdDir() {
   let currentDir = process.cwd();
@@ -7021,9 +8172,9 @@ function findLocalAgentShepherdDir() {
       break;
     }
     visited.add(currentDir);
-    const agentShepherdDir = join(currentDir, ".agent-shepherd");
-    if (existsSync(agentShepherdDir)) {
-      const hasSrc = existsSync(join(agentShepherdDir, "src"));
+    const agentShepherdDir = join3(currentDir, ".agent-shepherd");
+    if (existsSync3(agentShepherdDir)) {
+      const hasSrc = existsSync3(join3(agentShepherdDir, "src"));
       if (hasSrc) {
         return agentShepherdDir;
       }
@@ -7037,41 +8188,41 @@ function findLocalAgentShepherdDir() {
 }
 function findInstallDir() {
   const local = findLocalAgentShepherdDir();
-  if (local && existsSync(join(local, "src"))) {
+  if (local && existsSync3(join3(local, "src"))) {
     return local;
   }
   const global2 = getGlobalInstallDir();
-  if (existsSync(global2)) {
+  if (existsSync3(global2)) {
     return global2;
   }
   throw new Error("Agent Shepherd not installed. Run the installer or 'ashep init'");
 }
 function findConfigDir() {
   const local = findLocalAgentShepherdDir();
-  if (local && existsSync(join(local, "config"))) {
-    return join(local, "config");
+  if (local && existsSync3(join3(local, "config"))) {
+    return join3(local, "config");
   }
   const global2 = getGlobalInstallDir();
-  const globalConfig = join(global2, "config");
-  if (existsSync(globalConfig)) {
+  const globalConfig = join3(global2, "config");
+  if (existsSync3(globalConfig)) {
     return globalConfig;
   }
   throw new Error("No configuration found. Run 'ashep init' in your project.");
 }
 function findPluginsDir() {
   const local = findLocalAgentShepherdDir();
-  if (local && existsSync(join(local, "plugins"))) {
-    return join(local, "plugins");
+  if (local && existsSync3(join3(local, "plugins"))) {
+    return join3(local, "plugins");
   }
   const global2 = getGlobalInstallDir();
-  return join(global2, "plugins");
+  return join3(global2, "plugins");
 }
 function findAgentShepherdDir() {
   const local = findLocalAgentShepherdDir();
   if (local)
     return local;
   const global2 = getGlobalInstallDir();
-  if (existsSync(global2))
+  if (existsSync3(global2))
     return global2;
   throw new Error(".agent-shepherd directory not found. Run the installer or 'ashep init'");
 }
@@ -7079,13 +8230,13 @@ function getConfigDir() {
   return findConfigDir();
 }
 function getConfigPath(filename) {
-  const newPath = join(findConfigDir(), filename);
-  if (existsSync(newPath)) {
+  const newPath = join3(findConfigDir(), filename);
+  if (existsSync3(newPath)) {
     return newPath;
   }
   const agentShepherdDir = findAgentShepherdDir();
-  const oldPath = join(agentShepherdDir, filename);
-  if (existsSync(oldPath)) {
+  const oldPath = join3(agentShepherdDir, filename);
+  if (existsSync3(oldPath)) {
     return oldPath;
   }
   return newPath;
@@ -7098,15 +8249,15 @@ __export(exports_config, {
   loadRetentionConfig: () => loadRetentionConfig,
   loadConfig: () => loadConfig
 });
-import { readFileSync, existsSync as existsSync2 } from "fs";
-import { join as join2 } from "path";
+import { readFileSync as readFileSync2, existsSync as existsSync4 } from "fs";
+import { join as join4 } from "path";
 function loadConfig(configDir) {
-  const configPath = configDir ? join2(configDir, ".agent-shepherd", "config.yaml") : getConfigPath("config.yaml");
-  if (!existsSync2(configPath)) {
+  const configPath = configDir ? join4(configDir, ".agent-shepherd", "config.yaml") : getConfigPath("config.yaml");
+  if (!existsSync4(configPath)) {
     throw new Error(`Configuration file not found: ${configPath}`);
   }
   try {
-    const content = readFileSync(configPath, "utf-8");
+    const content = readFileSync2(configPath, "utf-8");
     const config = import_yaml.parse(content);
     return {
       version: config.version || "1.0",
@@ -7176,6 +8327,24 @@ function loadConfig(configDir) {
       } : {
         enabled: true,
         policies: []
+      },
+      worker_assistant: config.worker_assistant ? {
+        enabled: config.worker_assistant.enabled ?? false,
+        agentCapability: config.worker_assistant.agentCapability ?? "worker-assistant",
+        timeoutMs: config.worker_assistant.timeoutMs ?? 1e4,
+        fallbackAction: config.worker_assistant.fallbackAction ?? "block"
+      } : {
+        enabled: false,
+        agentCapability: "worker-assistant",
+        timeoutMs: 1e4,
+        fallbackAction: "block"
+      },
+      session_continuation: config.session_continuation ? {
+        default_max_context_tokens: config.session_continuation.default_max_context_tokens ?? 130000,
+        default_threshold: config.session_continuation.default_threshold ?? 0.8
+      } : {
+        default_max_context_tokens: 130000,
+        default_threshold: 0.8
       }
     };
   } catch (error) {
@@ -7230,7 +8399,7 @@ __export(exports_agent_registry, {
   getAgentRegistry: () => getAgentRegistry,
   AgentRegistry: () => AgentRegistry
 });
-import { readFileSync as readFileSync2, writeFileSync } from "fs";
+import { readFileSync as readFileSync3, writeFileSync } from "fs";
 
 class AgentRegistry {
   agents;
@@ -7245,7 +8414,7 @@ class AgentRegistry {
   }
   loadAgents(filePath) {
     try {
-      const content = readFileSync2(filePath, "utf-8");
+      const content = readFileSync3(filePath, "utf-8");
       const config = import_yaml2.parse(content);
       if (!config.agents) {
         throw new Error("Invalid agents file: missing 'agents' key");
@@ -7621,471 +8790,6 @@ var init_agent_registry = __esm(() => {
   init_config();
   import_yaml2 = __toESM(require_dist(), 1);
 });
-
-// src/core/logging.ts
-import { Database } from "bun:sqlite";
-import { appendFileSync, existsSync as existsSync3, mkdirSync, readFileSync as readFileSync3 } from "fs";
-import { join as join3 } from "path";
-
-class Logger {
-  db;
-  jsonlPath;
-  decisionsPath;
-  constructor(dataDir) {
-    const dir = dataDir || join3(process.cwd(), ".agent-shepherd");
-    if (!existsSync3(dir)) {
-      mkdirSync(dir, { recursive: true });
-    }
-    this.jsonlPath = join3(dir, "runs.jsonl");
-    this.decisionsPath = join3(dir, "decisions.jsonl");
-    const dbPath = join3(dir, "runs.db");
-    this.db = new Database(dbPath);
-    this.initializeSchema();
-    this.syncFromJSONL();
-  }
-  initializeSchema() {
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS runs (
-        id TEXT PRIMARY KEY,
-        issue_id TEXT NOT NULL,
-        session_id TEXT NOT NULL,
-        agent_id TEXT NOT NULL,
-        policy_name TEXT NOT NULL,
-        phase TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        completed_at INTEGER,
-        outcome TEXT,
-        metadata TEXT
-      )
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_issue_id ON runs(issue_id)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_agent_id ON runs(agent_id)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase_status ON runs(issue_id, phase, status)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_phase_completed ON runs(phase, completed_at)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase ON runs(issue_id, phase)
-    `);
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS decisions (
-        id TEXT PRIMARY KEY,
-        run_id TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        decision TEXT NOT NULL,
-        reasoning TEXT,
-        metadata TEXT,
-        FOREIGN KEY (run_id) REFERENCES runs(id)
-      )
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_decisions_run_id ON decisions(run_id)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(type)
-    `);
-  }
-  syncFromJSONL() {
-    if (!existsSync3(this.jsonlPath)) {
-      return;
-    }
-    const content = readFileSync3(this.jsonlPath, "utf-8");
-    const lines = content.trim().split(`
-`);
-    for (const line of lines) {
-      if (!line.trim())
-        continue;
-      try {
-        const record = JSON.parse(line);
-        this.upsertToSQLite(record);
-      } catch (error) {
-        console.error("Failed to parse JSONL line:", error);
-      }
-    }
-    if (existsSync3(this.decisionsPath)) {
-      const decisionsContent = readFileSync3(this.decisionsPath, "utf-8");
-      const decisionLines = decisionsContent.trim().split(`
-`);
-      for (const line of decisionLines) {
-        if (!line.trim())
-          continue;
-        try {
-          const decision = JSON.parse(line);
-          this.upsertDecisionToSQLite(decision);
-        } catch (error) {
-          console.error("Failed to parse decision JSONL line:", error);
-        }
-      }
-    }
-  }
-  upsertToSQLite(record) {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO runs (
-        id, issue_id, session_id, agent_id, policy_name, phase,
-        status, created_at, updated_at, completed_at, outcome, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(record.id, record.issue_id, record.session_id, record.agent_id, record.policy_name, record.phase, record.status, record.created_at, record.updated_at, record.completed_at || null, record.outcome ? JSON.stringify(record.outcome) : null, record.metadata ? JSON.stringify(record.metadata) : null);
-  }
-  upsertDecisionToSQLite(decision) {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO decisions (
-        id, run_id, timestamp, type, decision, reasoning, metadata
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(decision.id, decision.run_id, decision.timestamp, decision.type, decision.decision, decision.reasoning || null, decision.metadata ? JSON.stringify(decision.metadata) : null);
-  }
-  createRun(record) {
-    const now = Date.now();
-    const fullRecord = {
-      ...record,
-      created_at: now,
-      updated_at: now
-    };
-    appendFileSync(this.jsonlPath, JSON.stringify(fullRecord) + `
-`);
-    this.upsertToSQLite(fullRecord);
-    return fullRecord;
-  }
-  updateRun(runId, updates) {
-    const existing = this.getRun(runId);
-    if (!existing) {
-      return null;
-    }
-    const updated = {
-      ...existing,
-      ...updates,
-      updated_at: Date.now()
-    };
-    appendFileSync(this.jsonlPath, JSON.stringify(updated) + `
-`);
-    this.upsertToSQLite(updated);
-    return updated;
-  }
-  getRun(runId) {
-    const stmt = this.db.prepare("SELECT * FROM runs WHERE id = ?");
-    const row = stmt.get(runId);
-    if (!row) {
-      return null;
-    }
-    return this.rowToRunRecord(row);
-  }
-  queryRuns(query) {
-    let sql = "SELECT * FROM runs WHERE 1=1";
-    const params = [];
-    if (query.issue_id) {
-      sql += " AND issue_id = ?";
-      params.push(query.issue_id);
-    }
-    if (query.agent_id) {
-      sql += " AND agent_id = ?";
-      params.push(query.agent_id);
-    }
-    if (query.status) {
-      sql += " AND status = ?";
-      params.push(query.status);
-    }
-    if (query.phase) {
-      sql += " AND phase = ?";
-      params.push(query.phase);
-    }
-    sql += " ORDER BY created_at DESC";
-    if (query.limit) {
-      sql += " LIMIT ?";
-      params.push(query.limit);
-    }
-    if (query.offset) {
-      sql += " OFFSET ?";
-      params.push(query.offset);
-    }
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params);
-    return rows.map((row) => this.rowToRunRecord(row));
-  }
-  getPhaseRetryCount(issueId, phaseName) {
-    const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count
-      FROM runs
-      WHERE issue_id = ? AND phase = ? AND status = 'failed'
-    `);
-    const result = stmt.get(issueId, phaseName);
-    return result?.count || 0;
-  }
-  getPhaseVisitCount(issueId, phaseName) {
-    const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count
-      FROM runs
-      WHERE issue_id = ? AND phase = ?
-    `);
-    const result = stmt.get(issueId, phaseName);
-    return result?.count || 0;
-  }
-  getTotalDuration(query) {
-    let sql = "SELECT SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total FROM runs WHERE 1=1";
-    const params = [];
-    if (query.issue_id) {
-      sql += " AND issue_id = ?";
-      params.push(query.issue_id);
-    }
-    if (query.agent_id) {
-      sql += " AND agent_id = ?";
-      params.push(query.agent_id);
-    }
-    if (query.status) {
-      sql += " AND status = ?";
-      params.push(query.status);
-    }
-    if (query.phase) {
-      sql += " AND phase = ?";
-      params.push(query.phase);
-    }
-    const stmt = this.db.prepare(sql);
-    const result = stmt.get(...params);
-    return result?.total || 0;
-  }
-  getAverageDuration(query) {
-    let sql = "SELECT AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg FROM runs WHERE 1=1";
-    const params = [];
-    if (query.issue_id) {
-      sql += " AND issue_id = ?";
-      params.push(query.issue_id);
-    }
-    if (query.agent_id) {
-      sql += " AND agent_id = ?";
-      params.push(query.agent_id);
-    }
-    if (query.status) {
-      sql += " AND status = ?";
-      params.push(query.status);
-    }
-    if (query.phase) {
-      sql += " AND phase = ?";
-      params.push(query.phase);
-    }
-    const stmt = this.db.prepare(sql);
-    const result = stmt.get(...params);
-    return result?.avg || 0;
-  }
-  getMinDuration(query) {
-    let sql = "SELECT MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min FROM runs WHERE 1=1";
-    const params = [];
-    if (query.issue_id) {
-      sql += " AND issue_id = ?";
-      params.push(query.issue_id);
-    }
-    if (query.agent_id) {
-      sql += " AND agent_id = ?";
-      params.push(query.agent_id);
-    }
-    if (query.status) {
-      sql += " AND status = ?";
-      params.push(query.status);
-    }
-    if (query.phase) {
-      sql += " AND phase = ?";
-      params.push(query.phase);
-    }
-    const stmt = this.db.prepare(sql);
-    const result = stmt.get(...params);
-    return result?.min || null;
-  }
-  getMaxDuration(query) {
-    let sql = "SELECT MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max FROM runs WHERE 1=1";
-    const params = [];
-    if (query.issue_id) {
-      sql += " AND issue_id = ?";
-      params.push(query.issue_id);
-    }
-    if (query.agent_id) {
-      sql += " AND agent_id = ?";
-      params.push(query.agent_id);
-    }
-    if (query.status) {
-      sql += " AND status = ?";
-      params.push(query.status);
-    }
-    if (query.phase) {
-      sql += " AND phase = ?";
-      params.push(query.phase);
-    }
-    const stmt = this.db.prepare(sql);
-    const result = stmt.get(...params);
-    return result?.max || null;
-  }
-  getDurationStats(query) {
-    let sql = `
-      SELECT 
-        SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total,
-        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg,
-        MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min,
-        MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max,
-        COUNT(*) as count
-      FROM runs
-      WHERE 1=1
-    `;
-    const params = [];
-    if (query.issue_id) {
-      sql += " AND issue_id = ?";
-      params.push(query.issue_id);
-    }
-    if (query.agent_id) {
-      sql += " AND agent_id = ?";
-      params.push(query.agent_id);
-    }
-    if (query.status) {
-      sql += " AND status = ?";
-      params.push(query.status);
-    }
-    if (query.phase) {
-      sql += " AND phase = ?";
-      params.push(query.phase);
-    }
-    const stmt = this.db.prepare(sql);
-    const result = stmt.get(...params);
-    return {
-      total: result?.total || 0,
-      average: result?.avg || 0,
-      min: result?.min || null,
-      max: result?.max || null,
-      count: result?.count || 0
-    };
-  }
-  getPhaseTotalDuration(issueId, phaseName) {
-    return this.getTotalDuration({ issue_id: issueId, phase: phaseName });
-  }
-  getPhaseAverageDuration(issueId, phaseName) {
-    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
-  }
-  async getAveragePhaseDuration(issueId, phaseName) {
-    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
-  }
-  async getTotalIssueDuration(issueId) {
-    const total = this.getTotalDuration({ issue_id: issueId });
-    return total;
-  }
-  async getSlowestPhases(issueId, limit = 10) {
-    const stmt = this.db.prepare(`
-      SELECT 
-        phase,
-        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg_duration_ms
-      FROM runs
-      WHERE issue_id = ? 
-        AND outcome IS NOT NULL 
-        AND json_extract(outcome, '$.metrics.duration_ms') IS NOT NULL
-      GROUP BY phase
-      ORDER BY avg_duration_ms DESC
-      LIMIT ?
-    `);
-    const rows = stmt.all(issueId, limit);
-    return rows.map((row) => ({
-      phase: row.phase,
-      avg_duration_ms: row.avg_duration_ms || 0
-    }));
-  }
-  logDecision(decision) {
-    const fullDecision = {
-      ...decision,
-      id: `decision-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-      timestamp: Date.now()
-    };
-    appendFileSync(this.decisionsPath, JSON.stringify(fullDecision) + `
-`);
-    this.upsertDecisionToSQLite(fullDecision);
-    return fullDecision;
-  }
-  getDecisions(runId) {
-    const stmt = this.db.prepare("SELECT * FROM decisions WHERE run_id = ? ORDER BY timestamp ASC");
-    const rows = stmt.all(runId);
-    return rows.map((row) => this.rowToDecisionRecord(row));
-  }
-  deleteRun(runId) {
-    this.db.run("DELETE FROM runs WHERE id = ?", [runId]);
-    this.db.run("DELETE FROM decisions WHERE run_id = ?", [runId]);
-  }
-  getDecisionsForIssue(issueId, options) {
-    let sql = `
-      SELECT d.*
-      FROM decisions d
-      INNER JOIN runs r ON d.run_id = r.id
-      WHERE r.issue_id = ?
-      ORDER BY d.timestamp DESC
-    `;
-    const params = [issueId];
-    if (options?.limit) {
-      sql += " LIMIT ?";
-      params.push(options.limit);
-    }
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params);
-    return rows.map((row) => this.rowToDecisionRecord(row));
-  }
-  getTransitionCount(issueId, fromPhase, toPhase) {
-    const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count
-      FROM decisions d
-      INNER JOIN runs r ON d.run_id = r.id
-      WHERE r.issue_id = ?
-        AND d.type = 'phase_transition'
-        AND json_extract(d.metadata, '$.from_phase') = ?
-        AND json_extract(d.metadata, '$.to_phase') = ?
-    `);
-    const result = stmt.get(issueId, fromPhase, toPhase);
-    return result?.count || 0;
-  }
-  rowToRunRecord(row) {
-    return {
-      id: row.id,
-      issue_id: row.issue_id,
-      session_id: row.session_id,
-      agent_id: row.agent_id,
-      policy_name: row.policy_name,
-      phase: row.phase,
-      status: row.status,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      completed_at: row.completed_at || undefined,
-      outcome: row.outcome ? JSON.parse(row.outcome) : undefined,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
-    };
-  }
-  rowToDecisionRecord(row) {
-    return {
-      id: row.id,
-      run_id: row.run_id,
-      timestamp: row.timestamp,
-      type: row.type,
-      decision: row.decision,
-      reasoning: row.reasoning || undefined,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
-    };
-  }
-  close() {
-    this.db.close();
-  }
-  static resetInstance() {
-    defaultLogger = null;
-  }
-}
-function getLogger(dataDir) {
-  if (!defaultLogger) {
-    defaultLogger = new Logger(dataDir);
-  }
-  return defaultLogger;
-}
-var defaultLogger = null;
-var init_logging = () => {};
 
 // src/core/decision-builder.ts
 import { readFileSync as readFileSync4 } from "fs";
@@ -8543,6 +9247,9 @@ class PolicyEngine {
     }
     return policy.phases.map((p) => p.name);
   }
+  getPolicyConfig(policyName) {
+    return this.getPolicy(policyName);
+  }
   getPhaseConfig(policyName, phaseName) {
     const policy = this.getPolicy(policyName);
     if (!policy) {
@@ -8867,12 +9574,12 @@ __export(exports_phase_messenger, {
   formatMessagesForCLI: () => formatMessagesForCLI,
   PhaseMessenger: () => PhaseMessenger
 });
-import { Database as Database2 } from "bun:sqlite";
-import { existsSync as existsSync4, readFileSync as readFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync2, statSync } from "fs";
-import { join as join4 } from "path";
+import { Database as Database3 } from "bun:sqlite";
+import { existsSync as existsSync5, readFileSync as readFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, statSync } from "fs";
+import { join as join5 } from "path";
 function loadConfig2(dataDir) {
-  const configPath = join4(dataDir || process.cwd(), ".agent-shepherd", "config", "phase-messenger.yaml");
-  if (!existsSync4(configPath)) {
+  const configPath = join5(dataDir || process.cwd(), ".agent-shepherd", "config", "phase-messenger.yaml");
+  if (!existsSync5(configPath)) {
     return DEFAULT_CONFIG;
   }
   try {
@@ -8904,13 +9611,13 @@ class PhaseMessenger {
   config;
   constructor(dataDir) {
     this.config = loadConfig2(dataDir);
-    const dir = dataDir || join4(process.cwd(), this.config.storage.data_dir);
-    if (!existsSync4(dir)) {
-      mkdirSync2(dir, { recursive: true });
+    const dir = dataDir || join5(process.cwd(), this.config.storage.data_dir);
+    if (!existsSync5(dir)) {
+      mkdirSync3(dir, { recursive: true });
     }
-    this.jsonlPath = join4(dir, this.config.storage.jsonl_file);
-    const dbPath = join4(dir, this.config.storage.database_file);
-    this.db = new Database2(dbPath);
+    this.jsonlPath = join5(dir, this.config.storage.jsonl_file);
+    const dbPath = join5(dir, this.config.storage.database_file);
+    this.db = new Database3(dbPath);
     this.initializeSchema();
     this.syncFromJSONL();
   }
@@ -8943,7 +9650,7 @@ class PhaseMessenger {
     indexes.forEach((idx) => this.db.exec(idx));
   }
   syncFromJSONL() {
-    if (!existsSync4(this.jsonlPath)) {
+    if (!existsSync5(this.jsonlPath)) {
       return;
     }
     const content = readFileSync6(this.jsonlPath, "utf-8");
@@ -9126,11 +9833,11 @@ class PhaseMessenger {
     };
   }
   getArchivePath(issueId) {
-    const archiveDir = join4(this.jsonlPath, "..", "messages_archive");
-    if (!existsSync4(archiveDir)) {
-      mkdirSync2(archiveDir, { recursive: true });
+    const archiveDir = join5(this.jsonlPath, "..", "messages_archive");
+    if (!existsSync5(archiveDir)) {
+      mkdirSync3(archiveDir, { recursive: true });
     }
-    return join4(archiveDir, `${issueId}.jsonl`);
+    return join5(archiveDir, `${issueId}.jsonl`);
   }
   archiveMessagesForIssue(issueId, reason = "cleanup") {
     const messages = this.listMessages({ issue_id: issueId });
@@ -9152,7 +9859,7 @@ class PhaseMessenger {
     return { archived: messages.length };
   }
   cleanupPhaseMessages(issueId, reason = "manual") {
-    const dbPath = join4(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbPath = join5(this.jsonlPath, "..", this.config.storage.database_file);
     const dbSizeBefore = this.getDatabaseSize(dbPath);
     const archiveResult = this.archiveMessagesForIssue(issueId, reason);
     this.deleteIssueMessages(issueId);
@@ -9166,14 +9873,14 @@ class PhaseMessenger {
     };
   }
   getDatabaseSize(dbPath) {
-    if (existsSync4(dbPath)) {
+    if (existsSync5(dbPath)) {
       const stats = statSync(dbPath);
       return stats.size;
     }
     return 0;
   }
   recordCleanupMetric(issueId, reason, archived, deleted, sizeBefore, sizeAfter) {
-    const cleanupMetricsPath = join4(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+    const cleanupMetricsPath = join5(this.jsonlPath, "..", "cleanup_metrics.jsonl");
     const metric = {
       timestamp: Date.now(),
       issue_id: issueId,
@@ -9189,9 +9896,9 @@ class PhaseMessenger {
 `);
   }
   getCleanupMetrics(issueId) {
-    const { existsSync: existsSync5, readFileSync: readFileSync7 } = __require("fs");
-    const cleanupMetricsPath = join4(this.jsonlPath, "..", "cleanup_metrics.jsonl");
-    if (!existsSync5(cleanupMetricsPath)) {
+    const { existsSync: existsSync6, readFileSync: readFileSync7 } = __require("fs");
+    const cleanupMetricsPath = join5(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+    if (!existsSync6(cleanupMetricsPath)) {
       return [];
     }
     const content = readFileSync7(cleanupMetricsPath, "utf-8");
@@ -9228,7 +9935,7 @@ class PhaseMessenger {
         byIssue[m.issue_id] = (byIssue[m.issue_id] || 0) + 1;
       });
     }
-    const dbPath = join4(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbPath = join5(this.jsonlPath, "..", this.config.storage.database_file);
     const dbSize = this.getDatabaseSize(dbPath) / (1024 * 1024);
     return {
       total_messages: total,
@@ -9645,239 +10352,6 @@ var init_policy_capability_validator = __esm(() => {
   init_config();
   policyCapabilityValidator = new PolicyCapabilityValidator;
 });
-
-// src/core/archive-logger.ts
-var exports_archive_logger = {};
-__export(exports_archive_logger, {
-  ArchiveLogger: () => ArchiveLogger
-});
-import { Database as Database4 } from "bun:sqlite";
-import { existsSync as existsSync6, mkdirSync as mkdirSync4 } from "fs";
-import { join as join6 } from "path";
-
-class ArchiveLogger {
-  db;
-  constructor(dataDir) {
-    const dir = dataDir || join6(process.cwd(), ".agent-shepherd");
-    const archiveDir = join6(dir, "archive");
-    if (!existsSync6(archiveDir)) {
-      mkdirSync4(archiveDir, { recursive: true });
-    }
-    const archiveDbPath = join6(archiveDir, "archive.db");
-    this.db = new Database4(archiveDbPath);
-    this.initializeArchiveSchema();
-    this.db.run("PRAGMA journal_mode = WAL");
-    this.db.run("PRAGMA synchronous = NORMAL");
-    this.db.run("PRAGMA cache_size = -2000");
-    this.db.run("PRAGMA temp_store = MEMORY");
-    this.db.run("PRAGMA mmap_size = 268435456");
-  }
-  initializeArchiveSchema() {
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS runs_archive (
-        id TEXT PRIMARY KEY,
-        issue_id TEXT NOT NULL,
-        session_id TEXT NOT NULL,
-        agent_id TEXT NOT NULL,
-        policy_name TEXT NOT NULL,
-        phase TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-        completed_at INTEGER,
-        outcome TEXT,
-        metadata TEXT,
-        archived_at INTEGER NOT NULL,
-        retention_policy TEXT NOT NULL,
-        scheduled_delete_at INTEGER
-      )
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_id ON runs_archive(issue_id)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_archive_agent_id ON runs_archive(agent_id)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_archive_status ON runs_archive(status)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_phase_status ON runs_archive(issue_id, phase, status)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_archive_phase_completed ON runs_archive(phase, completed_at)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_archive_issue_phase ON runs_archive(issue_id, phase)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_archive_archived_at ON runs_archive(archived_at)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_runs_archive_scheduled_delete ON runs_archive(scheduled_delete_at)
-    `);
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS decisions_archive (
-        id TEXT PRIMARY KEY,
-        run_id TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        decision TEXT NOT NULL,
-        reasoning TEXT,
-        metadata TEXT,
-        FOREIGN KEY (run_id) REFERENCES runs_archive(id)
-      )
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_decisions_archive_run_id ON decisions_archive(run_id)
-    `);
-    this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_decisions_archive_type ON decisions_archive(type)
-    `);
-  }
-  rowToRunRecord(row) {
-    return {
-      id: row.id,
-      issue_id: row.issue_id,
-      session_id: row.session_id,
-      agent_id: row.agent_id,
-      policy_name: row.policy_name,
-      phase: row.phase,
-      status: row.status,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      completed_at: row.completed_at || undefined,
-      outcome: row.outcome ? JSON.parse(row.outcome) : undefined,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
-    };
-  }
-  rowToDecisionRecord(row) {
-    return {
-      id: row.id,
-      run_id: row.run_id,
-      timestamp: row.timestamp,
-      type: row.type,
-      decision: row.decision,
-      reasoning: row.reasoning || undefined,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
-    };
-  }
-  getRun(runId) {
-    const stmt = this.db.prepare("SELECT * FROM runs_archive WHERE id = ?");
-    const row = stmt.get(runId);
-    if (!row) {
-      return null;
-    }
-    return this.rowToRunRecord(row);
-  }
-  queryRuns(query) {
-    let sql = "SELECT * FROM runs_archive WHERE 1=1";
-    const params = [];
-    if (query.issue_id) {
-      sql += " AND issue_id = ?";
-      params.push(query.issue_id);
-    }
-    if (query.agent_id) {
-      sql += " AND agent_id = ?";
-      params.push(query.agent_id);
-    }
-    if (query.status) {
-      sql += " AND status = ?";
-      params.push(query.status);
-    }
-    if (query.phase) {
-      sql += " AND phase = ?";
-      params.push(query.phase);
-    }
-    sql += " ORDER BY created_at DESC";
-    if (query.limit) {
-      sql += " LIMIT ?";
-      params.push(query.limit);
-    }
-    if (query.offset) {
-      sql += " OFFSET ?";
-      params.push(query.offset);
-    }
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params);
-    return rows.map((row) => this.rowToRunRecord(row));
-  }
-  getDecisions(runId) {
-    const stmt = this.db.prepare("SELECT * FROM decisions_archive WHERE run_id = ? ORDER BY timestamp ASC");
-    const rows = stmt.all(runId);
-    return rows.map((row) => this.rowToDecisionRecord(row));
-  }
-  getDecisionsForIssue(issueId, options) {
-    let sql = `
-      SELECT d.*
-      FROM decisions_archive d
-      INNER JOIN runs_archive r ON d.run_id = r.id
-      WHERE r.issue_id = ?
-      ORDER BY d.timestamp DESC
-    `;
-    const params = [issueId];
-    if (options?.limit) {
-      sql += " LIMIT ?";
-      params.push(options.limit);
-    }
-    const stmt = this.db.prepare(sql);
-    const rows = stmt.all(...params);
-    return rows.map((row) => this.rowToDecisionRecord(row));
-  }
-  getPhaseRetryCount(issueId, phaseName) {
-    const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count
-      FROM runs_archive
-      WHERE issue_id = ? AND phase = ? AND status = 'failed'
-    `);
-    const result = stmt.get(issueId, phaseName);
-    return result?.count || 0;
-  }
-  getPhaseVisitCount(issueId, phaseName) {
-    const stmt = this.db.prepare(`
-      SELECT COUNT(*) as count
-      FROM runs_archive
-      WHERE issue_id = ? AND phase = ?
-    `);
-    const result = stmt.get(issueId, phaseName);
-    return result?.count || 0;
-  }
-  getArchivedRuns() {
-    const stmt = this.db.prepare("SELECT * FROM runs_archive ORDER BY archived_at DESC");
-    const rows = stmt.all();
-    return rows.map((row) => this.rowToRunRecord(row));
-  }
-  getArchivedRunCount() {
-    const stmt = this.db.prepare("SELECT COUNT(*) as count FROM runs_archive");
-    const result = stmt.get();
-    return result?.count || 0;
-  }
-  getArchiveSize() {
-    const stmt = this.db.prepare("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()");
-    const result = stmt.get();
-    return result?.size || 0;
-  }
-  cleanupArchive(retentionDays) {
-    const cutoffTime = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
-    const stmt = this.db.prepare(`
-      SELECT id FROM runs_archive
-      WHERE scheduled_delete_at IS NOT NULL AND scheduled_delete_at <= ?
-    `);
-    const toDelete = stmt.all(cutoffTime);
-    let deletedCount = 0;
-    for (const row of toDelete) {
-      this.db.run("DELETE FROM decisions_archive WHERE run_id = ?", [row.id]);
-      this.db.run("DELETE FROM runs_archive WHERE id = ?", [row.id]);
-      deletedCount++;
-    }
-    this.db.run("VACUUM");
-    return deletedCount;
-  }
-  close() {
-    this.db.close();
-  }
-}
-var init_archive_logger = () => {};
 
 // node_modules/ajv/dist/compile/codegen/code.js
 var require_code = __commonJS((exports) => {
@@ -40485,360 +40959,6 @@ async function hasAshepManagedLabel(issueId) {
   return labels.includes("ashep-managed");
 }
 
-// src/core/opencode.ts
-class OpenCodeClient {
-  directory;
-  constructor(config) {
-    this.directory = config?.directory || process.cwd();
-  }
-  async runAgentCLI(config) {
-    const { spawn } = await Promise.resolve(globalThis.Bun);
-    const args = [
-      "run",
-      "--agent",
-      config.agent || "default",
-      "--format",
-      "json",
-      "--title",
-      config.title || "Agent Shepherd Run"
-    ];
-    if (config.model) {
-      args.push("--model", config.model);
-    }
-    if (config.message) {
-      args.push(config.message);
-    }
-    console.log(`Running: opencode ${args.join(" ")}`);
-    const proc = spawn(["opencode", ...args], {
-      cwd: this.directory,
-      stdout: "pipe",
-      stderr: "pipe"
-    });
-    let stdout = "";
-    let stderr = "";
-    const stdoutReader = proc.stdout?.getReader();
-    if (stdoutReader) {
-      try {
-        while (true) {
-          const { done, value } = await stdoutReader.read();
-          if (done)
-            break;
-          stdout += new TextDecoder().decode(value);
-        }
-      } finally {
-        stdoutReader.releaseLock();
-      }
-    }
-    const stderrReader = proc.stderr?.getReader();
-    if (stderrReader) {
-      try {
-        while (true) {
-          const { done, value } = await stderrReader.read();
-          if (done)
-            break;
-          stderr += new TextDecoder().decode(value);
-        }
-      } finally {
-        stderrReader.releaseLock();
-      }
-    }
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) {
-      return {
-        success: false,
-        output: stdout,
-        error: stderr || `Process exited with code ${exitCode}`
-      };
-    }
-    return {
-      success: true,
-      output: stdout,
-      sessionId: this.extractSessionId(stdout)
-    };
-  }
-  async runAgent(config) {
-    return this.runAgentCLI(config);
-  }
-  extractSessionId(output) {
-    try {
-      const lines = output.split(`
-`);
-      for (const line of lines) {
-        if (line.trim()) {
-          const data = JSON.parse(line);
-          if (data.sessionId || data.session_id) {
-            return data.sessionId || data.session_id;
-          }
-        }
-      }
-    } catch {}
-    return;
-  }
-  safeGet(obj, path, defaultValue) {
-    try {
-      const keys = path.split(".");
-      let result = obj;
-      for (const key of keys) {
-        if (result && typeof result === "object" && key in result) {
-          result = result[key];
-        } else {
-          return defaultValue;
-        }
-      }
-      return result;
-    } catch {
-      return defaultValue;
-    }
-  }
-  parseRunOutput(stdout, stderr) {
-    const outcome = {
-      success: true,
-      artifacts: [],
-      tool_calls: [],
-      warnings: [],
-      metrics: {},
-      messages: [],
-      raw_output: {
-        stdout,
-        stderr
-      }
-    };
-    let lastAssistantMessageId;
-    const textPartsByMessage = new Map;
-    const parseLine = (line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
-    };
-    const processEvent = (event) => {
-      if (!event)
-        return;
-      const payload = event.payload || event.properties;
-      switch (event.type) {
-        case "session.created":
-        case "session.updated":
-          if (this.safeGet(payload, "info.id")) {
-            outcome.session_id = this.safeGet(payload, "info.id");
-          }
-          break;
-        case "session.status":
-          if (this.safeGet(payload, "status.type") === "retry") {
-            outcome.warnings?.push(`Session retry: ${this.safeGet(payload, "status.message", "")} (attempt ${this.safeGet(payload, "status.attempt", 0)})`);
-          }
-          break;
-        case "session.error":
-          outcome.success = false;
-          outcome.error = this.safeGet(payload, "error.message", "Session error occurred");
-          if (this.safeGet(payload, "error")) {
-            outcome.error_details = {
-              type: this.safeGet(payload, "error.name", "SessionError"),
-              message: this.safeGet(payload, "error.message"),
-              stack_trace: this.safeGet(payload, "error.stack"),
-              code: this.safeGet(payload, "error.code"),
-              context: this.safeGet(payload, "error.context")
-            };
-          }
-          break;
-        case "message.updated": {
-          const role = this.safeGet(payload, "info.role");
-          if (role === "assistant" || role === "user") {
-            const msg = payload.info;
-            if (role === "assistant") {
-              lastAssistantMessageId = this.safeGet(msg, "id");
-              if (this.safeGet(msg, "time.created")) {
-                outcome.metrics.start_time_ms = this.safeGet(msg, "time.created");
-              }
-              if (this.safeGet(msg, "time.completed")) {
-                outcome.metrics.end_time_ms = this.safeGet(msg, "time.completed");
-              }
-              if (this.safeGet(msg, "tokens")) {
-                outcome.metrics.tokens_used = (this.safeGet(msg, "tokens.input", 0) || 0) + (this.safeGet(msg, "tokens.output", 0) || 0);
-                const tokens = this.safeGet(msg, "tokens");
-                if (tokens && tokens.cache) {
-                  outcome.metrics.cache_reads = this.safeGet(tokens, "cache.read", 0) || 0;
-                  outcome.metrics.cache_writes = this.safeGet(tokens, "cache.write", 0) || 0;
-                }
-              }
-              if (this.safeGet(msg, "cost")) {
-                outcome.metrics.cost = this.safeGet(msg, "cost");
-              }
-              const modelID = this.safeGet(msg, "modelID");
-              const providerID = this.safeGet(msg, "providerID");
-              if (modelID && providerID) {
-                outcome.metrics.model_name = `${providerID}/${modelID}`;
-              }
-              if (this.safeGet(msg, "error")) {
-                outcome.success = false;
-                outcome.error = this.safeGet(msg, "error.data.message", "Message error occurred");
-                outcome.error_details = {
-                  type: this.safeGet(msg, "error.name", "MessageError"),
-                  message: this.safeGet(msg, "error.data.message"),
-                  stack_trace: this.safeGet(msg, "error.data.stack"),
-                  file_path: this.safeGet(msg, "error.data.file_path"),
-                  line_number: this.safeGet(msg, "error.data.line_number"),
-                  code: this.safeGet(msg, "error.data.code")
-                };
-              }
-            }
-            const message = {
-              id: this.safeGet(msg, "id"),
-              role,
-              content: this.safeGet(msg, "content"),
-              timestamp: this.safeGet(msg, "time.created")
-            };
-            if (role === "assistant") {
-              message.tokens = {
-                input: this.safeGet(msg, "tokens.input"),
-                output: this.safeGet(msg, "tokens.output"),
-                reasoning: this.safeGet(msg, "tokens.reasoning"),
-                total: this.safeGet(msg, "tokens.total")
-              };
-            }
-            outcome.messages?.push(message);
-          }
-          break;
-        }
-        case "message.part.updated": {
-          const partType = this.safeGet(payload, "part.type");
-          if (partType === "tool") {
-            const part = payload.part;
-            const toolName = this.safeGet(part, "tool");
-            const toolCall = {
-              name: toolName || "",
-              inputs: this.safeGet(part, "state.input"),
-              status: this.safeGet(part, "state.status", "completed")
-            };
-            const status = this.safeGet(part, "state.status");
-            if (status === "completed") {
-              const output = this.safeGet(part, "state.output");
-              if (output) {
-                toolCall.outputs = output;
-              }
-            }
-            const timeObj = this.safeGet(part, "state.time");
-            if (timeObj) {
-              const start = this.safeGet(timeObj, "start", 0) || 0;
-              const end = this.safeGet(timeObj, "end", start) || start;
-              toolCall.duration_ms = end - start;
-            }
-            outcome.tool_calls?.push(toolCall);
-          } else if (partType === "text") {
-            const part = payload.part;
-            const messageId = this.safeGet(part, "messageID");
-            let textContent = this.safeGet(part, "text");
-            if (messageId && typeof textContent === "string" && textContent.trim().length > 0) {
-              if (!textPartsByMessage.has(messageId)) {
-                textPartsByMessage.set(messageId, []);
-              }
-              textPartsByMessage.get(messageId).push(textContent);
-            }
-          }
-          break;
-        }
-        case "file.edited": {
-          if (this.safeGet(payload, "diff")) {
-            const filePath = this.safeGet(payload, "diff.file");
-            if (filePath) {
-              const artifact = {
-                path: filePath,
-                operation: "modified",
-                size: this.safeGet(payload, "diff.size"),
-                type: this.safeGet(payload, "diff.type")
-              };
-              const additions = this.safeGet(payload, "diff.additions", 0) || 0;
-              const deletions = this.safeGet(payload, "diff.deletions", 0) || 0;
-              if (additions > 0 || deletions > 0) {
-                artifact.operation = "modified";
-              }
-              outcome.artifacts?.push(artifact);
-            }
-          }
-          break;
-        }
-        case "permission.updated":
-          outcome.warnings?.push(`Permission required: ${this.safeGet(payload, "title", "")}`);
-          break;
-        case "command.executed": {
-          const timeObj = this.safeGet(payload, "time");
-          const startTime = this.safeGet(timeObj, "start");
-          const endTime = this.safeGet(timeObj, "end");
-          outcome.tool_calls?.push({
-            name: "bash",
-            inputs: { command: this.safeGet(payload, "command", "") },
-            outputs: this.safeGet(payload, "stdout"),
-            status: this.safeGet(payload, "exitCode", 0) === 0 ? "completed" : "error",
-            duration_ms: startTime !== undefined && endTime !== undefined ? endTime - startTime : undefined
-          });
-          break;
-        }
-      }
-    };
-    const lines = stdout.split(`
-`);
-    for (const line of lines) {
-      if (line.trim()) {
-        const event = parseLine(line);
-        if (event) {
-          processEvent(event);
-        }
-      }
-    }
-    const stderrLines = stderr.split(`
-`);
-    for (const line of stderrLines) {
-      if (line.trim()) {
-        const event = parseLine(line);
-        if (event) {
-          processEvent(event);
-        }
-      }
-    }
-    if (outcome.metrics.start_time_ms && outcome.metrics.end_time_ms) {
-      outcome.metrics.duration_ms = outcome.metrics.end_time_ms - outcome.metrics.start_time_ms;
-    }
-    if (outcome.tool_calls && outcome.tool_calls.length > 0) {
-      outcome.metrics.api_calls_count = outcome.tool_calls.length;
-    }
-    if (!outcome.error && outcome.success === false) {
-      outcome.error = "Agent execution failed";
-    }
-    if (lastAssistantMessageId && textPartsByMessage.has(lastAssistantMessageId)) {
-      const parts = textPartsByMessage.get(lastAssistantMessageId);
-      const combinedMessage = parts.join(`
-`).trim();
-      if (combinedMessage) {
-        outcome.message = combinedMessage;
-      }
-    }
-    return outcome;
-  }
-  async createSession() {
-    throw new Error("Use runAgentCLI() instead - SDK methods not implemented");
-  }
-  async sendMessage() {
-    throw new Error("Use runAgentCLI() instead - SDK methods not implemented");
-  }
-  async getMessages() {
-    return [];
-  }
-  async waitForCompletion() {
-    throw new Error("Use runAgentCLI() instead - SDK methods not implemented");
-  }
-  isHumanMessage() {
-    return false;
-  }
-  async abortSession() {}
-}
-var defaultClient = null;
-function getOpenCodeClient(config) {
-  if (!defaultClient) {
-    defaultClient = new OpenCodeClient(config);
-  }
-  return defaultClient;
-}
-
 // src/core/worker-engine.ts
 init_policy();
 init_agent_registry();
@@ -41028,11 +41148,53 @@ class WorkerEngine {
         completed_at: Date.now()
       });
     }
-    const transition = await this.policyEngine.determineTransition(policy, phase, {
-      success: outcome.success,
-      retry_count: retryCount,
-      requires_approval: outcome.requires_approval
-    }, issue.id);
+    let transition;
+    if (this.shouldTriggerWorkerAssistant(outcome, phase, policy)) {
+      const directive = await this.executeWorkerAssistant(issue.id, outcome, phase);
+      this.logger.logDecision({
+        run_id: runId,
+        type: "worker_assistant",
+        decision: directive,
+        reasoning: `Worker assistant directive based on outcome analysis`,
+        metadata: {
+          issue_id: issue.id,
+          phase,
+          outcome_summary: {
+            success: outcome.success,
+            warnings: outcome.warnings?.length,
+            artifacts: outcome.artifacts?.length,
+            has_error: !!outcome.error
+          }
+        }
+      });
+      switch (directive) {
+        case "advance":
+          transition = await this.policyEngine.determineTransition(policy, phase, {
+            success: true,
+            retry_count: retryCount,
+            requires_approval: outcome.requires_approval
+          }, issue.id);
+          break;
+        case "retry":
+          transition = { type: "retry", reason: "Assistant recommended retry" };
+          break;
+        case "block":
+          transition = { type: "block", reason: "Assistant recommended human review" };
+          break;
+        default:
+          transition = await this.policyEngine.determineTransition(policy, phase, {
+            success: outcome.success,
+            retry_count: retryCount,
+            requires_approval: outcome.requires_approval
+          }, issue.id);
+      }
+    } else {
+      transition = await this.policyEngine.determineTransition(policy, phase, {
+        success: outcome.success,
+        retry_count: retryCount,
+        requires_approval: outcome.requires_approval
+      }, issue.id);
+    }
     this.logger.logDecision({
       run_id: run.id,
       type: "phase_transition",
@@ -41093,6 +41255,7 @@ class WorkerEngine {
       throw new Error(`Agent ${agentId} not found in registry`);
     }
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
+    const policyConfig = this.policyEngine.getPolicyConfig(policy);
     let modelToUse;
     if (phaseConfig?.model) {
       modelToUse = phaseConfig.model;
@@ -41106,13 +41269,43 @@ class WorkerEngine {
     const instructions = this.buildInstructions(issue, phase, policy);
     const initialPrompt = instructions;
     console.log(`Running agent ${agentId} with OpenCode CLI...`);
-    const result = await this.opencode.runAgentCLI({
-      directory: process.cwd(),
-      title: `${issue.id}: ${issue.title}`,
-      agent: agentId,
-      model: modelToUse,
-      message: instructions
-    });
+    let sessionIdToUse;
+    if (phaseConfig?.reuse_session_from_phase && policyConfig) {
+      const resolvedTarget = this.resolveReuseTarget(phase, phaseConfig.reuse_session_from_phase, policyConfig);
+      if (resolvedTarget) {
+        const reuseConfig = await this.findReusableSession(issue.id, resolvedTarget);
+        if (reuseConfig.shouldReuse && reuseConfig.sessionId) {
+          sessionIdToUse = reuseConfig.sessionId;
+          console.log(`Reusing session ${sessionIdToUse} from target '${resolvedTarget}'`);
+        } else if (reuseConfig.sessionId && !reuseConfig.shouldReuse) {
+          console.log(`Session ${reuseConfig.sessionId} exists but exceeds token threshold, creating new session`);
+        }
+      }
+    }
+    let result;
+    try {
+      result = await this.opencode.runAgentCLI({
+        directory: process.cwd(),
+        title: `${issue.id}: ${issue.title}`,
+        agent: agentId,
+        model: modelToUse,
+        message: instructions,
+        sessionId: sessionIdToUse
+      });
+    } catch (error) {
+      if (sessionIdToUse) {
+        console.warn(`Session reuse failed, falling back to new session: ${error}`);
+        result = await this.opencode.runAgentCLI({
+          directory: process.cwd(),
+          title: `${issue.id}: ${issue.title}`,
+          agent: agentId,
+          model: modelToUse,
+          message: instructions
+        });
+      } else {
+        throw error;
+      }
+    }
     const endTimestamp = Date.now();
     const wallClockDurationMs = endTimestamp - startTimestamp;
     if (!result.success) {
@@ -41174,6 +41367,12 @@ class WorkerEngine {
     const metadata = {
       initial_prompt: initialPrompt
     };
+    if (sessionIdToUse) {
+      metadata.session_reuse = {
+        reused_session_id: sessionIdToUse,
+        fallback_to_new: result.sessionId !== sessionIdToUse
+      };
+    }
     return {
       outcome,
       sessionId: parsedOutcome.session_id || result.sessionId,
@@ -41295,6 +41494,134 @@ Previous phases may have sent messages containing context, results, or data for 
       }
     }
   }
+  shouldTriggerWorkerAssistant(outcome, phase, policy) {
+    const config = loadConfig();
+    const workerAssistant = config.worker_assistant;
+    if (!workerAssistant?.enabled) {
+      return false;
+    }
+    const policyConfig = this.policyEngine.getPolicyConfig(policy);
+    const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
+    const policyOptOut = policyConfig?.worker_assistant?.enabled === false;
+    const phaseOptOut = phaseConfig?.worker_assistant?.enabled === false;
+    if (policyOptOut || phaseOptOut) {
+      return false;
+    }
+    let triggerCount = 0;
+    if (outcome.success) {
+      if (outcome.warnings && outcome.warnings.length > 0) {
+        triggerCount++;
+      }
+      if (outcome.artifacts && outcome.artifacts.length > 5) {
+        triggerCount++;
+      }
+      if (outcome.message && (outcome.message.includes("unclear") || outcome.message.includes("partial") || outcome.message.includes("ambiguous") || outcome.message.includes("review"))) {
+        triggerCount++;
+      }
+    } else {
+      if (outcome.error_details && Object.keys(outcome.error_details).length > 0) {
+        triggerCount++;
+      }
+      if (outcome.message && (outcome.message.includes("timeout") || outcome.message.includes("incomplete") || outcome.message.includes("partial"))) {
+        triggerCount++;
+      }
+    }
+    return triggerCount > 0;
+  }
+  async executeWorkerAssistant(issueId, outcome, phase) {
+    const config = loadConfig();
+    const workerAssistant = config.worker_assistant;
+    if (!workerAssistant?.enabled) {
+      console.log(`Worker assistant disabled, returning fallback action: ${workerAssistant?.fallbackAction || "block"}`);
+      return workerAssistant?.fallbackAction || "block";
+    }
+    const agent = this.agentRegistry.selectAgent({
+      required_capabilities: [workerAssistant.agentCapability || "worker-assistant"]
+    });
+    if (!agent) {
+      console.warn(`No worker assistant agent found with capability: ${workerAssistant.agentCapability || "worker-assistant"}`);
+      return workerAssistant.fallbackAction || "block";
+    }
+    const issue = await getIssue(issueId);
+    if (!issue) {
+      console.warn(`Issue ${issueId} not found`);
+      return workerAssistant.fallbackAction || "block";
+    }
+    const prompt = this.buildWorkerAssistantPrompt(issue, phase, outcome);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Worker assistant timeout")), workerAssistant.timeoutMs);
+    });
+    try {
+      const result = await Promise.race([
+        this.opencode.runAgentCLI({
+          directory: process.cwd(),
+          title: `Worker Assistant: ${issue.id}`,
+          agent: agent.id,
+          message: prompt
+        }),
+        timeoutPromise
+      ]);
+      if (!result.success) {
+        console.warn(`Worker assistant execution failed: ${result.error}`);
+        return workerAssistant.fallbackAction || "block";
+      }
+      const directive = this.parseWorkerAssistantResponse(result.output);
+      console.log(`Worker assistant directive: ${directive}`);
+      return directive;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`Worker assistant error: ${errorMsg}`);
+      return workerAssistant.fallbackAction || "block";
+    }
+  }
+  buildWorkerAssistantPrompt(issue, phase, outcome) {
+    const outcomeSummary = {
+      success: outcome.success,
+      message: outcome.message,
+      warnings: outcome.warnings?.length || 0,
+      artifacts: outcome.artifacts?.length || 0,
+      error: outcome.error
+    };
+    return `
+You are a Worker Assistant. Analyze the agent execution outcome and determine the next action.
+
+# Issue Context
+- ID: ${issue.id}
+- Title: ${issue.title}
+- Type: ${issue.issue_type}
+- Current Phase: ${phase}
+
+# Agent Outcome
+${JSON.stringify(outcomeSummary, null, 2)}
+
+${outcome.error_details ? `
+# Error Details
+${JSON.stringify(outcome.error_details, null, 2)}` : ""}
+
+# Your Task
+Based on the agent outcome, determine the best next action:
+
+- ADVANCE: Move to the next phase (outcome is acceptable, minor issues only)
+- RETRY: Retry the current phase (fixable issues detected)
+- BLOCK: Block for human review (unclear outcome, complex problems, or serious issues)
+
+# Response Format
+Respond with ONLY one word: ADVANCE, RETRY, or BLOCK
+`.trim();
+  }
+  parseWorkerAssistantResponse(response) {
+    const normalized = response.toUpperCase().trim();
+    if (normalized.includes("ADVANCE")) {
+      return "advance";
+    } else if (normalized.includes("RETRY")) {
+      return "retry";
+    } else if (normalized.includes("BLOCK")) {
+      return "block";
+    }
+    console.warn(`Could not parse worker assistant response: ${response}`);
+    const config = loadConfig();
+    return config.worker_assistant?.fallbackAction || "block";
+  }
   async executeDecisionAgent(issueId, transition) {
     console.log(`Executing decision agent ${transition.dynamic_agent} for issue ${issueId}`);
     const agent = this.agentRegistry.selectAgent({
@@ -41399,6 +41726,69 @@ ${details}
 
 Please review and provide approval to proceed.`;
     await updateIssue(issueId, { notes: note });
+  }
+  resolveReuseTarget(phaseName, keyword, policy) {
+    switch (keyword) {
+      case "@shared":
+        return policy.shared_session ? "@shared" : null;
+      case "@previous":
+        return this.getPreviousPhase(phaseName, policy);
+      case "@self":
+        return phaseName;
+      case "@first":
+        return policy.phases[0]?.name || null;
+      default:
+        return keyword;
+    }
+  }
+  getPreviousPhase(phaseName, policy) {
+    const phases = policy.phases.map((p) => p.name);
+    const currentIndex = phases.indexOf(phaseName);
+    if (currentIndex <= 0) {
+      return null;
+    }
+    return phases[currentIndex - 1] || null;
+  }
+  async findReusableSession(issueId, target) {
+    const runs = target === "@shared" ? this.logger.queryRuns({ issue_id: issueId, limit: 1 }) : this.logger.queryRuns({
+      issue_id: issueId,
+      phase: target,
+      status: "completed",
+      limit: 1
+    });
+    if (runs.length === 0) {
+      return { sessionId: null, shouldReuse: false };
+    }
+    const sessionId = runs[0].session_id;
+    if (!sessionId) {
+      return { sessionId: null, shouldReuse: false };
+    }
+    const totalTokens = this.sumTokensForSession(sessionId, issueId);
+    const maxTokens = this.getMaxTokens();
+    const threshold = this.getThreshold();
+    const shouldReuse = totalTokens < maxTokens * threshold;
+    return { sessionId, shouldReuse };
+  }
+  sumTokensForSession(sessionId, issueId) {
+    const runs = this.logger.queryRuns({ issue_id: issueId });
+    let totalTokens = 0;
+    for (const run of runs) {
+      if (run.session_id === sessionId && run.outcome?.metrics?.tokens_used) {
+        totalTokens += run.outcome.metrics.tokens_used;
+      }
+    }
+    return totalTokens;
+  }
+  getMaxTokens() {
+    const config = loadConfig();
+    return config.session_continuation?.default_max_context_tokens || 130000;
+  }
+  getThreshold(phaseConfig) {
+    if (phaseConfig?.context_window_threshold !== undefined) {
+      return phaseConfig.context_window_threshold;
+    }
+    const config = loadConfig();
+    return config.session_continuation?.default_threshold || 0.8;
   }
 }
 var defaultWorkerEngine = null;
@@ -41596,9 +41986,9 @@ init_config();
 
 // src/core/garbage-collector.ts
 init_logging();
-import { Database as Database3 } from "bun:sqlite";
-import { existsSync as existsSync5, mkdirSync as mkdirSync3, readFileSync as readFileSync7, writeFileSync as writeFileSync2 } from "fs";
-import { join as join5 } from "path";
+import { Database as Database4 } from "bun:sqlite";
+import { existsSync as existsSync6, mkdirSync as mkdirSync4, readFileSync as readFileSync7, writeFileSync as writeFileSync2 } from "fs";
+import { join as join6 } from "path";
 
 // src/core/retention-policy.ts
 init_logging();
@@ -41772,16 +42162,16 @@ class GarbageCollector {
   policyManager;
   isClosed = false;
   constructor(config) {
-    this.dataDir = config.dataDir || join5(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || join6(process.cwd(), ".agent-shepherd");
     this.policyManager = getRetentionPolicyManager(config.policies);
-    const archiveDir = join5(this.dataDir, "archive");
-    if (!existsSync5(archiveDir)) {
-      mkdirSync3(archiveDir, { recursive: true });
+    const archiveDir = join6(this.dataDir, "archive");
+    if (!existsSync6(archiveDir)) {
+      mkdirSync4(archiveDir, { recursive: true });
     }
-    const archiveDbPath = join5(archiveDir, "archive.db");
-    this.archiveDb = new Database3(archiveDbPath);
+    const archiveDbPath = join6(archiveDir, "archive.db");
+    this.archiveDb = new Database4(archiveDbPath);
     this.initializeArchiveSchema();
-    this.archiveJsonlPath = join5(archiveDir, "archive.jsonl");
+    this.archiveJsonlPath = join6(archiveDir, "archive.jsonl");
   }
   initializeArchiveSchema() {
     this.archiveDb.run(`
@@ -42047,8 +42437,8 @@ class GarbageCollector {
   }
   deleteRunFromMain(runId) {
     this.logger.deleteRun(runId);
-    const decisionsPath = join5(this.dataDir, "decisions.jsonl");
-    if (existsSync5(decisionsPath)) {
+    const decisionsPath = join6(this.dataDir, "decisions.jsonl");
+    if (existsSync6(decisionsPath)) {
       const content = readFileSync7(decisionsPath, "utf-8");
       const lines = content.trim().split(`
 `);
@@ -43035,6 +43425,7 @@ var COMMANDS = {
   "list-hitl": "List issues requiring human-in-the-loop intervention",
   "list-ready": "List issues ready to be worked on (no blockers)",
   "list-struggle": "List blocked issues that need attention",
+  "list-sessions": "List OpenCode sessions for an issue",
   "get-messages": "Get phase messages for an issue",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
@@ -43116,12 +43507,13 @@ Commands:
 ${Object.entries(COMMANDS).map(([cmd, desc]) => `  ${cmd.padEnd(15)} ${desc}`).join(`
 `)}
 
- Examples:
+  Examples:
     ashep quickstart          # One-command onboarding
     ashep init                # Initialize configuration
     ashep worker              # Start autonomous worker
     ashep work ISSUE-123      # Process specific issue
     ashep ui                  # Start visualization UI
+    ashep list-sessions ISSUE-123  # List sessions for an issue
     ashep validate-policy-chain  # Validate policy relationships
     ashep show-policy-tree    # Show relationship tree
 
@@ -44246,6 +44638,52 @@ async function cmdGetMessages(issueId, phase, unreadOnly) {
     process.exit(1);
   }
 }
+async function cmdListSessions(issueId) {
+  try {
+    const { getOpenCodeClient: getOpenCodeClient2 } = await Promise.resolve().then(() => exports_opencode);
+    const opencode = getOpenCodeClient2();
+    if (!issueId) {
+      issueId = await promptForIssueId();
+    }
+    if (!issueId) {
+      console.error("Error: Issue ID is required");
+      console.log("Usage: ashep list-sessions [issue-id]");
+      process.exit(1);
+    }
+    const sessions = await opencode.listSessionsForIssue(issueId);
+    if (sessions.length === 0) {
+      console.log(`No sessions found for issue ${issueId}`);
+    } else {
+      console.log(`
+Sessions for issue ${issueId} (${sessions.length}):`);
+      console.log("\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510");
+      console.log("\u2502 Session ID                            \u2502 Title                                     \u2502 Phase        \u2502 Tokens   \u2502");
+      console.log("\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524");
+      for (const session of sessions) {
+        const sessionId = session.sessionId.substring(0, 38) + (session.sessionId.length > 38 ? "..." : "");
+        const title = session.title.substring(0, 42) + (session.title.length > 42 ? "..." : "");
+        const phase = session.phase.substring(0, 12) + (session.phase.length > 12 ? "..." : "");
+        console.log(`\u2502 ${sessionId.padEnd(37)} \u2502 ${title.padEnd(42)} \u2502 ${phase.padEnd(12)} \u2502 ${String(session.tokens).padEnd(8)} \u2502`);
+      }
+      console.log("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
+    }
+  } catch (error) {
+    console.error("\u274C Failed to list sessions:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function promptForIssueId() {
+  return new Promise((resolve2) => {
+    process.stdout.write("Enter issue ID: ");
+    process.stdin.setEncoding("utf-8");
+    process.stdin.on("data", (data) => {
+      const input = data.toString().trim();
+      resolve2(input);
+      process.stdin.pause();
+    });
+    process.stdin.resume();
+  });
+}
 async function main() {
   loadPlugins();
   const args = process.argv.slice(2);
@@ -44351,6 +44789,9 @@ async function main() {
       await cmdGetMessages(args[1], phase, unreadOnly);
       break;
     }
+    case "list-sessions":
+      await cmdListSessions(args[1]);
+      break;
     case "cleanup-metrics":
       cmdCleanupMetrics();
       break;
