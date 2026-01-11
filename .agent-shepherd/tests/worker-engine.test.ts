@@ -11,10 +11,10 @@ import { join } from 'path';
 
 describe('WorkerEngine Session Continuation', () => {
   let tempDirs: string[] = [];
+  let loggers: ReturnType<typeof getLogger>[] = [];
   let policiesPath: string;
   let workerEngine: WorkerEngine;
   let policyEngine: PolicyEngine;
-  let logger: ReturnType<typeof getLogger>;
 
   beforeEach(() => {
     const timestamp = Date.now();
@@ -56,7 +56,6 @@ default_policy: test-policy
     writeFileSync(policiesPath, testPolicies);
 
     policyEngine = new PolicyEngine(policiesPath);
-    logger = getLogger(tempDir);
     workerEngine = new WorkerEngine();
   });
 

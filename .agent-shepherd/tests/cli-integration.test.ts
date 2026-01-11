@@ -123,6 +123,12 @@ worker:
   });
 
   afterEach(() => {
+    try {
+      if (logger) {
+        (logger as any).close();
+      }
+    } catch (e) {
+    }
     rmSync(testDataDir, { recursive: true, force: true });
   });
 
