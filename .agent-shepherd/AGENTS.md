@@ -300,17 +300,23 @@ See `docs/agents-config.md` for complete agent configuration reference and `docs
 2. **Error Handling**: Use try-catch with proper error messages
 3. **Async/Await**: Prefer async/await over promises
 4. **Naming**:
-   - Files: kebab-case (`worker-engine.ts`)
-   - Classes: PascalCase (`AgentRegistry`)
-   - Functions/Variables: camelCase (`selectAgent`)
-   - Constants: UPPER_SNAKE_CASE (`MAX_RETRIES`)
-5. **Comments**: Code should be well-commented (planned refactor). Add comments to explain:
-   - Complex algorithms or logic
-   - Non-obvious decisions or trade-offs
-   - External dependencies and their purposes
-   - Public API documentation
-6. **File Organization**: One major class/module per file
-7. **Imports**: Group by type (external, internal, relative)
+    - Files: kebab-case (`worker-engine.ts`)
+    - Classes: PascalCase (`AgentRegistry`)
+    - Functions/Variables: camelCase (`selectAgent`)
+    - Constants: UPPER_SNAKE_CASE (`MAX_RETRIES`)
+5. **Configuration Properties**: MUST use `snake_case`
+    - YAML configuration keys (e.g., `poll_interval_ms`, `max_concurrent_runs`)
+    - Interface properties for config objects (e.g., `heartbeat_threshold_ms`, `lease_duration_ms`)
+    - Beads state values (e.g., `assigned_worker`, `last_heartbeat`)
+    - Example: `CrashDetectionConfig` interface uses `heartbeat_threshold_ms` NOT `heartbeatThresholdMs`
+    - **CRITICAL**: Never use camelCase (`heartbeatThresholdMs`) for configuration properties
+6. **Comments**: Code should be well-commented (planned refactor). Add comments to explain:
+    - Complex algorithms or logic
+    - Non-obvious decisions or trade-offs
+    - External dependencies and their purposes
+    - Public API documentation
+7. **File Organization**: One major class/module per file
+8. **Imports**: Group by type (external, internal, relative)
 
 ### Linting Rules
 Run `bun run lint` to check code quality. Use the existing ESLint configuration.
