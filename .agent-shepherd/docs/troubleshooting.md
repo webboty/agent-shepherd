@@ -12,6 +12,9 @@ This guide helps you diagnose and resolve common issues when working with Agent 
 - [Phase Messenger Issues](#phase-messenger-issues)
 - [Retention and Cleanup Issues](#retention-and-cleanup-issues)
 - [Loop Prevention Issues](#loop-prevention-issues)
+- [Heartbeat Checker Issues](#heartbeat-checker-issues)
+- [Coordination Conflicts](#coordination-conflicts)
+- [Dependency Cycle Issues](#dependency-cycle-issues)
 - [Performance Issues](#performance-issues)
 - [Integration Issues](#integration-issues)
 
@@ -1164,7 +1167,344 @@ Workflow blocked after few legitimate visits
 
 3. **Use HITL to override:**
    ```bash
-   bd update issue-123 --labels ashep-hitl:debugging
+    bd update issue-123 --labels ashep-hitl:debugging
+    ```
+
+---
+
+## Heartbeat Checker Issues
+
+### Issue: Heartbeat Checker Not Detecting Stale Sessions
+
+**Symptom:**
+Sessions marked as alive when they should be stale
+
+**Causes:**
+- OpenCode SDK not responding
+- poll_interval_ms too long
+- stale_threshold_ms too short
+- Network connectivity issues
+
+**Solutions:**
+
+1. **Check heartbeat status:**
+   ```bash
+   ashep heartbeat status
+   ```
+
+2. **Verify OpenCode connectivity:**
+   ```bash
+   curl http://localhost:4321/api/sessions
+   ```
+
+3. **Adjust thresholds:**
+   ```yaml
+   # config/config.yaml
+   worker:
+     checker:
+       enabled: true
+       poll_interval_ms: 10000  # Check every 10 seconds
+       heartbeat_threshold_ms: 120000  # 2 minute stale threshold
+   ```
+
+4. **Check SDK logs:**
+   ```bash
+   DEBUG=agent-shepherd:* ashep worker
+   ```
+
+---
+
+### Issue: Heartbeat Checker Not Starting
+
+**Symptom:**
+Heartbeat daemon fails to start or immediately stops
+
+**Causes:**
+- Configuration validation error
+- Port already in use
+- Permission issues
+- Missing dependencies
+
+**Solutions:**
+
+1. **Verify configuration:**
+   ```bash
+   ashep validate-policy-chain
+   ```
+
+2. **Check for port conflicts:**
+   ```bash
+   lsof -i :3000
+   ```
+
+3. **Start with verbose logging:**
+   ```bash
+   DEBUG=agent-shepherd:* ashep heartbeat start
+   ```
+
+4. **Verify worker.cher is enabled in config:**
+   ```yaml
+   worker:
+     checker:
+       enabled: true
+   ```
+
+---
+
+### Issue: High Heartbeat Error Count
+
+**Symptom:**
+Many errors in heartbeat stats, sessions not being monitored
+
+**Causes:**
+- OpenCode server unreachable
+- Invalid session IDs
+- Rate limiting from OpenCode API
+- Network partition
+
+**Solutions:**
+
+1. **Check OpenCode server status:**
+   ```bash
+   curl http://localhost:4321/health
+   ```
+
+2. **Verify session IDs exist:**
+   ```bash
+   ashep ui  # Check active runs
+   ```
+
+3. **Increase poll interval to reduce load:**
+   ```yaml
+   worker:
+     checker:
+       poll_interval_ms: 60000  # Check every minute
+   ```
+
+4. **Review logs for specific errors:**
+   ```bash
+   tail -f .agent-shepherd/logs/*.log
+   ```
+
+---
+
+## Coordination Conflicts
+
+### Issue: Multiple Workers Processing Same Epic
+
+**Symptom:**
+Coordination errors, race conditions, duplicate work
+
+**Causes:**
+- Heartbeat checker disabled
+- Lease duration too long
+- Coordination mode misconfigured
+- Worker crash without cleanup
+
+**Solutions:**
+
+1. **Check current coordination state:**
+   ```bash
+   ashep coordination status
+   ```
+
+2. **Enable heartbeat checker:**
+   ```yaml
+   worker:
+     checker:
+       enabled: true
+     coordination:
+       mode: hybrid  # Use hybrid mode
+   ```
+
+3. **Reduce lease duration:**
+   ```yaml
+   worker:
+     coordination:
+       lease_duration_ms: 900000  # 15 minutes
+   ```
+
+4. **Manually release epic:**
+   ```bash
+   ashep coordination release epic-123
+   ```
+
+5. **Recover abandoned epic:**
+   ```bash
+   ashep coordination recover epic-123
+   ```
+
+---
+
+### Issue: Worker Cannot Claim Epic
+
+**Symptom:**
+"Already owned by another worker" errors
+
+**Causes:**
+- Another worker actively processing epic
+- Lease hasn't expired
+- Heartbeat still showing activity
+
+**Solutions:**
+
+1. **Check epic ownership:**
+   ```bash
+   ashep coordination status --epic epic-123
+   ```
+
+2. **Wait for lease expiry:**
+   Lease expires after `lease_duration_ms` (default 30 minutes)
+
+3. **Force recovery if abandoned:**
+   ```bash
+   ashep coordination recover epic-123
+   ```
+
+4. **Verify worker ID:**
+   ```bash
+   echo $ASHEP_WORKER_ID
+   ```
+
+---
+
+### Issue: Epic Affinity Not Working
+
+**Symptom:**
+Worker doesn't maintain ownership of epic tasks
+
+**Causes:**
+- prefer_epic_affinity set to false
+- Picker mode set to "simple"
+- Manual claim/release breaking affinity
+
+**Solutions:**
+
+1. **Check picker configuration:**
+   ```bash
+   ashep picking status
+   ```
+
+2. **Enable epic affinity:**
+   ```yaml
+   worker:
+     picking:
+       mode: smart
+       prefer_epic_affinity: true
+   ```
+
+3. **Switch to smart mode:**
+   ```bash
+   ashep picking mode smart
+   ```
+
+---
+
+## Dependency Cycle Issues
+
+### Issue: Dependency Graph Has Circular Dependencies
+
+**Symptom:**
+Issues not being picked, topological sort fails
+
+**Causes:**
+- Beads dependencies create cycles (A blocks B, B blocks A)
+- Parent-child relationships forming loops
+- Incorrect dependency type (using "blocks" instead of "related")
+
+**Solutions:**
+
+1. **Check dependencies:**
+   ```bash
+   bd dep list issue-123 --json
+   ```
+
+2. **Fix circular dependencies:**
+   Remove one of the blocking dependencies:
+   ```bash
+   bd dep remove issue-123 depends-on issue-456
+   ```
+
+3. **Use "related" type for non-blocking links:**
+   ```bash
+   bd dep add issue-123 related-to issue-456
+   ```
+
+4. **Identify cycles manually:**
+   ```bash
+   ashep show-policy-tree
+   ```
+
+---
+
+### Issue: Tasks Not Ordered Correctly by Dependencies
+
+**Symptom:**
+Tasks being picked before their dependencies are complete
+
+**Causes:**
+- Picker mode set to "simple" (no dependency awareness)
+- Dependencies not properly configured in Beads
+- Stale dependency data
+
+**Solutions:**
+
+1. **Enable smart picking:**
+   ```yaml
+   worker:
+     picking:
+       mode: smart
+   ```
+
+2. **Switch mode at runtime:**
+   ```bash
+   ashep picking mode smart
+   ```
+
+3. **Verify dependency configuration:**
+   ```bash
+   bd dep list issue-123
+   ```
+
+4. **Refresh dependency data:**
+   Restart worker to reload policies and dependencies
+
+---
+
+### Issue: Dependency Fetch Failures
+
+**Symptom:**
+"Failed to fetch dependencies" warnings in logs
+
+**Causes:**
+- Beads command failing
+- Network issues with Beads daemon
+- Invalid issue IDs
+- Permission issues
+
+**Solutions:**
+
+1. **Test Beads connectivity:**
+   ```bash
+   bd list --json
+   ```
+
+2. **Verify issue exists:**
+   ```bash
+   bd show issue-123
+   ```
+
+3. **Check Beads daemon:**
+   ```bash
+   ps aux | grep beads
+   ```
+
+4. **Restart Beads if needed:**
+   ```bash
+   # Kill existing daemon
+   pkill -f beads
+   # Restart
+   bd &
    ```
 
 ---

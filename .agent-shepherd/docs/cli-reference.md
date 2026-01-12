@@ -350,18 +350,36 @@ ashep list-active
 - Queries Beads for issues with `ashep-managed` label
 - Filters for issues with status `open` or `in_progress`
 - Displays phase information extracted from `ashep-phase:` labels
+- Shows worker assignment from coordination state (when smart picking is enabled)
 - Shows priority, last update time
 - Handles empty results gracefully
 
 **Output:**
 ```
-Active Issues (2):
-┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┐
-│ ID      │ Title                           │ Phase        │ Priority │ Updated      │
-├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┤
-│ bd-42   │ Fix authentication bug          │ implement    │ P1       │ 2m ago       │
-│ bd-87   │ Add user settings              │ test         │ P2       │ 15m ago      │
-└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┘
+Active Issues (3):
+┌──────────┬─────────────────────────────────┬──────────────┬──────────┬────────────┬──────────────┐
+│ ID       │ Title                           │ Phase        │ Worker   │ Priority   │ Updated      │
+├──────────┼─────────────────────────────────┼──────────────┼──────────┼────────────┼──────────────┤
+│ bd-42    │ Fix authentication bug          │ implement    │ worker-1 │ P1         │ 2m ago       │
+│ bd-87    │ Add user settings              │ test         │ worker-2 │ P2         │ 15m ago      │
+│ bd-91    │ Database migration             │ plan         │ -        │ P1         │ 1h ago       │
+└──────────┴─────────────────────────────────┴──────────────┴──────────┴────────────┴──────────────┘
+
+Legend:
+  Worker: Worker assigned via coordination (epoch_id→assigned-worker state)
+  -       : No worker assigned (simple mode or unclaimed epic)
+```
+
+**Options:**
+- `--format table|json`: Output format (default: table)
+- `--worker <id>`: Filter by specific worker
+
+```bash
+# Filter by worker
+ashep list-active --worker worker-1
+
+# JSON output for scripting
+ashep list-active --format json
 ```
 
 ### `ashep list-hitl`
