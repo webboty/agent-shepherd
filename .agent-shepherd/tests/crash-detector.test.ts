@@ -177,7 +177,7 @@ describe("CrashDetector", () => {
     test("falls back to lease when heartbeat fails and fallback is enabled", async () => {
       setCrashDetectorTestMocks({
         getLastHeartbeat: async () => {
-          throw new Error("Beads connection failed");
+          throw new Error("TEST_SCENARIO: Simulating heartbeat service unavailable - testing fallback to lease checking");
         },
         getLeaseExpires: async () => Date.now() - 600000,
       });
@@ -287,7 +287,7 @@ describe("CrashDetector", () => {
     test("handles errors during claim", async () => {
       setCrashDetectorTestMocks({
         getAssignedWorker: async () => {
-          throw new Error("Beads connection failed");
+          throw new Error("TEST_SCENARIO: Simulating worker assignment service failure - testing error handling in epic claiming");
         },
       });
 

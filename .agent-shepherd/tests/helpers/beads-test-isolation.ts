@@ -112,8 +112,8 @@ export function setupBeadsIsolation(useRealBeads: boolean = false): BeadsTestEnv
       mkdirSync(tempDir, { recursive: true });
       mkdirSync(beadsDir, { recursive: true });
 
-      // Use regular init without prefix restriction for testing
-      const initArgs = ["init"];
+      // Use init with test prefix to allow test-* issue IDs
+      const initArgs = ["init", "--prefix", "test-"];
 
       try {
         await execBeadsCommand(initArgs);
