@@ -86,10 +86,8 @@ export function findPluginsDir(): string {
 export function findAgentShepherdDir(): string {
   const envOverride = process.env.ASHEP_DIR;
   if (envOverride && existsSync(envOverride)) {
-    console.error(`DEBUG: Using ASHEP_DIR override: ${envOverride}`);
     return envOverride;
   }
-  console.error(`DEBUG: ASHEP_DIR not set or path invalid, searching locally...`);
   const local = findLocalAgentShepherdDir();
   if (local) return local;
   const global = getGlobalInstallDir();
