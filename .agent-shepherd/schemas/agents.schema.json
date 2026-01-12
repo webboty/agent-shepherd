@@ -113,11 +113,11 @@
                "format": "date-time",
                "description": "When agent was last updated"
              },
-             "agent_type": {
-               "type": "string",
-               "enum": ["primary", "subagent"],
-               "description": "Type of agent (primary or subagent)"
-             }
+              "agent_type": {
+                "type": "string",
+                "enum": ["primary", "subagent", "decision"],
+                "description": "Type of agent (primary, subagent, or decision)"
+              }
            },
            "additionalProperties": true
          }
