@@ -3,10 +3,79 @@
  * Detects abandoned tasks via heartbeat/lease and handles recovery
  */
 
-import { getLastHeartbeat, getLeaseExpires, getAssignedWorker, setAssignedWorker, setLeaseExpires, type BeadsIssue } from "./beads.ts";
+import { getLastHeartbeat, getLeaseExpires, getAssignedWorker, setAssignedWorker, setLeaseExpires, type BeadsIssue, getIssue, listIssues } from "./beads.ts";
 import { getPolicyEngine, type PhaseTransition, type PolicyEngine } from "./policy.ts";
 import { getLogger, type RunOutcome } from "./logging.ts";
-import { getIssue } from "./beads.ts";
+
+// Test mock storage - used by crash-detector.test.ts
+const testMocks: {
+  getLastHeartbeat: any;
+  getLeaseExpires: any;
+  getAssignedWorker: any;
+  setAssignedWorker: any;
+  setLeaseExpires: any;
+  getIssue: any;
+  listIssues: any;
+} = {
+  getLastHeartbeat: null,
+  getLeaseExpires: null,
+  getAssignedWorker: null,
+  setAssignedWorker: null,
+  setLeaseExpires: null,
+  getIssue: null,
+  listIssues: null,
+};
+
+// Export for tests to set mocks
+export function setCrashDetectorTestMocks(mocks: Partial<typeof testMocks>): void {
+  Object.assign(testMocks, mocks);
+}
+
+export function clearCrashDetectorTestMocks(): void {
+  testMocks.getLastHeartbeat = null;
+  testMocks.getLeaseExpires = null;
+  testMocks.getAssignedWorker = null;
+  testMocks.setAssignedWorker = null;
+  testMocks.setLeaseExpires = null;
+  testMocks.getIssue = null;
+  testMocks.listIssues = null;
+}
+
+// Helper to use mock functions if set, otherwise call real function
+async function mockableGetLastHeartbeat(epicId: string): Promise<number | null> {
+  if (testMocks.getLastHeartbeat) return testMocks.getLastHeartbeat(epicId);
+  return getLastHeartbeat(epicId);
+}
+
+async function mockableGetLeaseExpires(epicId: string): Promise<number | null> {
+  if (testMocks.getLeaseExpires) return testMocks.getLeaseExpires(epicId);
+  return getLeaseExpires(epicId);
+}
+
+async function mockableGetAssignedWorker(epicId: string): Promise<string | null> {
+  if (testMocks.getAssignedWorker) return testMocks.getAssignedWorker(epicId);
+  return getAssignedWorker(epicId);
+}
+
+async function mockableSetAssignedWorker(_epicId: string, _workerId: string): Promise<void> {
+  if (testMocks.setAssignedWorker) return testMocks.setAssignedWorker(_epicId, _workerId);
+  return setAssignedWorker(_epicId, _workerId);
+}
+
+async function mockableSetLeaseExpires(_epicId: string, _expiresAt: number): Promise<void> {
+  if (testMocks.setLeaseExpires) return testMocks.setLeaseExpires(_epicId, _expiresAt);
+  return setLeaseExpires(_epicId, _expiresAt);
+}
+
+async function mockableGetIssue(_issueId: string): Promise<any> {
+  if (testMocks.getIssue) return testMocks.getIssue(_issueId);
+  return getIssue(_issueId);
+}
+
+async function mockableListIssues(): Promise<any[]> {
+  if (testMocks.listIssues) return testMocks.listIssues();
+  return listIssues();
+}
 
 export interface CrashDetectionConfig {
   heartbeat_threshold_ms?: number;
@@ -61,9 +130,8 @@ export class CrashDetector {
     let heartbeatStale: boolean | null = null;
     let leaseExpired: boolean | null = null;
 
-    // Try heartbeat-based detection first
     try {
-      const lastHeartbeat = await getLastHeartbeat(epicId);
+      const lastHeartbeat = await mockableGetLastHeartbeat(epicId);
 
         if (lastHeartbeat !== null) {
           heartbeatAge = now - lastHeartbeat;
@@ -71,7 +139,7 @@ export class CrashDetector {
         }
 
       // Check lease as backup/secondary check
-      const leaseExpires = await getLeaseExpires(epicId);
+      const leaseExpires = await mockableGetLeaseExpires(epicId);
       leaseExpired = leaseExpires === null || now > leaseExpires;
     } catch (error) {
       console.warn(`Failed to check abandonment for ${epicId}:`, error);
@@ -124,7 +192,7 @@ export class CrashDetector {
    */
   private async checkLeaseExpiryOnly(epicId: string): Promise<boolean> {
     const now = Date.now();
-    const leaseExpires = await getLeaseExpires(epicId);
+    const leaseExpires = await mockableGetLeaseExpires(epicId);
     return leaseExpires === null || now > leaseExpires;
   }
 
@@ -182,7 +250,7 @@ export class CrashDetector {
     });
 
     // Get policy for this issue
-    const issue = await getIssue(issueId);
+    const issue = await mockableGetIssue(issueId);
     if (!issue) {
       console.error(`Issue ${issueId} not found, cannot recover`);
       return {
@@ -321,7 +389,7 @@ export class CrashDetector {
 
     try {
       // Check for active assignment
-      const assignedWorker = await getAssignedWorker(epicId);
+      const assignedWorker = await mockableGetAssignedWorker(epicId);
 
       if (assignedWorker) {
         // Check if it's our assignment
@@ -369,9 +437,9 @@ export class CrashDetector {
       }
 
       // Set coordination states
-      await setAssignedWorker(epicId, this.workerId);
+      await mockableSetAssignedWorker(epicId, this.workerId);
       const leaseExpires = Date.now() + this.config.lease_duration_ms;
-      await setLeaseExpires(epicId, leaseExpires);
+      await mockableSetLeaseExpires(epicId, leaseExpires);
 
       console.log(
         `Claimed epic ${epicId} (lease expires: ${new Date(leaseExpires).toISOString()})`
@@ -427,9 +495,7 @@ export class CrashDetector {
    * Returns all tasks under an epic
    */
   async getEpicSubtree(epicId: string): Promise<BeadsIssue[]> {
-    const { listIssues } = await import("./beads.ts");
-
-    const allIssues = await listIssues();
+    const allIssues = await mockableListIssues();
     const subtree: BeadsIssue[] = [];
 
     for (const issue of allIssues) {
