@@ -28,9 +28,30 @@ export interface BeadsUpdateOptions {
  * Execute a bd command and return output
  */
 export async function execBeadsCommand(args: string[]): Promise<string> {
+  const env: Record<string, string> = {};
+
+  // Copy process.env but filter out undefined values
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+
+  // Override with test isolation settings if set
+  if (process.env.BEADS_DIR) {
+    env.BEADS_DIR = process.env.BEADS_DIR;
+  }
+  if (process.env.BD_NO_DAEMON) {
+    env.BD_NO_DAEMON = process.env.BD_NO_DAEMON;
+  }
+  if (process.env.BD_SANDBOX) {
+    env.BD_SANDBOX = process.env.BD_SANDBOX;
+  }
+
   const proc = Bun.spawn(["bd", ...args], {
     stdout: "pipe",
     stderr: "pipe",
+    env,
   });
 
   const output = await new Response(proc.stdout).text();

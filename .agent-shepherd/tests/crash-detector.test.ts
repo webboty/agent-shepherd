@@ -9,6 +9,7 @@ import { Logger, getLogger, resetLogger } from "../src/core/logging";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { mkdirSync, rmSync, existsSync } from "fs";
+import { setupBeadsIsolation, type BeadsTestEnv } from "./helpers/beads-test-isolation";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMP_DIR = join(__dirname, '..', 'tmp_test');
@@ -17,8 +18,13 @@ describe("CrashDetector", () => {
   let detector: CrashDetector;
   let logger: Logger;
   let testDataDir: string;
+  let beadsTestEnv: BeadsTestEnv;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Set up isolated Beads database first
+    beadsTestEnv = setupBeadsIsolation();
+    await beadsTestEnv.initialize();
+
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
     testDataDir = join(TEMP_DIR, `.test-crash-detector-${timestamp}-${random}`);
@@ -26,6 +32,10 @@ describe("CrashDetector", () => {
 
     process.env.ASHEP_DIR = testDataDir;
     process.env.ASHEP_WORKER_ID = "test-worker-1";
+    // Set Beads environment variables for isolated testing
+    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
+    process.env.BD_NO_DAEMON = "true";
+    process.env.BD_SANDBOX = "true";
 
     resetLogger();
     resetCrashDetector();
@@ -36,9 +46,17 @@ describe("CrashDetector", () => {
       lease_duration_ms: 1800000,
       fallback_to_lease: true,
     });
+
+    // Create test issues in isolated database
+    await beadsTestEnv.exec(["create", "--type", "epic", "--title", "Test Epic", "--id", "test-epic-1"]);
+    await beadsTestEnv.exec(["create", "--type", "task", "--title", "Test Task 1", "--id", "test-epic-1.1"]);
+    await beadsTestEnv.exec(["create", "--type", "task", "--title", "Test Task 2", "--id", "test-epic-1.2"]);
+    await beadsTestEnv.exec(["create", "--type", "task", "--title", "Test Issue", "--id", "test-issue-1"]);
+
+    // Note: Hierarchical issue IDs (test-epic-1.1, test-epic-1.2) automatically create parent-child relationships
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     try {
       resetCrashDetector();
     } catch {
@@ -48,6 +66,7 @@ describe("CrashDetector", () => {
     if (existsSync(testDataDir)) {
       rmSync(testDataDir, { recursive: true, force: true });
     }
+    await beadsTestEnv.cleanup();
     delete process.env.ASHEP_WORKER_ID;
   });
 
@@ -97,7 +116,7 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.abandoned).toBe(false);
       expect(result.detectedMethod).toBe("heartbeat");
       expect(result.heartbeatAge).toBeDefined();
@@ -115,7 +134,7 @@ describe("CrashDetector", () => {
         heartbeat_threshold_ms: 300000,
       });
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.abandoned).toBe(true);
       expect(result.detectedMethod).toBe("heartbeat");
       expect(result.reason).toContain("Heartbeat stale");
@@ -133,7 +152,7 @@ describe("CrashDetector", () => {
         fallback_to_lease: true,
       });
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.abandoned).toBe(true);
       expect(result.detectedMethod).toBe("lease");
       expect(result.reason).toContain("Lease expired");
@@ -148,7 +167,7 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.abandoned).toBe(true);
       expect(result.detectedMethod).toBe("both");
       expect(result.heartbeatAge).toBeDefined();
@@ -168,7 +187,7 @@ describe("CrashDetector", () => {
         fallback_to_lease: true,
       });
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.abandoned).toBe(true);
       expect(result.detectedMethod).toBe("lease");
     });
@@ -184,7 +203,7 @@ describe("CrashDetector", () => {
         fallback_to_lease: true,
       });
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.abandoned).toBe(false);
       expect(result.detectedMethod).toBe("lease");
     });
@@ -200,7 +219,7 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.heartbeatAge).toBeDefined();
       expect(result.heartbeatAge! < 60000).toBe(true);
     });
@@ -214,7 +233,7 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.heartbeatAge).toBeDefined();
       expect(result.heartbeatAge! > 120000).toBe(true);
       expect(result.heartbeatAge! < 300000).toBe(true);
@@ -229,7 +248,7 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.checkAbandonment("epic-1");
+      const result = await testDetector.checkAbandonment("test-epic-1");
       expect(result.heartbeatAge).toBeDefined();
       expect(result.heartbeatAge! > 6000000).toBe(true);
     });
@@ -246,7 +265,7 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.claimEpic("epic-1", []);
+      const result = await testDetector.claimEpic("test-epic-1", []);
       expect(result.claimed).toBe(true);
       expect(result.reason).toContain("Successfully claimed epic");
     });
@@ -260,7 +279,7 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.claimEpic("epic-1", []);
+      const result = await testDetector.claimEpic("test-epic-1", []);
       expect(result.claimed).toBe(false);
       expect(result.reason).toContain("Owned by other-worker");
     });
@@ -275,7 +294,7 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.claimEpic("epic-1", []);
+      const result = await testDetector.claimEpic("test-epic-1", []);
       expect(result.claimed).toBe(false);
       expect(result.reason).toContain("Claim failed");
     });
@@ -285,7 +304,7 @@ describe("CrashDetector", () => {
     test("returns no_action when no active run found", async () => {
       setCrashDetectorTestMocks({
         getIssue: async () => ({
-          id: "issue-1",
+          id: "test-test-issue-1",
           title: "Test Issue",
           description: "",
           status: "open",
@@ -300,8 +319,8 @@ describe("CrashDetector", () => {
       const testDetector = new CrashDetector();
 
       const result = await testDetector.recoverAbandonedTask(
-        "epic-1",
-        "issue-1",
+        "test-epic-1",
+        "test-test-issue-1",
         "session-1",
         "implement",
         "Task abandoned"
@@ -333,7 +352,7 @@ describe("CrashDetector", () => {
       const testDetector = new CrashDetector();
 
       const result = await testDetector.recoverAbandonedTask(
-        "epic-1",
+        "test-epic-1",
         issueId,
         "session-1",
         "implement",
@@ -353,7 +372,7 @@ describe("CrashDetector", () => {
       const testDetector = new CrashDetector();
 
       const result = await testDetector.recoverAbandonedTask(
-        "epic-1",
+        "test-epic-1",
         "nonexistent-issue",
         "session-1",
         "implement",
@@ -374,16 +393,16 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.getEpicSubtree("epic-1");
+      const result = await testDetector.getEpicSubtree("test-epic-1");
       expect(result).toEqual([]);
     });
 
     test("returns matching issues under epic", async () => {
       setCrashDetectorTestMocks({
         listIssues: async () => [
-          { id: "epic-1", title: "Epic", status: "open", priority: 1, issue_type: "epic", created_at: "", updated_at: "" },
-          { id: "epic-1.1", title: "Task 1", status: "open", priority: 1, issue_type: "task", created_at: "", updated_at: "" },
-          { id: "epic-1.2", title: "Task 2", status: "open", priority: 1, issue_type: "task", created_at: "", updated_at: "" },
+          { id: "test-epic-1", title: "Epic", status: "open", priority: 1, issue_type: "epic", created_at: "", updated_at: "" },
+          { id: "test-epic-1.1", title: "Task 1", status: "open", priority: 1, issue_type: "task", created_at: "", updated_at: "" },
+          { id: "test-epic-1.2", title: "Task 2", status: "open", priority: 1, issue_type: "task", created_at: "", updated_at: "" },
           { id: "other-epic", title: "Other", status: "open", priority: 1, issue_type: "epic", created_at: "", updated_at: "" },
         ],
       });
@@ -391,9 +410,9 @@ describe("CrashDetector", () => {
       resetCrashDetector();
       const testDetector = new CrashDetector();
 
-      const result = await testDetector.getEpicSubtree("epic-1");
+      const result = await testDetector.getEpicSubtree("test-epic-1");
       expect(result.length).toBe(2);
-      expect(result.map((i: any) => i.id)).toEqual(["epic-1.1", "epic-1.2"]);
+      expect(result.map((i: any) => i.id)).toEqual(["test-epic-1.1", "test-epic-1.2"]);
     });
   });
 

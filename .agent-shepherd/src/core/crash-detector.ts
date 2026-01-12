@@ -143,7 +143,7 @@ export class CrashDetector {
       leaseExpired = leaseExpires === null || now > leaseExpires;
     } catch (error) {
       console.warn(`Failed to check abandonment for ${epicId}:`, error);
-      
+
       if (this.config.fallback_to_lease) {
         leaseExpired = await this.checkLeaseExpiryOnly(epicId);
         heartbeatStale = null;
