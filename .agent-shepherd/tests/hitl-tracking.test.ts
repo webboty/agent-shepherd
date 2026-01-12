@@ -12,97 +12,124 @@ import {
 import {
   type HITLConfig,
 } from "../src/core/config";
+import {
+  setupBeadsIsolation,
+  type BeadsTestEnv
+} from "./helpers/beads-test-isolation";
+
+const TEST_ISSUE_PREFIX = "hitl-tracking-test";
 
 describe("HITL Tracking Functions", () => {
-  const mockIssueId = "agent-shepherd-uj0";
+  let beadsTestEnv: BeadsTestEnv;
+  let testIssueId: string;
+
+  beforeEach(async () => {
+    beadsTestEnv = setupBeadsIsolation();
+    await beadsTestEnv.initialize();
+
+    // Set environment variables for the Beads functions to use the isolated database
+    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
+    process.env.BD_NO_DAEMON = "true";
+    process.env.BD_SANDBOX = "true";
+
+    testIssueId = await beadsTestEnv.createIssue(
+      `${TEST_ISSUE_PREFIX}: Test issue for HITL tracking`,
+      "task",
+      []
+    );
+  });
+
+  afterEach(async () => {
+    await beadsTestEnv.cleanup();
+  });
 
   describe("setHITLLabel", () => {
     it("should set correct HITL label format", async () => {
       const reason = "approval";
-      await setHITLLabel(mockIssueId, reason);
+      await setHITLLabel(testIssueId, reason);
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain(`ashep-hitl:${reason}`);
     });
 
     it("should handle multiple HITL labels", async () => {
-      await setHITLLabel(mockIssueId, "approval");
-      await setHITLLabel(mockIssueId, "manual-intervention");
+      await setHITLLabel(testIssueId, "approval");
+      await setHITLLabel(testIssueId, "manual-intervention");
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain("ashep-hitl:approval");
       expect(labels).toContain("ashep-hitl:manual-intervention");
     });
 
     it("should handle reasons with hyphens", async () => {
       const reason = "review-request";
-      await setHITLLabel(mockIssueId, reason);
+      await setHITLLabel(testIssueId, reason);
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain(`ashep-hitl:${reason}`);
     });
   });
 
   describe("clearHITLLabels", () => {
     it("should remove all HITL labels", async () => {
-      await setHITLLabel(mockIssueId, "approval");
-      await setHITLLabel(mockIssueId, "timeout");
-      await setHITLLabel(mockIssueId, "error");
+      await setHITLLabel(testIssueId, "approval");
+      await setHITLLabel(testIssueId, "timeout");
+      await setHITLLabel(testIssueId, "error");
 
-      let labels = await getIssueLabels(mockIssueId);
+      let labels = await getIssueLabels(testIssueId);
       const hitlLabels = labels.filter((label) => label.startsWith("ashep-hitl:"));
       expect(hitlLabels.length).toBeGreaterThan(0);
 
-      await clearHITLLabels(mockIssueId);
+      await clearHITLLabels(testIssueId);
 
-      labels = await getIssueLabels(mockIssueId);
+      labels = await getIssueLabels(testIssueId);
       const remainingHitlLabels = labels.filter((label) => label.startsWith("ashep-hitl:"));
       expect(remainingHitlLabels.length).toBe(0);
     });
 
     it("should handle no HITL labels gracefully", async () => {
-      await clearHITLLabels(mockIssueId);
-      const labels = await getIssueLabels(mockIssueId);
+      await clearHITLLabels(testIssueId);
+      const labels = await getIssueLabels(testIssueId);
       const hitlLabels = labels.filter((label) => label.startsWith("ashep-hitl:"));
       expect(hitlLabels.length).toBe(0);
     });
 
     it("should preserve non-HITL labels", async () => {
       const testLabel = "test-label";
-      await addLabel(mockIssueId, testLabel);
-      await setHITLLabel(mockIssueId, "approval");
+      await addLabel(testIssueId, testLabel);
+      await setHITLLabel(testIssueId, "approval");
 
-      await clearHITLLabels(mockIssueId);
+      await clearHITLLabels(testIssueId);
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain(testLabel);
       expect(labels).not.toContain("ashep-hitl:approval");
 
-      await removeLabel(mockIssueId, testLabel);
+      await removeLabel(testIssueId, testLabel);
     });
   });
 
   describe("getHITLReason", () => {
     it("should return HITL reason from labels", async () => {
       const reason = "manual-intervention";
-      await setHITLLabel(mockIssueId, reason);
+      await setHITLLabel(testIssueId, reason);
 
-      const hitlReason = await getHITLReason(mockIssueId);
+      const hitlReason = await getHITLReason(testIssueId);
       expect(hitlReason).toBe(reason);
     });
 
     it("should return null when no HITL label exists", async () => {
-      await clearHITLLabels(mockIssueId);
+      await clearHITLLabels(testIssueId);
 
-      const hitlReason = await getHITLReason(mockIssueId);
+      const hitlReason = await getHITLReason(testIssueId);
       expect(hitlReason).toBeNull();
     });
 
     it("should return first HITL reason if multiple exist", async () => {
-      await setHITLLabel(mockIssueId, "approval");
-      await setHITLLabel(mockIssueId, "timeout");
+      await setHITLLabel(testIssueId, "approval");
+      await setHITLLabel(testIssueId, "timeout");
 
-      const hitlReason = await getHITLReason(mockIssueId);
+      const hitlReason = await getHITLReason(testIssueId);
       expect(["approval", "timeout"]).toContain(hitlReason || "");
     });
   });
@@ -192,20 +219,20 @@ describe("HITL Tracking Functions", () => {
 
   describe("Integration with other labels", () => {
     it("should work alongside phase labels", async () => {
-      await addLabel(mockIssueId, "ashep-phase:implement");
-      await setHITLLabel(mockIssueId, "approval");
+      await addLabel(testIssueId, "ashep-phase:implement");
+      await setHITLLabel(testIssueId, "approval");
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain("ashep-phase:implement");
       expect(labels).toContain("ashep-hitl:approval");
 
-      await clearHITLLabels(mockIssueId);
+      await clearHITLLabels(testIssueId);
 
-      const remainingLabels = await getIssueLabels(mockIssueId);
+      const remainingLabels = await getIssueLabels(testIssueId);
       expect(remainingLabels).toContain("ashep-phase:implement");
       expect(remainingLabels).not.toContain("ashep-hitl:approval");
 
-      await removeLabel(mockIssueId, "ashep-phase:implement");
+      await removeLabel(testIssueId, "ashep-phase:implement");
     });
   });
 
@@ -218,27 +245,19 @@ describe("HITL Tracking Functions", () => {
 
     it("should handle empty reasons gracefully", async () => {
       await expect(async () => {
-        await setHITLLabel(mockIssueId, "");
+        await setHITLLabel(testIssueId, "");
       }).not.toThrow();
     });
   });
 });
 
-// Helper functions for testing
+// Helper functions for testing (using isolated environment)
 async function addLabel(issueId: string, label: string): Promise<void> {
-  await addLabelHelper(issueId, label);
-}
-
-async function removeLabel(issueId: string, label: string): Promise<void> {
-  await removeLabelHelper(issueId, label);
-}
-
-async function addLabelHelper(issueId: string, label: string): Promise<void> {
   const { addIssueLabel } = await import("../src/core/beads.ts");
   await addIssueLabel(issueId, label);
 }
 
-async function removeLabelHelper(issueId: string, label: string): Promise<void> {
+async function removeLabel(issueId: string, label: string): Promise<void> {
   const { removeIssueLabel } = await import("../src/core/beads.ts");
   await removeIssueLabel(issueId, label);
 }
