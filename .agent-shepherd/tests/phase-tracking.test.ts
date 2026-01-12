@@ -8,120 +8,147 @@ import {
   removeIssueLabel,
   type BeadsIssue,
 } from "../src/core/beads";
+import {
+  setupBeadsIsolation,
+  type BeadsTestEnv
+} from "./helpers/beads-test-isolation";
+
+const TEST_ISSUE_PREFIX = "phase-tracking-test";
 
 describe("Phase Tracking Functions", () => {
-  const mockIssueId = "agent-shepherd-uj0";
+  let beadsTestEnv: BeadsTestEnv;
+  let testIssueId: string;
+
+  beforeEach(async () => {
+    beadsTestEnv = setupBeadsIsolation();
+    await beadsTestEnv.initialize();
+
+    // Set environment variables for the Beads functions to use the isolated database
+    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
+    process.env.BD_NO_DAEMON = "true";
+    process.env.BD_SANDBOX = "true";
+
+    testIssueId = await beadsTestEnv.createIssue(
+      `${TEST_ISSUE_PREFIX}: Test issue for phase tracking`,
+      "task",
+      []
+    );
+  });
+
+  afterEach(async () => {
+    await beadsTestEnv.cleanup();
+  });
 
   describe("setPhaseLabel", () => {
     it("should set correct phase label format", async () => {
       const phaseName = "implement";
-      await setPhaseLabel(mockIssueId, phaseName);
+      await setPhaseLabel(testIssueId, phaseName);
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain(`ashep-phase:${phaseName}`);
     });
 
     it("should handle multiple phase label changes", async () => {
-      await setPhaseLabel(mockIssueId, "plan");
-      let labels = await getIssueLabels(mockIssueId);
+      await setPhaseLabel(testIssueId, "plan");
+      let labels = await getIssueLabels(testIssueId);
       expect(labels).toContain("ashep-phase:plan");
 
-      await setPhaseLabel(mockIssueId, "implement");
-      labels = await getIssueLabels(mockIssueId);
+      await setPhaseLabel(testIssueId, "implement");
+      labels = await getIssueLabels(testIssueId);
       expect(labels).toContain("ashep-phase:implement");
       expect(labels).toContain("ashep-phase:plan");
     });
 
     it("should handle phase names with underscores", async () => {
       const phaseName = "code_review";
-      await setPhaseLabel(mockIssueId, phaseName);
+      await setPhaseLabel(testIssueId, phaseName);
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain(`ashep-phase:${phaseName}`);
     });
   });
 
   describe("removePhaseLabels", () => {
     it("should remove all phase labels", async () => {
-      await setPhaseLabel(mockIssueId, "plan");
-      await setPhaseLabel(mockIssueId, "implement");
-      await setPhaseLabel(mockIssueId, "test");
+      await setPhaseLabel(testIssueId, "plan");
+      await setPhaseLabel(testIssueId, "implement");
+      await setPhaseLabel(testIssueId, "test");
 
-      let labels = await getIssueLabels(mockIssueId);
+      let labels = await getIssueLabels(testIssueId);
       const phaseLabels = labels.filter((label) => label.startsWith("ashep-phase:"));
       expect(phaseLabels.length).toBeGreaterThan(0);
 
-      await removePhaseLabels(mockIssueId);
+      await removePhaseLabels(testIssueId);
 
-      labels = await getIssueLabels(mockIssueId);
+      labels = await getIssueLabels(testIssueId);
       const remainingPhaseLabels = labels.filter((label) => label.startsWith("ashep-phase:"));
       expect(remainingPhaseLabels.length).toBe(0);
     });
 
     it("should handle no phase labels gracefully", async () => {
-      await removePhaseLabels(mockIssueId);
-      const labels = await getIssueLabels(mockIssueId);
+      await removePhaseLabels(testIssueId);
+      const labels = await getIssueLabels(testIssueId);
       const phaseLabels = labels.filter((label) => label.startsWith("ashep-phase:"));
       expect(phaseLabels.length).toBe(0);
     });
 
     it("should preserve non-phase labels", async () => {
       const testLabel = "test-label";
-      await addLabel(mockIssueId, testLabel);
-      await setPhaseLabel(mockIssueId, "plan");
+      await addLabel(testIssueId, testLabel);
+      await setPhaseLabel(testIssueId, "plan");
 
-      await removePhaseLabels(mockIssueId);
+      await removePhaseLabels(testIssueId);
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain(testLabel);
       expect(labels).not.toContain("ashep-phase:plan");
 
-      await removeLabel(mockIssueId, testLabel);
+      await removeLabel(testIssueId, testLabel);
     });
   });
 
   describe("getCurrentPhase", () => {
     it("should return current phase from labels", async () => {
       const phaseName = "test-phase";
-      await setPhaseLabel(mockIssueId, phaseName);
+      await setPhaseLabel(testIssueId, phaseName);
 
-      const currentPhase = await getCurrentPhase(mockIssueId);
+      const currentPhase = await getCurrentPhase(testIssueId);
       expect(currentPhase).toBe(phaseName);
     });
 
     it("should return null when no phase label exists", async () => {
-      await removePhaseLabels(mockIssueId);
+      await removePhaseLabels(testIssueId);
 
-      const currentPhase = await getCurrentPhase(mockIssueId);
+      const currentPhase = await getCurrentPhase(testIssueId);
       expect(currentPhase).toBeNull();
     });
 
     it("should return most recently set phase", async () => {
-      await setPhaseLabel(mockIssueId, "plan");
-      await setPhaseLabel(mockIssueId, "implement");
-      await setPhaseLabel(mockIssueId, "test");
+      await setPhaseLabel(testIssueId, "plan");
+      await setPhaseLabel(testIssueId, "implement");
+      await setPhaseLabel(testIssueId, "test");
 
-      const currentPhase = await getCurrentPhase(mockIssueId);
+      const currentPhase = await getCurrentPhase(testIssueId);
       expect(["plan", "implement", "test"]).toContain(currentPhase || "");
     });
   });
 
   describe("Integration with other labels", () => {
     it("should work alongside HITL labels", async () => {
-      await setPhaseLabel(mockIssueId, "implement");
-      await addLabel(mockIssueId, "ashep-hitl:approval");
+      await setPhaseLabel(testIssueId, "implement");
+      await addLabel(testIssueId, "ashep-hitl:approval");
 
-      const labels = await getIssueLabels(mockIssueId);
+      const labels = await getIssueLabels(testIssueId);
       expect(labels).toContain("ashep-phase:implement");
       expect(labels).toContain("ashep-hitl:approval");
 
-      await removePhaseLabels(mockIssueId);
+      await removePhaseLabels(testIssueId);
 
-      const remainingLabels = await getIssueLabels(mockIssueId);
+      const remainingLabels = await getIssueLabels(testIssueId);
       expect(remainingLabels).not.toContain("ashep-phase:implement");
       expect(remainingLabels).toContain("ashep-hitl:approval");
 
-      await removeLabel(mockIssueId, "ashep-hitl:approval");
+      await removeLabel(testIssueId, "ashep-hitl:approval");
     });
   });
 
@@ -134,7 +161,7 @@ describe("Phase Tracking Functions", () => {
 
     it("should handle empty phase names", async () => {
       await expect(async () => {
-        await setPhaseLabel(mockIssueId, "");
+        await setPhaseLabel(testIssueId, "");
       }).not.toThrow();
     });
   });

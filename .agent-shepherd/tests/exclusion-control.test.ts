@@ -4,19 +4,37 @@ import {
   getIssueLabels,
   addIssueLabel,
   removeIssueLabel,
+  getIssue,
 } from "../src/core/beads";
+import {
+  setupBeadsIsolation,
+  type BeadsTestEnv
+} from "./helpers/beads-test-isolation";
+
+const TEST_ISSUE_PREFIX = "exclusion-control-test";
 
 describe("hasExcludedLabel", () => {
-  const testIssueId = "agent-shepherd-zhj.5";
-  
+  let beadsTestEnv: BeadsTestEnv;
+  let testIssueId: string;
+
   beforeEach(async () => {
-    // Ensure the issue doesn't have the excluded label before each test
-    await removeIssueLabel(testIssueId, "ashep-excluded");
+    beadsTestEnv = setupBeadsIsolation();
+    await beadsTestEnv.initialize();
+
+    // Set environment variables for the Beads functions to use the isolated database
+    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
+    process.env.BD_NO_DAEMON = "true";
+    process.env.BD_SANDBOX = "true";
+
+    testIssueId = await beadsTestEnv.createIssue(
+      `${TEST_ISSUE_PREFIX}: Test issue for exclusion control`,
+      "task",
+      []
+    );
   });
 
   afterEach(async () => {
-    // Clean up: remove the excluded label after each test
-    await removeIssueLabel(testIssueId, "ashep-excluded");
+    await beadsTestEnv.cleanup();
   });
 
   it("should return true for issue with ashep-excluded label", async () => {
@@ -57,19 +75,34 @@ describe("hasExcludedLabel", () => {
 });
 
 describe("Exclusion Label Integration", () => {
-  const testIssueId1 = "agent-shepherd-zhj.5";
-  const testIssueId2 = "agent-shepherd-zhj.5.1";
+  let beadsTestEnv: BeadsTestEnv;
+  let testIssueId1: string;
+  let testIssueId2: string;
 
   beforeEach(async () => {
-    // Clean up labels before each test
-    await removeIssueLabel(testIssueId1, "ashep-excluded");
-    await removeIssueLabel(testIssueId2, "ashep-excluded");
+    beadsTestEnv = setupBeadsIsolation();
+    await beadsTestEnv.initialize();
+
+    // Set environment variables for the Beads functions to use the isolated database
+    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
+    process.env.BD_NO_DAEMON = "true";
+    process.env.BD_SANDBOX = "true";
+
+    testIssueId1 = await beadsTestEnv.createIssue(
+      `${TEST_ISSUE_PREFIX}: Test issue 1 for exclusion control`,
+      "task",
+      []
+    );
+
+    testIssueId2 = await beadsTestEnv.createIssue(
+      `${TEST_ISSUE_PREFIX}: Test issue 2 for exclusion control`,
+      "task",
+      []
+    );
   });
 
   afterEach(async () => {
-    // Clean up labels after each test
-    await removeIssueLabel(testIssueId1, "ashep-excluded");
-    await removeIssueLabel(testIssueId2, "ashep-excluded");
+    await beadsTestEnv.cleanup();
   });
 
   it("should distinguish between excluded and non-excluded issues", async () => {
