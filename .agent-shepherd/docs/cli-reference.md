@@ -109,6 +109,7 @@ ashep work --phase implement ISSUE-456
 - Validates issue exists in Beads
 - Processes through complete workflow
 - Returns detailed result status
+- **Note**: Custom prompts configured in policies.yaml are automatically applied per phase and support variable substitution (e.g., `{{issue.title}}`, `{{phase}}`, `{{capabilities}}`)
 
 **Output:**
 ```
@@ -333,6 +334,208 @@ Summary:
   Issues: 1 warning, 2 errors
   Dead end capabilities: testing, qa
 ```
+
+## Listing Commands
+
+### `ashep list-active`
+
+List all ashep-managed issues that are currently active (open or in_progress status).
+
+**Usage:**
+```bash
+ashep list-active
+```
+
+**Behavior:**
+- Queries Beads for issues with `ashep-managed` label
+- Filters for issues with status `open` or `in_progress`
+- Displays phase information extracted from `ashep-phase:` labels
+- Shows worker assignment from coordination state (when smart picking is enabled)
+- Shows priority, last update time
+- Handles empty results gracefully
+
+**Output:**
+```
+Active Issues (3):
+┌──────────┬─────────────────────────────────┬──────────────┬──────────┬────────────┬──────────────┐
+│ ID       │ Title                           │ Phase        │ Worker   │ Priority   │ Updated      │
+├──────────┼─────────────────────────────────┼──────────────┼──────────┼────────────┼──────────────┤
+│ bd-42    │ Fix authentication bug          │ implement    │ worker-1 │ P1         │ 2m ago       │
+│ bd-87    │ Add user settings              │ test         │ worker-2 │ P2         │ 15m ago      │
+│ bd-91    │ Database migration             │ plan         │ -        │ P1         │ 1h ago       │
+└──────────┴─────────────────────────────────┴──────────────┴──────────┴────────────┴──────────────┘
+
+Legend:
+  Worker: Worker assigned via coordination (epoch_id→assigned-worker state)
+  -       : No worker assigned (simple mode or unclaimed epic)
+```
+
+**Options:**
+- `--format table|json`: Output format (default: table)
+- `--worker <id>`: Filter by specific worker
+
+```bash
+# Filter by worker
+ashep list-active --worker worker-1
+
+# JSON output for scripting
+ashep list-active --format json
+```
+
+### `ashep list-hitl`
+
+List issues requiring human-in-the-loop (HITL) intervention.
+
+**Usage:**
+```bash
+ashep list-hitl
+```
+
+**Behavior:**
+- Queries all Beads issues
+- Filters for issues with `ashep-hitl:` labels
+- Displays HITL reason, current phase, and status
+- Useful for identifying issues that need human attention
+
+**Output:**
+```
+HITL Issues (1):
+┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────────┐
+│ ID      │ Title                           │ Reason       │ Phase    │ Status          │
+├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────────┤
+│ bd-123  │ Complex API integration         │ approval     │ review   │ open            │
+└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────────┘
+```
+
+### `ashep list-ready`
+
+List ashep-managed issues ready to be worked on (open status only, no blockers).
+
+**Usage:**
+```bash
+ashep list-ready
+```
+
+**Behavior:**
+- Queries Beads for issues with `ashep-managed` label
+- Filters for issues with status `open`
+- Shows issues that are not blocked and ready for worker pickup
+- Displays phase, priority, and last update time
+
+**Output:**
+```
+Ready Issues (1):
+┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┐
+│ ID      │ Title                           │ Phase        │ Priority │ Updated      │
+├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┤
+│ bd-99   │ Implement caching              │ plan         │ P1       │ 5m ago       │
+└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┘
+```
+
+### `ashep list-struggle [hours]`
+
+List problematic/struggling issues (blocked, HITL, or stale).
+
+**Usage:**
+```bash
+ashep list-struggle           # Default: 24 hours
+ashep list-struggle 48       # Custom threshold: 48 hours
+```
+
+**Options:**
+- `hours` (optional): Stale threshold in hours (default: 24)
+
+**Behavior:**
+- Identifies ashep-managed issues that are:
+  - Blocked status
+  - Have `ashep-hitl:` labels
+  - Not updated within specified hours
+- Useful for identifying issues that need human intervention
+- Customizable stale threshold
+
+**Output:**
+```
+Struggling Issues (3):
+┌─────────┬─────────────────────────────────┬──────────────┬──────────────┬─────────┬──────────────────┐
+│ ID      │ Title                           │ Issue Type  │ Phase        │ Status   │ Age/Reason      │
+├─────────┼─────────────────────────────────┼──────────────┼──────────────┼─────────┼──────────────────┤
+│ bd-45   │ Database migration             │ blocked     │ test         │ blocked  │ blocked         │
+│ bd-78   │ Performance regression         │ hitl        │ fix      │ review   │ approval        │
+│ bd-91   │ Legacy code cleanup          │ stale       │ review   │ 72h old        │
+└─────────┴─────────────────────────────────┴──────────────┴──────────────┴─────────┴──────────────────┘
+```
+
+### `ashep get-messages <issue-id> [--phase <phase>] [--unread]`
+
+Get phase messages for an issue.
+
+**Usage:**
+```bash
+ashep get-messages ISSUE-123                                    # All messages
+ashep get-messages ISSUE-123 --phase test                      # Specific phase
+ashep get-messages ISSUE-123 --unread                           # Unread only
+ashep get-messages ISSUE-123 --phase test --unread           # Combined
+```
+
+**Options:**
+- `issue-id` (required): Issue identifier
+- `--phase <phase>` (optional): Filter messages by destination phase
+- `--unread` (optional): Show only unread messages
+
+**Behavior:**
+- Retrieves messages from the Phase Messenger system
+- Messages include: context, results, decisions, and data
+- Messages are automatically sent between phases during workflow execution
+- Useful for debugging workflows and verifying phase communication
+
+**Output:**
+```
+Messages (2):
+┌─────────────────┬───────────┬───────────┬─────────────────────────────────────┬─────────┬──────────────┐
+│ ID              │ Type      │ Read      │ Content                          │ From    │ To           │
+├─────────────────┼───────────┼───────────┼─────────────────────────────────────┼─────────┼──────────────┤
+│ msg-1234567890  │ context   │ ✓         │ Planning completed                │ plan     │ implement    │
+│ msg-9876543210  │ result    │ ✗         │ Tests passed                   │ test     │ deploy      │
+└─────────────────┴───────────┴───────────┴─────────────────────────────────────┴─────────┴──────────────┘
+```
+
+### `ashep list-sessions <issue-id>`
+
+List OpenCode sessions associated with an issue.
+
+**Usage:**
+```bash
+ashep list-sessions ISSUE-123
+```
+
+**Behavior:**
+- Queries OpenCode for all sessions associated with the issue
+- Displays session ID, title, phase, and token count
+- Useful for monitoring session continuation and token usage
+- Helps identify which phases reused sessions
+
+**Output:**
+```
+Sessions for issue ISSUE-123 (2):
+┌───────────────────────────────────────┬───────────────────────────────────────────────┬──────────────┬──────────┐
+│ Session ID                            │ Title                                     │ Phase        │ Tokens   │
+├───────────────────────────────────────┼───────────────────────────────────────────────┼──────────────┼──────────┤
+│ session-abc123def456...               │ Implement user authentication              │ implement    │ 85000    │
+│ session-xyz789abc012...               │ Test user authentication                   │ test         │ 42000    │
+└───────────────────────────────────────┴───────────────────────────────────────────────┴──────────────┴──────────┘
+```
+
+**Empty Output:**
+```
+No sessions found for issue ISSUE-456
+```
+
+### Use Cases
+
+- **Debug workflow issues**: Verify sessions are being reused correctly
+- **Monitor token usage**: Track accumulated context across phases
+- **Audit session continuity**: Ensure multi-phase workflows maintain context
+- **Optimize workflows**: Identify phases that may benefit from session continuation
 
 ## Plugin Commands
 
@@ -593,6 +796,202 @@ Get workflow phases.
     "status": "active"
   }
 ]
+```
+
+## Coordination Commands
+
+### `ashep heartbeat status`
+
+Display the status of the heartbeat checker daemon and session monitoring.
+
+**Usage:**
+```bash
+ashep heartbeat status
+```
+
+**Behavior:**
+- Shows whether heartbeat checker is running
+- Displays current configuration (poll_interval_ms, stale_threshold_ms)
+- Shows statistics: total sessions checked, alive sessions, stale sessions, errors
+- Lists monitored epics with their last heartbeat timestamps
+
+**Output:**
+```
+Heartbeat Checker Status:
+  Running: true
+  Config:
+    poll_interval_ms: 30000
+    stale_threshold_ms: 300000
+  Stats:
+    total_checked: 150
+    alive_sessions: 145
+    stale_sessions: 5
+    error_count: 0
+
+Monitored Epics:
+  epic-123: last heartbeat 45s ago (alive)
+  epic-456: last heartbeat 6m ago (STALE)
+```
+
+### `ashep heartbeat start`
+
+Start the heartbeat checker daemon for session monitoring.
+
+**Usage:**
+```bash
+ashep heartbeat start
+ashep heartbeat start --poll-interval 60000
+```
+
+**Options:**
+- `--poll-interval <ms>`: Polling interval in milliseconds (default: 30000)
+- `--stale-threshold <ms>`: Threshold in ms to consider heartbeat stale (default: 300000)
+
+**Behavior:**
+- Starts background daemon that monitors active sessions
+- Updates Beads state with last heartbeat timestamps
+- Detects abandoned sessions based on activity
+- Emits events for monitoring integration
+
+### `ashep heartbeat stop`
+
+Stop the heartbeat checker daemon.
+
+**Usage:**
+```bash
+ashep heartbeat stop
+```
+
+### `ashep coordination status`
+
+Display the current coordination state for epics and workers.
+
+**Usage:**
+```bash
+ashep coordination status
+ashep coordination status --epic epic-123
+ashep coordination status --worker worker-1
+```
+
+**Options:**
+- `--epic <id>`: Filter by specific epic ID
+- `--worker <id>`: Filter by specific worker ID
+
+**Output:**
+```
+Coordination State:
+  Total Managed Epics: 5
+  Active Workers: 2
+
+Epic Assignments:
+  epic-123: worker-1 (lease expires in 25m, heartbeat 45s ago)
+  epic-456: worker-2 (lease expired, ABANDONED)
+  epic-789: worker-1 (lease expires in 28m, heartbeat 2m ago)
+
+Abandoned Epics:
+  epic-456: Detected 5m ago, recoverable
+```
+
+### `ashep coordination claim <epic-id>`
+
+Manually claim an epic for the current worker.
+
+**Usage:**
+```bash
+ashep coordination claim epic-123
+```
+
+**Behavior:**
+- Claims the epic for the current worker (ASHEP_WORKER_ID)
+- Sets lease expiration timestamp
+- Checks for abandonment and recovers if needed
+- Updates coordination state in Beads
+
+### `ashep coordination release <epic-id>`
+
+Release a claimed epic, making it available for other workers.
+
+**Usage:**
+```bash
+ashep coordination release epic-123
+```
+
+**Behavior:**
+- Clears the assigned worker from the epic
+- Removes lease expiration
+- Epic becomes available for other workers to claim
+
+### `ashep coordination recover <epic-id>`
+
+Manually trigger recovery of an abandoned epic.
+
+**Usage:**
+```bash
+ashep coordination recover epic-123
+```
+
+**Behavior:**
+- Detects if epic is truly abandoned (heartbeat stale or lease expired)
+- Recovers any active runs in the epic subtree
+- Claims the epic for the current worker
+- Logs recovery decision
+
+### `ashep picking status`
+
+Display the current issue picker configuration and mode.
+
+**Usage:**
+```bash
+ashep picking status
+```
+
+**Output:**
+```
+Issue Picker Status:
+  Mode: smart
+  Max Issues: 3
+  Epic Affinity: true
+  Coordination Mode: hybrid
+
+Recent Picks:
+  epic-123.1: priority=1, depth=1, epic=123
+  epic-456.2: priority=2, depth=2, epic=456
+  epic-789.1: priority=1, depth=1, epic=789
+```
+
+### `ashep picking mode <simple|smart>`
+
+Switch the issue picker mode at runtime.
+
+**Usage:**
+```bash
+ashep picking mode simple
+ashep picking mode smart
+```
+
+**Behavior:**
+- `simple`: Priority-based selection without dependency awareness
+- `smart`: Dependency-aware selection with epic affinity
+- Change takes effect on next pick cycle
+- Mode stored in configuration for persistence
+
+### Configuration Options
+
+The following configuration options control coordination behavior in `config/config.yaml`:
+
+```yaml
+worker:
+  picking:
+    mode: "smart"           # "simple" | "smart"
+    max_issues: 3           # Max issues to pick per cycle
+    prefer_epic_affinity: true  # Maintain epic ownership
+  coordination:
+    mode: "hybrid"          # "lease" | "heartbeat" | "hybrid"
+    lease_duration_ms: 1800000  # 30 minutes
+  checker:
+    enabled: true           # Enable heartbeat checker daemon
+    poll_interval_ms: 30000 # Heartbeat check interval
+    heartbeat_threshold_ms: 300000  # 5 minutes stale threshold
 ```
 
 ## Exit Codes

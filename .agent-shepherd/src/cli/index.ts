@@ -8,12 +8,17 @@ import { getWorkerEngine } from "../core/worker-engine.ts";
 import { getMonitorEngine } from "../core/monitor-engine.ts";
 import { getIssue } from "../core/beads.ts";
 import { findAgentShepherdDir, findInstallDir } from "../core/path-utils.ts";
+import { getAssignedWorker, getLastHeartbeat, getLeaseExpires, listIssues, getReadyIssues } from "../core/beads.ts";
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync, cpSync, rmSync } from "fs";
 import { join } from "path";
 import path from "path";
 import { execSync } from "child_process";
 import { homedir, platform } from "os";
 import { policyCapabilityValidator } from "../core/policy-capability-validator";
+import { getCleanupEngine } from "../core/cleanup-engine.ts";
+import { resetCleanupEngine } from "../core/cleanup-engine.ts";
+import { getSizeMonitor } from "../core/size-monitor.ts";
+import { getHealthChecker, resetHealthChecker } from "../core/cleanup-health-check.ts";
 
 const COMMANDS: Record<string, string> = {
   worker: "Start the autonomous worker loop",
@@ -25,12 +30,21 @@ const COMMANDS: Record<string, string> = {
   ui: "Start the flow visualization server",
   "validate-policy-chain": "Validate policy-capability-agent chain integrity",
   "show-policy-tree": "Display policy-capability-agent relationship tree",
+  "list-active": "List issues currently being worked on (in_progress)",
+  "list-hitl": "List issues requiring human-in-the-loop intervention",
+  "list-ready": "List issues ready to be worked on (no blockers)",
+  "list-struggle": "List blocked issues that need attention",
+  "list-sessions": "List OpenCode sessions for an issue",
+  "get-messages": "Get phase messages for an issue",
+  "heartbeat": "Show heartbeat-checker status and active heartbeats",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
   "plugin-activate": "Activate a plugin",
   "plugin-deactivate": "Deactivate a plugin",
   "plugin-remove": "Remove a plugin",
   "plugin-list": "List installed plugins",
+  "cleanup-metrics": "Show cleanup statistics and performance metrics",
+  "cleanup-status": "Show current cleanup system status and health",
   update: "Update Agent Shepherd to latest or specific version",
   version: "Show installed version",
   help: "Show help information",
@@ -51,8 +65,11 @@ function loadPlugins(): void {
     const pluginsDir = join(agentShepherdDir, "plugins");
 
     if (!existsSync(pluginsDir)) {
+      console.log(`No plugins directory found at ${pluginsDir}`);
       return; // No plugins directory, skip
     }
+
+    console.log(`Loading plugins from: ${pluginsDir}`);
 
     const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true })
       .filter(dirent => dirent.isDirectory())
@@ -131,12 +148,13 @@ ${Object.entries(COMMANDS)
   .map(([cmd, desc]) => `  ${cmd.padEnd(15)} ${desc}`)
   .join("\n")}
 
- Examples:
+  Examples:
     ashep quickstart          # One-command onboarding
     ashep init                # Initialize configuration
     ashep worker              # Start autonomous worker
     ashep work ISSUE-123      # Process specific issue
     ashep ui                  # Start visualization UI
+    ashep list-sessions ISSUE-123  # List sessions for an issue
     ashep validate-policy-chain  # Validate policy relationships
     ashep show-policy-tree    # Show relationship tree
 
@@ -146,7 +164,7 @@ Configuration guide: docs/cli-reference.md
 }
 
 /**
- * Worker command - start autonomous processing
+ * Worker command - start autonomous worker loop
  */
 async function cmdWorker(): Promise<void> {
   console.log("Starting Agent Shepherd Worker...");
@@ -157,10 +175,16 @@ async function cmdWorker(): Promise<void> {
 
   const worker = getWorkerEngine();
 
+  // Initialize cleanup engine
+  const cleanupEngine = getCleanupEngine();
+  await cleanupEngine.start();
+
   // Handle graceful shutdown
   process.on("SIGINT", () => {
     console.log("\nStopping worker...");
+    cleanupEngine.stop();
     worker.stop();
+    resetCleanupEngine();
     process.exit(0);
   });
 
@@ -179,13 +203,19 @@ async function cmdMonitor(): Promise<void> {
 
   const monitor = getMonitorEngine();
 
+  // Initialize cleanup engine
+  const cleanupEngine = getCleanupEngine();
+  await cleanupEngine.start();
+
   // Resume any interrupted runs
   await monitor.resumeInterruptedRuns();
 
   // Handle graceful shutdown
   process.on("SIGINT", () => {
     console.log("\nStopping monitor...");
+    cleanupEngine.stop();
     monitor.stop();
+    resetCleanupEngine();
     process.exit(0);
   });
 
@@ -193,9 +223,29 @@ async function cmdMonitor(): Promise<void> {
 }
 
 /**
+ * Work command - process specific issue or epic
+ */
+async function cmdWork(issueIdOrEpic: string, epicMode: boolean = false): Promise<void> {
+  if (!issueIdOrEpic) {
+    console.error("Error: Issue ID or Epic ID required");
+    console.log("Usage: ashep work <issue-id>");
+    console.log("       ashep work --epic <epic-id>");
+    process.exit(1);
+  }
+
+  if (epicMode) {
+    // Epic-focused processing: get all ready issues in epic subtree
+    await cmdWorkEpic(issueIdOrEpic);
+  } else {
+    // Single issue processing
+    await cmdWorkIssue(issueIdOrEpic);
+  }
+}
+
+/**
  * Work command - process specific issue
  */
-async function cmdWork(issueId: string): Promise<void> {
+async function cmdWorkIssue(issueId: string): Promise<void> {
   if (!issueId) {
     console.error("Error: Issue ID required");
     console.log("Usage: ashep work <issue-id>");
@@ -221,6 +271,88 @@ async function cmdWork(issueId: string): Promise<void> {
   }
   if (result.next_phase) {
     console.log(`  Next Phase: ${result.next_phase}`);
+  }
+}
+
+/**
+ * Work command - process all ready issues in epic subtree
+ */
+async function cmdWorkEpic(epicId: string): Promise<void> {
+  if (!epicId) {
+    console.error("Error: Epic ID required");
+    console.log("Usage: ashep work --epic <epic-id>");
+    process.exit(1);
+  }
+
+  console.log(`Epic-focused processing: ${epicId}`);
+
+  const epic = await getIssue(epicId);
+  if (!epic) {
+    console.error(`Error: Epic ${epicId} not found`);
+    process.exit(1);
+  }
+
+  if (epic.issue_type !== "epic") {
+    console.error(`Error: ${epicId} is not an epic`);
+    process.exit(1);
+  }
+
+  // Get all ready issues in the project
+  const readyIssues = await getReadyIssues();
+  
+  // Filter for issues in this epic subtree
+  const epicSubtreeIssues = readyIssues.filter(issue => 
+    issue.id.startsWith(epicId) && issue.id !== epicId
+  );
+
+  if (epicSubtreeIssues.length === 0) {
+    console.log(`No ready issues found in epic ${epicId}`);
+    return;
+  }
+
+  console.log(`Found ${epicSubtreeIssues.length} ready issues in epic ${epicId}`);
+  
+  const worker = getWorkerEngine();
+  const results: Array<{
+    issue_id: string;
+    success: boolean;
+    message?: string;
+    next_phase?: string;
+  }> = [];
+
+  // Process each issue
+  for (const issue of epicSubtreeIssues) {
+    console.log(`\nProcessing issue: ${issue.id} - ${issue.title}`);
+    
+    try {
+      const result = await worker.processIssue(issue);
+      results.push({
+        issue_id: issue.id,
+        success: result.success,
+        message: result.message,
+        next_phase: result.next_phase,
+      });
+    } catch (error) {
+      console.error(`Error processing issue ${issue.id}:`, error);
+      results.push({
+        issue_id: issue.id,
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Show summary
+  console.log(`\n=== Epic Processing Summary ===`);
+  console.log(`Epic: ${epicId} - ${epic.title}`);
+  console.log(`Issues processed: ${results.length}`);
+  console.log(`Successful: ${results.filter(r => r.success).length}`);
+  console.log(`Failed: ${results.filter(r => !r.success).length}`);
+  
+  console.log(`\nDetails:`);
+  for (const result of results) {
+    const status = result.success ? "✓" : "✗";
+    console.log(`  ${status} ${result.issue_id}: ${result.message || "OK"} ${result.next_phase ? `-> ${result.next_phase}` : ""}`);
   }
 }
 
@@ -1153,6 +1285,103 @@ async function cmdUpdate(version?: string): Promise<void> {
 }
 
 /**
+ * Cleanup metrics command - show cleanup statistics
+ */
+function cmdCleanupMetrics(): void {
+  try {
+    const cleanupEngine = getCleanupEngine();
+    const metrics = cleanupEngine.getAggregateMetrics();
+
+    console.log("\n📊 Cleanup Metrics");
+    console.log("─".repeat(50));
+    console.log(`Total runs processed: ${metrics.total_runs_processed}`);
+    console.log(`Total runs archived: ${metrics.total_runs_archived}`);
+    console.log(`Total runs deleted: ${metrics.total_runs_deleted}`);
+    console.log(`Total bytes archived: ${(metrics.total_bytes_archived / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Total bytes deleted: ${(metrics.total_bytes_deleted / 1024 / 1024).toFixed(2)} MB`);
+
+    if (metrics.last_cleanup) {
+      const lastCleanupDate = new Date(metrics.last_cleanup);
+      console.log(`Last cleanup: ${lastCleanupDate.toLocaleString()}`);
+    } else {
+      console.log("Last cleanup: Never");
+    }
+
+    console.log(`Average cleanup duration: ${metrics.average_duration_ms.toFixed(2)} ms`);
+    console.log();
+
+    resetCleanupEngine();
+  } catch (error) {
+    console.error("❌ Failed to get cleanup metrics:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Cleanup status command - show system status
+ */
+async function cmdCleanupStatus(): Promise<void> {
+  try {
+    const cleanupEngine = getCleanupEngine();
+    const sizeMonitor = getSizeMonitor();
+    const healthChecker = getHealthChecker();
+
+    console.log("\n🔍 Cleanup System Status");
+    console.log("─".repeat(50));
+
+    const isRunning = (cleanupEngine as any).isRunning;
+    console.log(`Cleanup Engine: ${isRunning ? "🟢 Running" : "⚫ Stopped"}`);
+
+    if (isRunning) {
+      const lastCleanupTime = (cleanupEngine as any).lastCleanupTime;
+      if (lastCleanupTime > 0) {
+        const lastCleanupDate = new Date(lastCleanupTime);
+        console.log(`Last Cleanup: ${lastCleanupDate.toLocaleString()}`);
+      } else {
+        console.log("Last Cleanup: Never");
+      }
+    }
+
+    console.log();
+    console.log("📏 Current Size Metrics");
+    console.log("─".repeat(50));
+
+    const sizeMetrics = await sizeMonitor.getMetrics();
+    console.log(`Active DB size: ${(sizeMetrics.active_db_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Archive DB size: ${(sizeMetrics.archive_db_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`JSONL size: ${(sizeMetrics.jsonl_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Archive JSONL size: ${(sizeMetrics.archive_jsonl_size_bytes / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Total size: ${sizeMetrics.total_size_mb.toFixed(2)} MB`);
+    console.log(`Run count: ${sizeMetrics.run_count}`);
+    console.log(`Archive run count: ${sizeMetrics.archive_run_count}`);
+    console.log();
+
+    sizeMonitor.stop();
+
+    console.log("🏥 Health Status");
+    console.log("─".repeat(50));
+
+    const healthReport = await healthChecker.runHealthChecks();
+    const allPassed = healthReport.checks.every((check: any) => check.passed);
+
+    for (const check of healthReport.checks) {
+      const status = check.passed ? "✅" : "❌";
+      console.log(`${status} ${check.check_name}: ${check.message}`);
+    }
+
+    console.log();
+    console.log(`Overall Health: ${allPassed ? "✅ Healthy" : "❌ Issues Detected"}`);
+    console.log();
+
+    resetCleanupEngine();
+    resetHealthChecker();
+  } catch (error) {
+    console.error("❌ Failed to get cleanup status:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
  * Plugin list command - list installed plugins
  */
 function cmdPluginList(): void {
@@ -1204,6 +1433,482 @@ function cmdPluginList(): void {
 }
 
 /**
+ * List active command - list issues currently being worked on
+ */
+async function cmdListActive(): Promise<void> {
+  try {
+    const procOpen = Bun.spawn([
+      "bd", "list",
+      "--label", "ashep-managed",
+      "--status", "open",
+      "--json"
+    ], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const outputOpen = await new Response(procOpen.stdout).text();
+    const issuesOpen = JSON.parse(outputOpen);
+
+    const procInProgress = Bun.spawn([
+      "bd", "list",
+      "--label", "ashep-managed",
+      "--status", "in_progress",
+      "--json"
+    ], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const outputInProgress = await new Response(procInProgress.stdout).text();
+    const issuesInProgress = JSON.parse(outputInProgress);
+
+    const issues = [...issuesOpen, ...issuesInProgress];
+
+    if (issues.length === 0) {
+      console.log("No active issues found.");
+      return;
+    }
+
+    const workerId = process.env.ASHEP_WORKER_ID || "default";
+
+    // Build issue assignments map from epics
+    const epicAssignments: Map<string, string> = new Map();
+    
+    // Find all epics and get their assigned workers
+    for (const issue of issues) {
+      const isEpic = !issue.id.includes(".");
+      if (isEpic) {
+        const assignedWorker = await getAssignedWorker(issue.id);
+        if (assignedWorker) {
+          epicAssignments.set(issue.id, assignedWorker);
+        }
+      }
+    }
+
+    console.log(`\nActive Issues (${issues.length}):`);
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┬──────────────┐");
+    console.log("│ ID      │ Title                           │ Phase        │ Priority │ Updated      │ Epic Worker  │");
+    console.log("├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┼──────────────┤");
+
+    for (const issue of issues) {
+      const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const updatedTime = new Date(issue.updated_at).toLocaleString();
+
+      // Get epic assignment
+      const epicId = issue.id.includes(".") ? issue.id.split(".")[0] : issue.id;
+      const assignedWorker = epicAssignments.get(epicId);
+      let workerIndicator = "";
+      
+      if (assignedWorker) {
+        if (assignedWorker === workerId) {
+          workerIndicator = "✓";
+        } else {
+          workerIndicator = "•";
+        }
+      }
+
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${phase.padEnd(12)} │ ${`P${issue.priority}`.padEnd(7)} │ ${updatedTime.padEnd(12)} │ ${workerIndicator.padEnd(12)} │`);
+    }
+
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┴──────────────┘");
+    console.log(`Legend: ✓ = Owned by this worker (${workerId}), • = Owned by another worker`);
+  } catch (error) {
+    console.error("❌ Failed to list active issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * List HITL command - list issues requiring human-in-the-loop intervention
+ */
+async function cmdListHITL(): Promise<void> {
+  try {
+    const proc = Bun.spawn(["bd", "list", "--json"], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+
+    const hitlIssues = issues.filter((issue: any) =>
+      issue.labels?.some((l: string) => l.startsWith("ashep-hitl:"))
+    );
+
+    if (hitlIssues.length === 0) {
+      console.log("No HITL issues found.");
+      return;
+    }
+
+    console.log(`\nHITL Issues (${hitlIssues.length}):`);
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────────┐");
+    console.log("│ ID      │ Title                           │ Reason       │ Phase    │ Status          │");
+
+    for (const issue of hitlIssues) {
+      const hitlLabel = issue.labels?.find((l: string) => l.startsWith("ashep-hitl:"));
+      const reason = hitlLabel?.replace("ashep-hitl:", "") || "unknown";
+      const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${reason.padEnd(12)} │ ${phase.padEnd(8)} │ ${issue.status.padEnd(14)} │`);
+    }
+
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────────┘");
+  } catch (error) {
+    console.error("❌ Failed to list HITL issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Heartbeat status command - show checker health and active heartbeats
+ */
+async function cmdHeartbeat(): Promise<void> {
+  try {
+    const workerId = process.env.ASHEP_WORKER_ID || "default";
+    
+    console.log(`\nHeartbeat Checker Status`);
+    console.log(`Worker ID: ${workerId}`);
+    console.log(``);
+    
+    // Get all epics with assigned workers (issues with assigned-worker state)
+    const allIssues = await listIssues();
+    const epicIssues = allIssues.filter((issue: any) => !issue.id.includes(".") && issue.issue_type === "epic");
+    
+    if (epicIssues.length === 0) {
+      console.log("No epics found with active assignments.");
+      return;
+    }
+    
+    // Build epic assignment status table
+    const epicAssignments: Array<{
+      epicId: string;
+      title: string;
+      assignedWorker: string | null;
+      lastHeartbeat: number | null;
+      leaseExpires: number | null;
+      status: string;
+    }> = [];
+    
+    for (const epic of epicIssues) {
+      const assignedWorker = await getAssignedWorker(epic.id);
+      const lastHeartbeat = await getLastHeartbeat(epic.id);
+      const leaseExpires = await getLeaseExpires(epic.id);
+      
+      let status: string;
+      const now = Date.now();
+      
+      if (assignedWorker) {
+        if (assignedWorker === workerId) {
+          // We own this epic
+          if (lastHeartbeat && (now - lastHeartbeat) < 5 * 60 * 1000) {
+            status = "owned";
+          } else if (lastHeartbeat) {
+            status = "stale";
+          } else {
+            status = "leased";
+          }
+        } else {
+          // Another worker owns this epic
+          if (lastHeartbeat && (now - lastHeartbeat) < 5 * 60 * 1000) {
+            status = "active";
+          } else if (lastHeartbeat) {
+            status = "stale";
+          } else if (leaseExpires && now < leaseExpires) {
+            status = "leased";
+          } else {
+            status = "abandoned";
+          }
+        }
+      } else {
+        status = "unassigned";
+      }
+      
+      const title = epic.title.substring(0, 25) + (epic.title.length > 25 ? "..." : "");
+      epicAssignments.push({
+        epicId: epic.id,
+        title,
+        assignedWorker,
+        lastHeartbeat,
+        leaseExpires,
+        status,
+      });
+    }
+    
+    // Filter out unassigned and only show assigned epics
+    const activeAssignments = epicAssignments.filter(a => a.assignedWorker !== null);
+    
+    if (activeAssignments.length === 0) {
+      console.log("No active epic assignments found.");
+      return;
+    }
+    
+    console.log(`Active Epic Assignments (${activeAssignments.length}):`);
+    console.log("┌──────────────┬──────────────────────────┬───────────────┬──────────────┬──────────────────────┐");
+    console.log("│ Epic         │ Title                   │ Assigned To   │ Last Heart   │ Status              │");
+    console.log("├──────────────┼──────────────────────────┼───────────────┼──────────────┼──────────────────────┤");
+    
+    for (const assignment of activeAssignments) {
+      const epicShort = assignment.epicId.substring(0, 12) + (assignment.epicId.length > 12 ? "..." : "");
+      const assignedTo = assignment.assignedWorker === workerId 
+        ? `${assignment.assignedWorker} ✓` 
+        : (assignment.assignedWorker || "none");
+      const heartbeatAge = assignment.lastHeartbeat 
+        ? formatAge(Date.now() - assignment.lastHeartbeat) 
+        : "never";
+      
+      const isOwned = assignment.assignedWorker === workerId;
+      const statusDisplay = isOwned ? `${assignment.status} ✓` : assignment.status;
+      
+      console.log(`│ ${epicShort.padEnd(12)} │ ${assignment.title.padEnd(22)} │ ${assignedTo.padEnd(13)} │ ${heartbeatAge.padEnd(12)} │ ${statusDisplay.padEnd(18)} │`);
+    }
+    
+    console.log("└──────────────┴──────────────────────────┴───────────────┴──────────────┴──────────────────────┘");
+    console.log(``);
+    console.log(`Legend: ✓ = Owned by current worker`);
+  } catch (error) {
+    console.error("❌ Failed to show heartbeat status:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Format age in milliseconds to human-readable string
+ */
+function formatAge(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (days > 0) {
+    return `${days}d ${hours % 24}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  }
+  return `${seconds}s`;
+}
+
+/**
+ * List ready command - list issues ready to be worked on
+ */
+async function cmdListReady(): Promise<void> {
+  try {
+    const proc = Bun.spawn([
+      "bd", "list",
+      "--label", "ashep-managed",
+      "--status", "open",
+      "--json"
+    ], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+
+    if (issues.length === 0) {
+      console.log("No ready issues found.");
+      return;
+    }
+
+    console.log(`\nReady Issues (${issues.length}):`);
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬─────────┬──────────────┐");
+    console.log("│ ID      │ Title                           │ Phase        │ Priority │ Updated      │");
+    console.log("├─────────┼─────────────────────────────────┼──────────────┼─────────┼──────────────┤");
+
+    for (const issue of issues) {
+      const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const updatedTime = new Date(issue.updated_at).toLocaleString();
+
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${phase.padEnd(12)} │ ${`P${issue.priority}`.padEnd(7)} │ ${updatedTime.padEnd(12)} │`);
+    }
+
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴─────────┴──────────────┘");
+  } catch (error) {
+    console.error("❌ Failed to list ready issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * List struggle command - list blocked issues that need attention
+ */
+async function cmdListStruggle(hours?: number): Promise<void> {
+  try {
+    const staleThresholdHours = hours || 24;
+    const staleCutoff = Date.now() - (staleThresholdHours * 60 * 60 * 1000);
+
+    const proc = Bun.spawn(["bd", "list", "--json"], {
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const issues = JSON.parse(output);
+
+    const strugglingIssues = issues.filter((issue: any) => {
+      const isManaged = issue.labels?.includes("ashep-managed");
+      if (!isManaged) return false;
+
+      const isBlocked = issue.status === "blocked";
+      const hasHITL = issue.labels?.some((l: string) => l.startsWith("ashep-hitl:"));
+      const isStale = new Date(issue.updated_at).getTime() < staleCutoff;
+
+      return isBlocked || hasHITL || isStale;
+    });
+
+    if (strugglingIssues.length === 0) {
+      console.log("No struggling issues found.");
+      return;
+    }
+
+    console.log(`\nStruggling Issues (${strugglingIssues.length}):`);
+    console.log("┌─────────┬─────────────────────────────────┬──────────────┬──────────────┬─────────┬──────────────────┐");
+    console.log("│ ID      │ Title                           │ Type         │ Phase        │ Status   │ Age/Reason      │");
+    console.log("├─────────┼─────────────────────────────────┼──────────────┼──────────────┼─────────┼──────────────────┤");
+
+    for (const issue of strugglingIssues) {
+      const phaseLabel = issue.labels?.find((l: string) => l.startsWith("ashep-phase:"));
+      const phase = phaseLabel?.replace("ashep-phase:", "") || "unknown";
+      const title = issue.title.substring(0, 30) + (issue.title.length > 30 ? "..." : "");
+
+      let ageOrReason = "";
+      const isBlocked = issue.status === "blocked";
+      const hasHITL = issue.labels?.some((l: string) => l.startsWith("ashep-hitl:"));
+      const isStale = new Date(issue.updated_at).getTime() < staleCutoff;
+
+      if (isBlocked) {
+        ageOrReason = "blocked";
+      } else if (hasHITL) {
+        const hitlLabel = issue.labels?.find((l: string) => l.startsWith("ashep-hitl:"));
+        ageOrReason = hitlLabel?.replace("ashep-hitl:", "") || "HITL";
+      } else if (isStale) {
+        const ageHours = Math.floor((Date.now() - new Date(issue.updated_at).getTime()) / (60 * 60 * 1000));
+        ageOrReason = `${ageHours}h stale`;
+      }
+
+      console.log(`│ ${issue.id.padEnd(7)} │ ${title.padEnd(31)} │ ${issue.issue_type.padEnd(12)} │ ${phase.padEnd(12)} │ ${issue.status.padEnd(8)} │ ${ageOrReason.padEnd(14)} │`);
+    }
+
+    console.log("└─────────┴─────────────────────────────────┴──────────────┴──────────────┴─────────┴──────────────────┘");
+  } catch (error) {
+    console.error("❌ Failed to list struggling issues:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Get messages command - get phase messages for an issue
+ */
+async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: boolean): Promise<void> {
+  if (!issueId) {
+    console.error("Usage: ashep get-messages <issue-id> [--phase <phase>] [--unread]");
+    console.error("Examples:");
+    console.error("  ashep get-messages ISSUE-123");
+    console.error("  ashep get-messages ISSUE-123 --phase test");
+    console.error("  ashep get-messages ISSUE-123 --unread");
+    process.exit(1);
+  }
+
+  try {
+    const { getPhaseMessenger, formatMessagesForCLI } = await import("../core/phase-messenger.ts");
+    const messenger = getPhaseMessenger();
+
+    const query: any = { issue_id: issueId };
+
+    if (phase) {
+      query.to_phase = phase;
+    }
+
+    if (unreadOnly) {
+      query.read = false;
+    }
+
+    const messages = messenger.listMessages(query);
+
+    if (messages.length === 0) {
+      console.log(`No messages found for issue ${issueId}${phase ? ` and phase '${phase}'` : ""}${unreadOnly ? " (unread only)" : ""}.`);
+    } else {
+      console.log(formatMessagesForCLI(messages));
+    }
+  } catch (error) {
+    console.error("❌ Failed to get messages:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * List sessions command - list OpenCode sessions for an issue
+ */
+async function cmdListSessions(issueId?: string): Promise<void> {
+  try {
+    const { getOpenCodeClient } = await import("../core/opencode.ts");
+
+    const opencode = getOpenCodeClient();
+
+    if (!issueId) {
+      issueId = await promptForIssueId();
+    }
+
+    if (!issueId) {
+      console.error("Error: Issue ID is required");
+      console.log("Usage: ashep list-sessions [issue-id]");
+      process.exit(1);
+    }
+
+    const sessions = await opencode.listSessionsForIssue(issueId);
+
+    if (sessions.length === 0) {
+      console.log(`No sessions found for issue ${issueId}`);
+    } else {
+      console.log(`\nSessions for issue ${issueId} (${sessions.length}):`);
+      console.log("┌───────────────────────────────────────┬───────────────────────────────────────────────┬──────────────┬──────────┐");
+      console.log("│ Session ID                            │ Title                                     │ Phase        │ Tokens   │");
+      console.log("├───────────────────────────────────────┼───────────────────────────────────────────────┼──────────────┼──────────┤");
+
+      for (const session of sessions) {
+        const sessionId = session.sessionId.substring(0, 38) + (session.sessionId.length > 38 ? "..." : "");
+        const title = session.title.substring(0, 42) + (session.title.length > 42 ? "..." : "");
+        const phase = session.phase.substring(0, 12) + (session.phase.length > 12 ? "..." : "");
+        console.log(`│ ${sessionId.padEnd(37)} │ ${title.padEnd(42)} │ ${phase.padEnd(12)} │ ${String(session.tokens).padEnd(8)} │`);
+      }
+
+      console.log("└───────────────────────────────────────┴───────────────────────────────────────────────┴──────────────┴──────────┘");
+    }
+  } catch (error) {
+    console.error("❌ Failed to list sessions:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Simple prompt for issue ID using Bun's built-in readline
+ */
+async function promptForIssueId(): Promise<string> {
+  return new Promise((resolve) => {
+    process.stdout.write("Enter issue ID: ");
+    process.stdin.setEncoding("utf-8");
+    process.stdin.on("data", (data) => {
+      const input = data.toString().trim();
+      resolve(input);
+      process.stdin.pause();
+    });
+    process.stdin.resume();
+  });
+}
+
+/**
  * Main CLI entry point
  */
 async function main(): Promise<void> {
@@ -1227,9 +1932,24 @@ async function main(): Promise<void> {
       await cmdMonitor();
       break;
 
-    case "work":
-      await cmdWork(args[1]);
+    case "work": {
+      // Parse --epic flag
+      let epicMode = false;
+      let targetId: string | undefined;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--epic' && i + 1 < args.length) {
+          epicMode = true;
+          targetId = args[i + 1];
+          i++; // skip next arg
+        } else if (!args[i].startsWith('--') && !targetId) {
+          targetId = args[i];
+        }
+      }
+
+      await cmdWork(targetId || "", epicMode);
       break;
+    }
 
     case "init":
       cmdInit();
@@ -1303,6 +2023,62 @@ async function main(): Promise<void> {
 
     case "plugin-list":
       cmdPluginList();
+      break;
+
+    case "list-active":
+      await cmdListActive();
+      break;
+
+    case "list-hitl":
+      await cmdListHITL();
+      break;
+
+    case "list-ready":
+      await cmdListReady();
+      break;
+
+    case "list-struggle": {
+      let hours: number | undefined;
+
+      if (args[1] && !args[1].startsWith("--")) {
+        hours = parseInt(args[1], 10);
+      }
+
+      await cmdListStruggle(hours);
+      break;
+    }
+
+    case "get-messages": {
+      let phase: string | undefined;
+      let unreadOnly = false;
+
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--phase' && i + 1 < args.length) {
+          phase = args[i + 1];
+          i++;
+        } else if (args[i] === '--unread') {
+          unreadOnly = true;
+        }
+      }
+
+      await cmdGetMessages(args[1], phase, unreadOnly);
+      break;
+    }
+
+    case "list-sessions":
+      await cmdListSessions(args[1]);
+      break;
+
+    case "heartbeat":
+      await cmdHeartbeat();
+      break;
+
+    case "cleanup-metrics":
+      cmdCleanupMetrics();
+      break;
+
+    case "cleanup-status":
+      await cmdCleanupStatus();
       break;
 
     case "update":

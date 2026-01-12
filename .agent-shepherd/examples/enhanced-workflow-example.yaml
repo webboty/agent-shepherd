@@ -1,0 +1,100 @@
+policies:
+  enhanced-development:
+    name: Enhanced Development Workflow
+    description: Advanced workflow with AI-driven transitions, loop prevention, and phase messaging
+
+    issue_types: ["bug", "feature"]
+    priority: 80
+
+    phases:
+      - name: analyze
+        description: Analyze requirements and existing code
+        capabilities: [analysis, debugging]
+        timeout_multiplier: 1.0
+
+      - name: plan
+        description: Create implementation plan
+        capabilities: [planning, architecture]
+        timeout_multiplier: 1.5
+
+      - name: implement
+        description: Implement the solution
+        capabilities: [coding, implementation]
+        timeout_multiplier: 2.0
+        max_visits: 5
+
+      - name: test
+        description: Run comprehensive tests
+        capabilities: [testing, qa]
+        timeout_multiplier: 1.5
+        max_visits: 10
+        transitions:
+          on_success: review
+          on_failure:
+            capability: test-failure-decision
+            prompt: |
+              Analyze the test failure and determine the best course of action:
+              - If it's a simple bug, jump to implement for a fix
+              - If it's a design issue, jump to plan
+              - If the failure is unclear, require human approval
+            allowed_destinations: [implement, plan, review]
+            messaging: true
+            confidence_thresholds:
+              auto_advance: 0.85
+              require_approval: 0.60
+          on_partial_success:
+            capability: partial-success-decision
+            prompt: |
+              Tests partially succeeded. Some tests passed, some failed.
+              Determine whether to fix specific failures, retry tests, or proceed with review.
+              Consider the severity of failures and the percentage of passing tests.
+            allowed_destinations: [implement, test, review]
+            messaging: true
+            confidence_thresholds:
+              auto_advance: 0.80
+              require_approval: 0.55
+          on_unclear:
+            capability: unclear-outcome-decision
+            prompt: |
+              Test results are unclear or inconclusive.
+              Decide whether to investigate further, retry with different parameters, or request human intervention.
+            allowed_destinations: [test, review]
+            confidence_thresholds:
+              auto_advance: 0.75
+              require_approval: 0.50
+
+      - name: review
+        description: Code review and validation
+        capabilities: [review, validation]
+        timeout_multiplier: 1.0
+        require_approval: true
+        max_visits: 3
+        transitions:
+          on_success: close
+          on_failure:
+            capability: review-failure-decision
+            prompt: |
+              Review failed. Analyze the feedback and decide:
+              - If minor issues, jump back to implement
+              - If major issues, jump to plan
+              - If review was incorrect or unclear, retest
+            allowed_destinations: [implement, plan, test]
+            messaging: true
+            confidence_thresholds:
+              auto_advance: 0.90
+              require_approval: 0.70
+
+    retry:
+      max_attempts: 3
+      backoff_strategy: exponential
+      initial_delay_ms: 5000
+      max_delay_ms: 300000
+
+    timeout_base_ms: 300000
+    stall_threshold_ms: 60000
+
+    fallback_enabled: true
+    fallback_agent: "diagnostic"
+    fallback_mappings:
+      review: "code-reviewer"
+      test: "qa-analyst"

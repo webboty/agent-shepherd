@@ -13,7 +13,9 @@ _bmad*
 .vscode
 .claude
 /CLINE.md
-
+.perles/*
+.beads/daemon*.log.gz
+.test-loop-prevention/*
 # Dependencies
 node_modules/
 
@@ -28,3 +30,6 @@ dist/
 
 # OS
 .DS_Store
+
+# bv (beads viewer) local config and caches
+.bv/

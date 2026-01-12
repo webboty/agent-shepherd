@@ -110,9 +110,10 @@ agents:
 | `documentation` | Writing docs and comments | Documentation tasks |
 | `summary` | Creating summaries | Condensing information |
 | `naming` | Generating names and titles | Naming conventions |
-| `testing` | Test creation and validation | Quality assurance |
+ | `testing` | Test creation and validation | Quality assurance |
 | `qa` | Quality assurance processes | Testing and validation |
 | `review` | Code and content review | Quality control |
+| `worker-assistant` | AI-powered outcome interpretation | Interprets complex agent outcomes to determine workflow actions |
 
 #### `provider_id` (string)
 **Required**: No (uses OpenCode agent default if omitted)  

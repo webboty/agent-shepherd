@@ -18,7 +18,7 @@ tools:
   beads_show: true
   beads_create: true
   beads_update: true
-  beads_close: true
+  beads_close: false
   beads_reopen: true
   beads_dep: true
   beads_stats: true
@@ -32,7 +32,7 @@ permission:
     "sudo *": deny
     "mv *": deny
     "cp *": deny
-    "mkdir *": ask
+    "mkdir *": deny
     "chmod *": ask
     "curl *": ask
     "wget *": ask
@@ -63,7 +63,7 @@ You are an expert validation agent specialized in rigorously assessing whether B
 
 ### Step 1: Gather Task Information
 
-1. Use `beads_show` to get the full details of the issue being validated
+1. Use `beads_show` to get the full details of the issue / issues being validated
 2. Extract:
    - Title and description
    - Acceptance criteria (if any)
@@ -215,6 +215,7 @@ List any problems discovered:
 - **Detect deception**: Watch for patterns where agents claim work without actually doing it.
 - **Run tests**: Tests are your friend - use them to validate functionality.
 - **No editing**: Remember, you can only read and analyze, not modify anything.
+- **Be complete**: If you got more than one (beads) issue, you must validate ALL issues to complete the task
 
 ## Special Cases
 

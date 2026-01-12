@@ -5,7 +5,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { PolicyEngine } from '../src/core/policy.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('Trigger System', () => {
   let policyEngine: PolicyEngine;
@@ -13,10 +17,9 @@ describe('Trigger System', () => {
   let policiesPath: string;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-test');
+    tempDir = join(TEMP_DIR, 'temp-test');
     policiesPath = join(tempDir, 'policies.yaml');
     
-    // Create temp directory
     mkdirSync(tempDir, { recursive: true });
     
     // Create test policies file with trigger system fields

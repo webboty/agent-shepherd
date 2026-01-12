@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Phase Messenger Plugin Configuration",
+  "description": "Configuration schema for the Phase Messenger plugin",
+  "type": "object",
+  "properties": {
+    "size_limits": {
+      "type": "object",
+      "description": "Size limits for message content and metadata",
+      "properties": {
+        "max_content_length": {
+          "type": "integer",
+          "description": "Maximum message content length in characters",
+          "minimum": 100,
+          "default": 10000
+        },
+        "max_metadata_length": {
+          "type": "integer",
+          "description": "Maximum metadata size in characters (JSON string)",
+          "minimum": 100,
+          "default": 5000
+        },
+        "max_messages_per_issue_phase": {
+          "type": "integer",
+          "description": "Maximum messages per issue-phase combination",
+          "minimum": 1,
+          "default": 100
+        },
+        "max_messages_per_issue": {
+          "type": "integer",
+          "description": "Maximum total messages per issue",
+          "minimum": 1,
+          "default": 500
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "description": "Cleanup configuration",
+      "properties": {
+        "default_max_age_days": {
+          "type": "integer",
+          "description": "Age (in days) after which old read messages can be deleted",
+          "minimum": 1,
+          "default": 90
+        },
+        "keep_last_n_per_phase": {
+          "type": "integer",
+          "description": "Number of recent messages to keep when cleaning up read messages per phase",
+          "minimum": 0,
+          "default": 10
+        },
+        "keep_last_n_runs": {
+          "type": "integer",
+          "description": "Number of recent run iterations to keep when cleaning up old runs",
+          "minimum": 0,
+          "default": 1
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "description": "Storage configuration",
+      "properties": {
+        "data_dir": {
+          "type": "string",
+          "description": "Data directory for message storage (relative to project root)",
+          "default": ".agent-shepherd"
+        },
+        "database_file": {
+          "type": "string",
+          "description": "Database filename",
+          "default": "messages.db"
+        },
+        "jsonl_file": {
+          "type": "string",
+          "description": "JSONL audit trail filename",
+          "default": "messages.jsonl"
+        }
+      }
+    }
+  },
+  "required": []
+}

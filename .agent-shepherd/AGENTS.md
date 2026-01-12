@@ -9,7 +9,7 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 - **OpenCode** (AI agent execution platform)
 - **Human developers**
 
-The system manages autonomous issue processing, workflow orchestration, agent selection, and execution monitoring.
+The system manages autonomous issue processing, workflow orchestration, agent selection, execution monitoring, and enhanced features including AI-driven transitions, loop prevention, decision agents, garbage collection, and inter-phase messaging.
 
 ## Design Philosophy
 
@@ -100,14 +100,198 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 - **Worker Engine** (`src/core/worker-engine.ts`) - Processes issues from Beads through workflow phases
 - **Monitor Engine** (`src/core/monitor-engine.ts`) - Supervises agent execution and detects stalls
 - **Agent Registry** (`src/core/agent-registry.ts`) - Manages agent capabilities and selection
-- **Policy Engine** (`src/core/policy.ts`) - Defines and executes workflow policies
+- **Policy Engine** (`src/core/policy.ts`) - Defines and executes workflow policies with enhanced transitions
+- **Decision Builder** (`src/core/decision-builder.ts`) - Builds prompts and parses AI decision responses
 - **Policy Capability Validator** (`src/core/policy-capability-validator.ts`) - Validates policy→capability→agent chains
 - **Policy Tree Visualizer** (`src/core/policy-tree-visualizer.ts`) - Visualizes relationship trees
+- **Phase Messenger** (`src/core/phase-messenger.ts`) - Inter-phase communication system
+- **Garbage Collector** (`src/core/garbage-collector.ts`) - Data archival and cleanup system
+- **Retention Policy Manager** (`src/core/retention-policy.ts`) - Manages data retention rules
 - **Beads Integration** (`src/core/beads.ts`) - Interface to Beads issue tracking
 - **OpenCode Integration** (`src/core/opencode.ts`) - Interface to OpenCode agent sessions
 - **Config Validator** (`src/core/config-validator.ts`) - Validates configuration files
 - **CLI** (`src/cli/index.ts`) - Command-line interface
 - **UI Server** (`src/ui/ui-server.ts`) - ReactFlow visualization server
+
+## Smart Issue Picker
+
+The Smart Issue Picker provides dependency-aware issue selection with epic affinity for multi-worker coordination.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Issue Picker                                  │
+│  ┌─────────────────┐  ┌─────────────────────────────────────┐  │
+│  │   Simple Mode   │  │           Smart Mode                │  │
+│  │  (Priority-     │  │  • Dependency graph construction    │  │
+│  │   based)        │  │  • Topological sorting              │  │
+│  └─────────────────┘  │  • Epic affinity filtering          │  │
+│                       │  • Coordination state checks         │  │
+│                       └─────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+- **Issue Picker** (`src/core/issue-picker.ts`) - Main picker with simple and smart modes
+- **Heartbeat Checker** (`src/core/heartbeat-checker.ts`) - Background daemon for session monitoring
+- **Crash Detector** (`src/core/crash-detector.ts`) - Abandonment detection and recovery
+- **OpenCode SDK Client** (`src/core/opencode_sdk.ts`) - SDK integration for session activity
+
+### Picker Modes
+
+#### Simple Mode
+Priority-based selection without dependency awareness:
+```yaml
+worker:
+  picking:
+    mode: "simple"  # Default: priority sorting only
+```
+
+#### Smart Mode
+Dependency-aware selection with epic affinity:
+```yaml
+worker:
+  picking:
+    mode: "smart"           # Dependency-aware
+    prefer_epic_affinity: true  # Maintain epic ownership
+    max_issues: 5           # Max issues per pick
+```
+
+### Coordination Modes
+
+The system supports three coordination modes:
+
+1. **Lease Mode** - Time-based leases for epic ownership
+2. **Heartbeat Mode** - SDK-based session activity detection
+3. **Hybrid Mode** - Combined lease + heartbeat (recommended)
+
+```yaml
+worker:
+  coordination:
+    mode: "hybrid"          # lease | heartbeat | hybrid
+  checker:
+    enabled: true
+    poll_interval_ms: 30000
+    stale_threshold_ms: 300000
+```
+
+### Configuration
+
+```yaml
+worker:
+  picking:
+    mode: "smart"
+    max_issues: 3
+    prefer_epic_affinity: true
+  coordination:
+    mode: "hybrid"
+    lease_duration_ms: 1800000  # 30 minutes
+  checker:
+    enabled: true
+    poll_interval_ms: 30000     # 30 seconds
+    heartbeat_threshold_ms: 300000  # 5 minutes
+```
+
+### Key Features
+
+- **Epic Affinity**: Workers maintain ownership of epic subtrees
+- **Crash Detection**: Heartbeat + lease-based abandonment detection
+- **Dependency Ordering**: Topological sort respecting issue dependencies
+- **Multi-Worker Safety**: State-based coordination prevents conflicts
+- **Recovery**: Automatic recovery of abandoned tasks
+
+### Success Metrics
+
+- Crash Detection: >95% accuracy within 1 minute of actual crash
+- Coordination: Zero conflicting epic assignments in production
+- Performance: <5% overhead vs simple selection
+- Dependencies: 100% constraint satisfaction in ordering
+
+## Worker Assistant
+
+The worker assistant provides AI-powered interpretation of complex agent outcomes when the worker engine's deterministic logic cannot determine clear advance/retry/block actions.
+
+### How It Works
+
+When an agent completes execution, the worker engine analyzes the outcome:
+
+1. **Deterministic processing**: Standard if-else logic handles clear cases (success → advance, failure → retry/block)
+2. **Trigger detection**: Ambiguous outcomes trigger the worker assistant:
+   - Successful outcome with warnings
+   - Successful outcome with many artifacts (>5)
+   - Message contains keywords: "unclear", "partial", "ambiguous", "review"
+   - Failed outcome with structured error details
+   - Failed outcome with timeout/incomplete keywords
+
+3. **Assistant execution**: Worker assistant analyzes context and returns directive:
+   - **ADVANCE**: Move to next phase (acceptable, minor issues)
+   - **RETRY**: Retry current phase (fixable issues)
+   - **BLOCK**: Block for human review (unclear, complex problems)
+
+4. **Transition conversion**: Directive converted to workflow transition and logged
+
+### Configuration
+
+The worker assistant is controlled by the `worker_assistant` configuration in `config/config.yaml`:
+
+```yaml
+worker_assistant:
+  enabled: true              # Master switch
+  agentCapability: worker-assistant
+  timeoutMs: 10000           # 10 seconds max for AI decision
+  fallbackAction: block          # Action when unavailable
+```
+
+### Per-Policy Opt-Out
+
+Policies can opt out of the worker assistant at the policy or phase level for workflows that require deterministic behavior:
+
+```yaml
+policies:
+  my-policy:
+    worker_assistant:
+      enabled: false            # Disable for entire policy
+    phases:
+      - name: implement
+        worker_assistant:
+          enabled: false          # Disable for specific phase
+```
+
+### Benefits
+
+- **Handles ambiguous outputs**: When agents return complex or unclear results
+- **Keeps logic simple**: Deterministic rules for clear cases, AI for edge cases
+- **Performance**: Only triggered for uncertain cases (<5% of runs)
+- **Graceful degradation**: Falls back to configured action if unavailable
+- **Full observability**: All decisions logged with reasoning and metadata
+
+### Capabilities
+
+Agents with the `worker-assistant` capability are eligible to serve as worker assistants. The assistant analyzes:
+- Agent outcome summary (success, warnings, artifacts, errors)
+- Issue context (ID, type, phase)
+- Error details when available
+
+Returns one-word directive: `ADVANCE`, `RETRY`, or `BLOCK`
+
+### Required Agent Capability
+
+To use the worker assistant feature, ensure your `agents.yaml` includes agents with the `worker-assistant` capability:
+
+```yaml
+agents:
+  - id: my-worker-assistant
+    name: "Worker Assistant"
+    capabilities:
+      - worker-assistant
+      - analysis
+    priority: 10
+    active: true
+```
+
+See `docs/agents-config.md` for complete agent configuration reference and `docs/config-config.md` for worker assistant settings.
 
 ## Tech Stack
 
@@ -142,13 +326,17 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 │   │   ├── beads.ts             # Beads integration
 │   │   ├── config-validator.ts   # Config validation
 │   │   ├── config.ts            # Config loading
+│   │   ├── decision-builder.ts   # Decision agent prompts
+│   │   ├── garbage-collector.ts  # Data archival and cleanup
 │   │   ├── logging.ts          # Logging system
 │   │   ├── monitor-engine.ts    # Process supervision
 │   │   ├── opencode.ts         # OpenCode client
 │   │   ├── path-utils.ts       # Path utilities
+│   │   ├── phase-messenger.ts   # Inter-phase communication
 │   │   ├── policy.ts           # Policy engine
 │   │   ├── policy-capability-validator.ts  # Chain validation
 │   │   ├── policy-tree-visualizer.ts     # Tree visualization
+│   │   ├── retention-policy.ts  # Retention rules management
 │   │   └── worker-engine.ts    # Issue processing
 │   └── ui/
 │       ├── ui-server.ts         # Express server
@@ -180,7 +368,12 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 │   ├── config-config.md
 │   ├── policies-config.md
 │   ├── agents-config.md
-│   └── plugin-system.md
+│   ├── plugin-system.md
+│   ├── enhanced-transitions.md
+│   ├── loop-prevention.md
+│   ├── decision-agents.md
+│   ├── garbage-collection.md
+│   └── phase-messenger.md
 ├── package.json
 ├── tsconfig.json
 ├── eslint.config.js
@@ -203,17 +396,23 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 2. **Error Handling**: Use try-catch with proper error messages
 3. **Async/Await**: Prefer async/await over promises
 4. **Naming**:
-   - Files: kebab-case (`worker-engine.ts`)
-   - Classes: PascalCase (`AgentRegistry`)
-   - Functions/Variables: camelCase (`selectAgent`)
-   - Constants: UPPER_SNAKE_CASE (`MAX_RETRIES`)
-5. **Comments**: Code should be well-commented (planned refactor). Add comments to explain:
-   - Complex algorithms or logic
-   - Non-obvious decisions or trade-offs
-   - External dependencies and their purposes
-   - Public API documentation
-6. **File Organization**: One major class/module per file
-7. **Imports**: Group by type (external, internal, relative)
+    - Files: kebab-case (`worker-engine.ts`)
+    - Classes: PascalCase (`AgentRegistry`)
+    - Functions/Variables: camelCase (`selectAgent`)
+    - Constants: UPPER_SNAKE_CASE (`MAX_RETRIES`)
+5. **Configuration Properties**: MUST use `snake_case`
+    - YAML configuration keys (e.g., `poll_interval_ms`, `max_concurrent_runs`)
+    - Interface properties for config objects (e.g., `heartbeat_threshold_ms`, `lease_duration_ms`)
+    - Beads state values (e.g., `assigned_worker`, `last_heartbeat`)
+    - Example: `CrashDetectionConfig` interface uses `heartbeat_threshold_ms` NOT `heartbeatThresholdMs`
+    - **CRITICAL**: Never use camelCase (`heartbeatThresholdMs`) for configuration properties
+6. **Comments**: Code should be well-commented (planned refactor). Add comments to explain:
+    - Complex algorithms or logic
+    - Non-obvious decisions or trade-offs
+    - External dependencies and their purposes
+    - Public API documentation
+7. **File Organization**: One major class/module per file
+8. **Imports**: Group by type (external, internal, relative)
 
 ### Linting Rules
 Run `bun run lint` to check code quality. Use the existing ESLint configuration.
@@ -334,6 +533,92 @@ my-plugin/
 - **Naming**: `<module>.test.ts`
 - **Run**: `bun test` or `bun test tests/<specific-test>`
 
+### Test Data Isolation
+
+Tests use the `ASHEP_DIR` environment variable to create isolated data directories. This allows tests to:
+
+1. Create temporary `.agent-shepherd` directories for each test
+2. Avoid conflicts with the main installation
+3. Clean up easily after tests complete
+
+Components that support `ASHEP_DIR`:
+- `path-utils.ts` - Directory discovery functions
+- `logging.ts` - Logger data directory
+- `worker-engine.ts` - Worker engine logger
+- `policy.ts` - Policy engine logger
+
+Example from test setup:
+```typescript
+process.env.ASHEP_DIR = tempDir;
+const logger = getLogger(tempDir);
+const workerEngine = new WorkerEngine();
+```
+
+### Writing Tests: Best Practices
+
+When writing tests for Agent Shepherd, follow these guidelines:
+
+#### Use `tmp_test` for Runtime Storage
+
+All test temporary files should go in the `tmp_test/` directory (at the project root, alongside `tests/`). This keeps the `tests/` directory clean with only source files (*.test.ts), while runtime artifacts stay isolated in tmp_test:
+
+```typescript
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+import { mkdirSync, rmSync, existsSync } from "fs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');  // Up from tests/ to .agent-shepherd/
+
+describe("Feature Tests", () => {
+  let testDataDir: string;
+
+  beforeEach(() => {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(7);
+    testDataDir = join(TEMP_DIR, `.test-my-feature-${timestamp}-${random}`);
+    mkdirSync(testDataDir, { recursive: true });
+    process.env.ASHEP_DIR = testDataDir;
+    // Reset any singletons
+    Logger.resetInstance();
+  });
+
+  afterEach(() => {
+    if (existsSync(testDataDir)) {
+      rmSync(testDataDir, { recursive: true, force: true });
+    }
+  });
+});
+```
+
+#### Test Integrity Rules
+
+**NEVER** delete tests to make tests pass. Deleting tests without human confirmation is cheating and undermines test coverage.
+
+**NEVER** mock infrastructure components (databases, file systems, external services) to make tests pass. Tests should:
+
+- Use real SQLite databases with temporary, isolated directories
+- Use real file system operations with proper cleanup
+- Test against the actual infrastructure the code runs in production
+- Only mock external APIs or services that would require network access or real credentials
+
+**ACCEPTABLE** test preparation:
+- Creating temporary test databases in `tmp_test/`
+- Seeding test data to verify scenarios
+- Using isolated data directories per test or test suite
+
+The goal is to test the actual behavior of the system, not to test mock implementations that may not reflect real-world conditions.
+
+#### Auto-Cleanup with `posttest`
+
+The `package.json` includes a `posttest` script that automatically cleans up `tmp_test` and nested `.agent-shepherd` directories:
+
+```bash
+bun run test  # Runs tests + posttest cleanup automatically
+```
+
+Do not commit test artifacts or temporary files to the repository.
+
 ## Architecture Patterns
 
 ### Dual Storage
@@ -355,6 +640,21 @@ my-plugin/
 ## Beads Integration
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+
+### Beads Label System
+
+Agent Shepherd uses the following labels to track issue state:
+
+- `ashep-managed` - Indicates issue is managed by ashep (set once, kept until issue closed)
+- `ashep-phase:<name>` - Current workflow phase (e.g., `ashep-phase:implement`)
+- `ashep-hitl:<reason>` - Human-in-the-loop state (e.g., `ashep-hitl:approval`)
+
+**Useful commands:**
+- `bd list --label ashep-managed` - See all managed issues
+- `ashep list-active` - See currently active work (open or in_progress)
+- `ashep list-hitl` - See issues needing human attention
+- `ashep list-ready` - See issues ready to be worked on (open only)
+- `ashep list-struggle` - See blocked, HITL, or stale issues
 
 ### Quick Reference
 
@@ -380,6 +680,11 @@ When working on specific features, open the relevant documentation for detailed 
 | `docs/policies-config.md` | Creating workflows, defining phases, agent selection rules | Policy system reference with examples, validation, and best practices |
 | `docs/agents-config.md` | Syncing agents, understanding agent capabilities, agent selection | Agent registry reference with capability mapping and selection logic |
 | `docs/plugin-system.md` | Developing plugins, understanding plugin architecture, installing plugins | Plugin development guide with examples and best practices |
+| `docs/enhanced-transitions.md` | Understanding advanced workflow routing and AI-based transitions | Enhanced transition system with conditional branching, decision agents, and confidence thresholds |
+| `docs/loop-prevention.md` | Configuring loop prevention and preventing infinite workflows | Loop prevention mechanisms including phase visit limits, transition limits, and cycle detection |
+| `docs/decision-agents.md` | Understanding AI-driven decision making and routing | Decision agent system with template-based prompts, confidence scoring, and analytics |
+| `docs/garbage-collection.md` | Managing data lifecycle and storage cleanup | Garbage collection and archival system with retention policies and cleanup operations |
+| `docs/phase-messenger.md` | Understanding inter-phase communication and data exchange | Phase messenger system for passing context and results between workflow phases |
 
 ### Configuration Files
 
@@ -516,3 +821,73 @@ After completing the Beads Landing Plane workflow, also run:
 1. `bun run lint` and `bun run type-check`
 2. Ensure all tests pass
 3. Commit changes with descriptive messages (if not already done in workflow)
+
+## Phase Messenger
+
+Phase Messenger enables inter-phase communication, allowing phases to exchange data, context, and results.
+
+### Key Features
+- **Message passing**: Send structured data between phases
+- **Automatic delivery**: Messages delivered when phase starts
+- **Context preservation**: Keep important information across phase boundaries
+- **Size management**: Automatic cleanup of old messages
+- **Persistence**: Dual storage (JSONL + SQLite) for performance and reliability
+
+### Message Types
+- **Context**: Planning decisions, requirements clarifications, technical constraints
+- **Result**: Phase completion results, test results, performance metrics
+- **Decision**: AI decision reasoning, confidence scores, audit trail
+- **Data**: Arbitrary structured data, implementation metrics, build artifacts
+
+### CLI Commands
+- `get-messages <issue-id> [--phase <phase>] [--unread]` - Get phase messages for an issue
+
+### Usage
+```bash
+# Get all messages for an issue
+ashep get-messages ISSUE-123
+
+# Get messages for specific phase
+ashep get-messages ISSUE-123 --phase test
+
+# Get only unread messages
+ashep get-messages ISSUE-123 --unread
+
+# Combined filters
+ashep get-messages ISSUE-123 --phase test --unread
+```
+
+### Integration
+- Worker engine automatically receives pending messages before phase execution
+- Messages included in agent instructions with usage guidance
+- Result messages automatically sent on successful phase completion and advance
+- CLI tool for manual message inspection and debugging
+
+### Documentation
+See `docs/phase-messenger.md` for detailed documentation.
+
+## Landing the Plane (Session Completion)
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd sync
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds

@@ -338,6 +338,38 @@ bd update ISSUE-123 --labels "ashep-workflow:nonexistent"
 **Impact**: Caps exponential backoff growth  
 **Values**: Time in milliseconds
 
+#### `custom_prompt` (string)
+**Required**: No  
+**Purpose**: Custom prompt template for this phase  
+**Impact**: Allows per-phase tailored instructions for agents  
+**Fallback**: Uses generic template if not specified
+
+**Supported Variables**:
+- `{{issue.title}}` - Issue title
+- `{{issue.description}}` - Issue description
+- `{{issue.id}}` - Issue identifier
+- `{{issue.type}}` - Issue type (e.g., bug, feature)
+- `{{phase}}` - Current phase name
+- `{{capabilities}}` - Comma-separated list of required capabilities
+
+**Example**:
+```yaml
+phases:
+  - name: plan
+    custom_prompt: "Create a detailed plan for {{issue.title}} (Issue ID: {{issue.id}}). Type: {{issue.type}}. Use capabilities: {{capabilities}}. Focus on architectural decisions."
+  - name: implement
+    custom_prompt: "Implement the {{issue.title}} feature based on the plan. Use these capabilities: {{capabilities}}. Follow best practices and include tests."
+  - name: test
+    capabilities: [testing]
+```
+
+**Notes**:
+- Optional field - if not specified, generic prompt template is used
+- Variable substitution happens at runtime with actual issue data
+- Invalid variables are left unchanged (no errors thrown)
+- Empty custom_prompt falls back to generic template
+- Works with `require_approval` - approval warning is appended to custom prompts
+
 ## Policy Execution Flow
 
 1. **Trigger Matching**: Issue labels and type matched against policies
@@ -518,3 +550,557 @@ Policies generate metrics on:
 - Success/failure rates per policy type
 
 Use this data to optimize policy configurations over time.
+
+## Enhanced Transitions
+
+### Overview
+
+Enhanced transitions enable AI-driven workflow routing with conditional branching. For detailed information, see [Enhanced Transitions Documentation](./enhanced-transitions.md).
+
+### Transition Blocks
+
+Each phase can define transitions for different outcome types using a `transitions` block:
+
+```yaml
+phases:
+  - name: test
+    transitions:
+      on_success: deploy                    # Simple string transition
+      on_failure:
+        capability: test-decision             # Decision transition (object)
+        prompt: "Analyze test failures"
+        allowed_destinations: [debug, retry]
+      on_partial_success:
+        capability: partial-handler            # Decision transition (object only)
+        allowed_destinations: [proceed, retry]
+      on_unclear:
+        capability: unclear-handler            # Decision transition (object only)
+        allowed_destinations: [manual-review]
+```
+
+**Transition Types**:
+- **String Transitions**: Direct jumps to named phases
+- **Decision Transitions**: AI-based routing with confidence scoring
+
+**Outcome Triggers**:
+- `on_success`: Triggered on successful completion
+- `on_failure`: Triggered on phase failure
+- `on_partial_success`: Triggered on mixed results (object only)
+- `on_unclear`: Triggered on ambiguous outcomes (object only)
+
+### Decision Transition Configuration
+
+```yaml
+phases:
+  - name: test
+    transitions:
+      on_success:
+        capability: test-decision                    # Required: Agent capability
+        prompt: "Evaluate test results"                 # Required: Custom instructions
+        allowed_destinations: [deploy, fix-bugs, review]  # Required: Safety constraint
+        messaging: true                                  # Optional: Enable phase messenger
+        confidence_thresholds:                           # Optional: Automation levels
+          auto_advance: 0.8                             # High confidence: auto-proceed
+          require_approval: 0.6                           # Medium: request human
+```
+
+### Phase-Level Loop Prevention
+
+Override global loop prevention settings per phase:
+
+```yaml
+phases:
+  - name: test
+    max_visits: 5                    # Limit test phase to 5 visits
+
+  - name: deploy
+    max_visits: 2                    # Stricter limit for production
+```
+
+For complete loop prevention configuration, see [Loop Prevention Documentation](./loop-prevention.md).
+
+## Loop Prevention
+
+### Global Configuration
+
+Loop prevention settings in `config.yaml` apply across all policies:
+
+```yaml
+loop_prevention:
+  enabled: true                      # Master switch
+  max_visits_default: 10             # Global phase visit limit
+  max_transitions_default: 5          # Global transition limit
+  cycle_detection_enabled: true        # Enable pattern detection
+  cycle_detection_length: 3            # Cycle detection sensitivity (2-5)
+  trigger_hitl: true                 # Escalate to human
+```
+
+### Protection Mechanisms
+
+1. **Phase Visit Limits**: Maximum visits per phase (prevents infinite re-execution)
+2. **Transition Limits**: Maximum repetitions of specific A→B transitions
+3. **Cycle Detection**: Detects oscillating patterns (e.g., A→B→A→B)
+4. **HITL Escalation**: Automatically adds `ashep-hitl:loop-prevention` label when blocked
+
+### Phase-Level Overrides
+
+Configure per-phase limits in policy definitions:
+
+```yaml
+phases:
+  - name: test
+    max_visits: 5                     # Override global default
+
+  - name: deploy
+    max_visits: 3                     # Stricter limit for production
+```
+
+For detailed loop prevention information, see [Loop Prevention Documentation](./loop-prevention.md).
+
+## Decision Agents
+
+### Decision Prompts Configuration
+
+Decision agents use template-based prompts defined in `decision-prompts.yaml`:
+
+```yaml
+version: "1.0"
+templates:
+  test-decision:
+    name: "Test Outcome Analyzer"
+    description: "Analyzes test results and recommends deployment path"
+    system_prompt: |
+      You are a quality gate decision agent. Analyze test outcomes and recommend
+      appropriate next phase based on test results, coverage, and failure severity.
+    prompt_template: |
+      # Issue
+      Issue ID: {{issue.id}}
+      Title: {{issue.title}}
+      Type: {{issue.issue_type}}
+
+      # Test Outcome
+      Success: {{outcome.success}}
+      Message: {{outcome.message}}
+      Error: {{outcome.error}}
+
+      # Allowed Next Phases
+      {{#each allowed_destinations}}
+      - **{{this}}**
+      {{/each}}
+
+      # Instructions
+      {{custom_instructions}}
+
+      Analyze test outcome and decide:
+      1. Select most appropriate next phase from allowed destinations
+      2. Provide clear reasoning for your choice
+      3. Rate your confidence (0.0-1.0)
+
+      Respond in JSON format:
+      {
+        "decision": "advance_to_<phase>" or "jump_to_<phase>" or "require_approval",
+        "reasoning": "Your detailed reasoning",
+        "confidence": 0.0 to 1.0,
+        "recommendations": ["Optional recommendation 1", "Optional recommendation 2"]
+      }
+
+default_template: "fallback-template"
+```
+
+### Template Variables
+
+Available variables in prompt templates:
+- `{{issue.id}}`, `{{issue.title}}`, `{{issue.description}}`, etc.
+- `{{outcome.success}}`, `{{outcome.message}}`, `{{outcome.error}}`, etc.
+- `{{current_phase}}`
+- `{{custom_instructions}}`
+- `{{allowed_destinations}}`
+- `{{recent_decisions}}` (last 5 decisions)
+- `{{phase_history}}` (phase visit history)
+- `{{performance_context}}` (performance metrics)
+
+### Custom Prompts
+
+Override templates with custom prompts in transition config:
+
+```yaml
+phases:
+  - name: test
+    transitions:
+      on_success:
+        capability: test-decision
+        prompt: "Review test results. If < 5 failures and coverage > 80%, deploy. Otherwise, fix-bugs."
+        allowed_destinations: [deploy, fix-bugs]
+```
+
+For complete decision agent information, see [Decision Agents Documentation](./decision-agents.md).
+
+## Garbage Collection
+
+### Retention Policies Configuration
+
+Configure data retention policies in `config.yaml`:
+
+```yaml
+retention_policies:
+  - name: "standard-90-day"
+    enabled: true
+    age_days: 90
+    max_runs: 1000
+    max_size_mb: 500
+    archive_enabled: true
+    archive_after_days: 30
+    delete_after_days: 365
+
+  - name: "aggressive-cleanup"
+    enabled: false
+    age_days: 30
+    max_runs: 500
+    max_size_mb: 200
+    archive_enabled: false
+```
+
+### Cleanup Configuration
+
+```yaml
+cleanup:
+  enabled: true
+  schedule_interval_hours: 24    # Run cleanup every 24 hours
+  max_runtime_minutes: 30        # Limit cleanup duration
+```
+
+For complete garbage collection information, see [Garbage Collection Documentation](./garbage-collection.md).
+
+## Phase Messenger
+
+### Configuration
+
+Phase messenger configuration in `phase-messenger.yaml`:
+
+```yaml
+size_limits:
+  max_content_length: 10000           # Max message content length
+  max_metadata_length: 5000            # Max metadata JSON length
+  max_messages_per_issue_phase: 100   # Max messages per (issue, phase) pair
+  max_messages_per_issue: 500         # Max messages per issue
+
+cleanup:
+  default_max_age_days: 90           # Default age for cleanup
+  keep_last_n_per_phase: 10          # Keep last N messages per phase
+  keep_last_n_runs: 1               # Keep last N runs
+
+storage:
+  data_dir: ".agent-shepherd"
+  database_file: "messages.db"
+  jsonl_file: "messages.jsonl"
+```
+
+### Enabling Phase Messaging
+
+Enable automatic messaging in transition configuration:
+
+```yaml
+phases:
+  - name: test
+    transitions:
+      on_success:
+        capability: test-decision
+        allowed_destinations: [deploy, fix-bugs]
+        messaging: true  # Enable phase messenger
+```
+
+For complete phase messenger information, see [Phase Messenger Documentation](./phase-messenger.md).
+
+## Session Continuation
+
+### Overview
+
+Session continuation enables OpenCode sessions to be reused across workflow phases instead of creating new sessions for each phase. This provides significant benefits:
+
+- **Context Preservation**: Agents continue working in the same session, maintaining conversation history and accumulated context
+- **Token Efficiency**: Reuses accumulated context instead of starting fresh, reducing token usage for multi-phase workflows
+- **Improved Agent Performance**: Agents can reference previous work and decisions without re-explaining context
+
+### How It Works
+
+When a phase completes, Agent Shepherd can optionally continue the next phase in the same OpenCode session instead of creating a new one. This is controlled by the `reuse_session_from_phase` configuration.
+
+**Session Reuse Decision**:
+1. Check if `reuse_session_from_phase` is configured for the current phase
+2. Resolve the target phase using keywords (`@previous`, `@shared`, `@self`, `@first`) or explicit phase name
+3. Find the most recent completed run in the target phase
+4. Calculate total tokens used across all runs in that session
+5. Compare against `max_context_tokens * threshold`
+6. Reuse session if within threshold, otherwise create new session
+
+### Configuration
+
+#### Global Configuration
+
+Configure defaults in `.agent-shepherd/config/config.yaml`:
+
+```yaml
+session_continuation:
+  default_max_context_tokens: 130000  # Max context before creating new session
+  default_threshold: 0.8              # 80% threshold for reuse decision
+```
+
+#### Policy-Level Configuration
+
+Enable shared sessions across all phases in a policy:
+
+```yaml
+policies:
+  my-policy:
+    shared_session: true              # Enable @shared session for all phases
+    phases:
+      - name: implement
+        capabilities: [coding]
+      - name: test
+        capabilities: [testing]
+```
+
+#### Phase-Level Configuration
+
+Configure session reuse per phase:
+
+```yaml
+policies:
+  my-policy:
+    phases:
+      - name: implement
+        capabilities: [coding]
+        reuse_session_from_phase: "@previous"  # Reuse from previous phase
+
+      - name: test
+        capabilities: [testing]
+        reuse_session_from_phase: "implement"  # Explicit phase reference
+        context_window_threshold: 0.7          # Override default threshold
+        max_context_tokens: 100000              # Override default max tokens
+```
+
+### Keywords
+
+| Keyword | Description |
+|---------|-------------|
+| `@previous` | Reuse session from the immediately preceding phase in sequence |
+| `@self` | Continue in the current phase's existing session (rarely used) |
+| `@first` | Reuse session from the first phase in the policy |
+| `@shared` | Reuse any previous session for this issue (requires `shared_session: true` on policy) |
+| `<phase-name>` | Explicit phase name to reuse session from |
+
+### Threshold Calculation
+
+The system decides whether to reuse a session based on:
+
+```
+shouldReuse = totalTokens < maxContextTokens * threshold
+```
+
+**Example**:
+- `default_max_context_tokens`: 130,000
+- `default_threshold`: 0.8
+- Current session tokens: 100,000
+
+```
+shouldReuse = 100,000 < 130,000 * 0.8
+shouldReuse = 100,000 < 104,000
+shouldReuse = false  # Create new session
+```
+
+### Overrides
+
+Per-phase configuration overrides global defaults:
+
+```yaml
+session_continuation:
+  default_max_context_tokens: 130000
+  default_threshold: 0.8
+
+policies:
+  my-policy:
+    phases:
+      - name: complex-implementation
+        capabilities: [coding]
+        reuse_session_from_phase: "@previous"
+        max_context_tokens: 200000       # Override for complex work
+        context_window_threshold: 0.9    # More aggressive reuse
+```
+
+### CLI Command
+
+View sessions for an issue:
+
+```bash
+ashep list-sessions ISSUE-123
+```
+
+This displays all OpenCode sessions associated with an issue, including:
+- Session ID
+- Title
+- Phase
+- Token count
+
+Example output:
+```
+Sessions for issue ISSUE-123 (2):
+┌───────────────────────────────────────┬───────────────────────────────────────────────┬──────────────┬──────────┐
+│ Session ID                            │ Title                                     │ Phase        │ Tokens   │
+├───────────────────────────────────────┼───────────────────────────────────────────────┼──────────────┼──────────┤
+│ session-abc123def456...               │ Implement user authentication              │ implement    │ 85000    │
+│ session-xyz789abc012...               │ Test user authentication                   │ test         │ 42000    │
+└───────────────────────────────────────┴───────────────────────────────────────────────┴──────────────┴──────────┘
+```
+
+### Best Practices
+
+1. **Multi-phase workflows**: Use `@previous` for sequential phases that build on each other
+2. **Planning to implementation**: Use `@first` to preserve planning context during implementation
+3. **Token management**: Set lower thresholds for long-running workflows to avoid context overflow
+4. **Independent phases**: Don't enable session continuation for phases that don't benefit from previous context
+
+## Epic Coordination Configuration
+
+Policies can configure how issues are picked and coordinated for multi-worker environments.
+
+### Issue Picker Mode
+
+Control how the worker selects issues to process:
+
+```yaml
+policies:
+  my-policy:
+    picking:
+      mode: "smart"           # "simple" | "smart" (default: simple)
+      max_issues: 3           # Max issues to pick per cycle
+      prefer_epic_affinity: true  # Keep same worker on epic subtree
+```
+
+**Modes:**
+- `simple`: Priority-based selection without dependency awareness
+- `smart`: Dependency-aware selection with topological ordering and epic affinity
+
+**Benefits of Smart Mode:**
+- Respects issue dependencies (blocks relationships)
+- Maintains epic affinity (same worker continues with epic subtree)
+- Prevents coordination conflicts in multi-worker setups
+- Orders by hierarchical depth (leaf tasks first)
+
+### Coordination Mode
+
+Configure how workers coordinate on shared epics:
+
+```yaml
+policies:
+  my-policy:
+    coordination:
+      mode: "hybrid"              # "lease" | "heartbeat" | "hybrid"
+      lease_duration_ms: 1800000  # 30 minutes (default)
+```
+
+**Modes:**
+- `lease`: Time-based lease expiration
+- `heartbeat`: SDK-based session activity detection
+- `hybrid`: Combined approach (recommended)
+
+### Heartbeat Configuration
+
+Configure session activity monitoring:
+
+```yaml
+policies:
+  my-policy:
+    heartbeat:
+      enabled: true               # Enable heartbeat checker
+      poll_interval_ms: 30000     # Check every 30 seconds
+      stale_threshold_ms: 300000  # 5 minutes before considered stale
+      fallback_to_lease: true     # Fall back to lease if heartbeat fails
+```
+
+### Per-Phase Overrides
+
+Fine-tune coordination per phase:
+
+```yaml
+policies:
+  my-policy:
+    picking:
+      mode: "smart"
+    coordination:
+      mode: "hybrid"
+    phases:
+      - name: plan
+        picking:
+          max_issues: 1           # Plan one issue at a time
+          prefer_epic_affinity: true
+      - name: implement
+        picking:
+          max_issues: 3           # Implement multiple issues concurrently
+          prefer_epic_affinity: false
+      - name: test
+        coordination:
+          mode: "lease"           # Simpler coordination for testing
+```
+
+### Epic ID Format
+
+The system uses dot notation for epic/task hierarchy:
+
+| Issue ID | Type | Epic ID |
+|----------|------|---------|
+| `epic-123` | Epic | `epic-123` |
+| `epic-123.1` | Task | `epic-123` |
+| `epic-123.1.1` | Subtask | `epic-123` |
+
+The smart picker uses this to maintain epic affinity - once a worker claims an epic, they continue processing its tasks.
+
+### Coordination State
+
+The system stores coordination state in Beads using `bd set-state`:
+
+| State Key | Description |
+|-----------|-------------|
+| `assigned-worker` | Worker ID currently processing the epic |
+| `last-heartbeat` | Unix timestamp of last session activity |
+| `lease-expires` | Unix timestamp when lease expires |
+
+### CLI Commands for Coordination
+
+```bash
+# View current coordination status
+ashep coordination status
+
+# View heartbeat checker status
+ashep heartbeat status
+
+# View picker configuration
+ashep picking status
+
+# Switch picker mode at runtime
+ashep picking mode smart
+ashep picking mode simple
+
+# Manually claim/release epics
+ashep coordination claim epic-123
+ashep coordination release epic-123
+
+# Recover abandoned epics
+ashep coordination recover epic-123
+```
+
+### Troubleshooting
+
+**Issue: Multiple workers picking same epic**
+- Check `coordination.mode` is set to `hybrid` or `heartbeat`
+- Verify `heartbeat.checker.enabled: true`
+- Check `ashep coordination status` for conflicting assignments
+
+**Issue: Heartbeat checker not detecting stale sessions**
+- Verify `poll_interval_ms` is less than `stale_threshold_ms`
+- Check OpenCode SDK connectivity
+- Review logs for SDK errors
+
+**Issue: Worker not maintaining epic affinity**
+- Verify `prefer_epic_affinity: true` in policy config
+- Check that issue IDs use proper epic.task notation
+- Review `ashep picking status` for mode configuration

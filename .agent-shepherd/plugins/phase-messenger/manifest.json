@@ -1,0 +1,29 @@
+{
+  "name": "phase-messenger",
+  "description": "Inter-phase communication plugin for Agent Shepherd - enables messages between workflow phases",
+  "version": "1.0.0",
+  "commands": [
+    {
+      "name": "phase-msg-send",
+      "description": "Send a message from one phase to another"
+    },
+    {
+      "name": "phase-msg-receive",
+      "description": "Receive pending messages for a phase"
+    },
+    {
+      "name": "phase-msg-list",
+      "description": "List all messages for an issue or phase"
+    },
+    {
+      "name": "phase-msg-cleanup",
+      "description": "Manually cleanup messages for an issue (archives and deletes)"
+    },
+    {
+      "name": "phase-msg-status",
+      "description": "Show message cleanup status and metrics"
+    }
+  ],
+  "author": "Agent Shepherd Team",
+  "license": "MIT"
+}

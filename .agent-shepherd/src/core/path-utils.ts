@@ -8,10 +8,22 @@ export function getGlobalInstallDir(): string {
 
 export function findLocalAgentShepherdDir(): string | null {
   let currentDir = process.cwd();
+  const visited = new Set<string>();
+  
   while (true) {
+    // Prevent infinite loops
+    if (visited.has(currentDir)) {
+      break;
+    }
+    visited.add(currentDir);
+    
     const agentShepherdDir = join(currentDir, ".agent-shepherd");
     if (existsSync(agentShepherdDir)) {
-      return agentShepherdDir;
+      // Check if this has src/ (to distinguish install directory from runtime directory)
+      const hasSrc = existsSync(join(agentShepherdDir, "src"));
+      if (hasSrc) {
+        return agentShepherdDir;
+      }
     }
     const parentDir = dirname(currentDir);
     if (parentDir === currentDir) break;
@@ -21,6 +33,10 @@ export function findLocalAgentShepherdDir(): string | null {
 }
 
 export function findInstallDir(): string {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(envOverride)) {
+    return envOverride;
+  }
   // Check for local full install (has src/)
   const local = findLocalAgentShepherdDir();
   if (local && existsSync(join(local, "src"))) {
@@ -35,6 +51,10 @@ export function findInstallDir(): string {
 }
 
 export function findConfigDir(): string {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "config"))) {
+    return join(envOverride, "config");
+  }
   // Check for local config
   const local = findLocalAgentShepherdDir();
   if (local && existsSync(join(local, "config"))) {
@@ -50,6 +70,10 @@ export function findConfigDir(): string {
 }
 
 export function findPluginsDir(): string {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "plugins"))) {
+    return join(envOverride, "plugins");
+  }
   const local = findLocalAgentShepherdDir();
   if (local && existsSync(join(local, "plugins"))) {
     return join(local, "plugins");
@@ -60,6 +84,12 @@ export function findPluginsDir(): string {
 
 // Legacy function - backward compatibility
 export function findAgentShepherdDir(): string {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(envOverride)) {
+    console.error(`DEBUG: Using ASHEP_DIR override: ${envOverride}`);
+    return envOverride;
+  }
+  console.error(`DEBUG: ASHEP_DIR not set or path invalid, searching locally...`);
   const local = findLocalAgentShepherdDir();
   if (local) return local;
   const global = getGlobalInstallDir();

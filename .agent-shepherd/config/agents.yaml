@@ -7,6 +7,8 @@ agents:
       - coding
       - refactoring
       - building
+      - testing
+      - qa
     priority: 15
     active: true
     constraints:
@@ -45,7 +47,9 @@ agents:
     capabilities:
       - coding
       - planning
+      - architecture
       - analysis
+      - worker-assistant
     priority: 10
     active: true
     constraints:
@@ -72,6 +76,7 @@ agents:
       - documentation
       - summary
       - analysis
+      - review
     priority: 8
     active: true
     constraints:
@@ -112,3 +117,56 @@ agents:
       performance_tier: balanced
     metadata:
       agent_type: primary
+  - id: test-quality-decider
+    name: Test Quality Decider
+    description: Analyzes test results and decides next workflow phase
+    capabilities:
+      - test-decision
+      - quality-decision
+      - planning-decision
+      - failure-analysis
+      - test-clarification
+      - review-decision
+      - analysis
+    priority: 8
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: decision
+  - id: validation-gatekeeper
+    name: Validation Gatekeeper
+    description: Reviews validation results and quality metrics
+    capabilities:
+      - validation-decision
+      - validation
+      - code-analysis
+      - quality-decision
+      - planning-decision
+      - failure-analysis
+      - test-clarification
+      - review-decision
+    priority: 9
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: decision
+  - id: workflow-orchestrator
+    name: Workflow Orchestrator
+    description: Handles complex multi-factor workflow decisions
+    capabilities:
+      - complex-decision
+      - planning
+      - planning-decision
+      - failure-analysis
+      - test-clarification
+      - review-decision
+      - quality-decision
+      - worker-assistant
+    priority: 10
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: decision

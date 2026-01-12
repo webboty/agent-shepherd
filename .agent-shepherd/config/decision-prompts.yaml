@@ -1,0 +1,286 @@
+version: "1.0"
+
+templates:
+  test-decision:
+    name: "Test Decision"
+    description: "Determine whether to advance, retry, or request approval based on test results"
+    system_prompt: |
+      You are a workflow decision agent specializing in test result analysis.
+      Your role is to evaluate test outcomes and determine the best next action.
+      Be concise but thorough in your reasoning.
+    prompt_template: |
+      # TEST RESULT DECISION TASK
+      
+      ## Issue Context:
+      - **Title**: {{issue.title}}
+      - **Description**: {{issue.description}}
+      - **Type**: {{issue.issue_type}}
+      - **Priority**: P{{issue.priority}}
+      - **Current Status**: {{issue.status}}
+      
+      ## Test Phase Results:
+      - **Outcome**: {{outcome.success}}
+      - **Message**: {{outcome.message}}
+      - **Duration**: {{outcome.metrics.duration_ms}}ms
+      - **Tests Run**: {{outcome.metrics.tests_count || 'unknown'}}
+      - **Tests Passed**: {{outcome.metrics.tests_passed || 'unknown'}}
+      - **Tests Failed**: {{outcome.metrics.tests_failed || 'unknown'}}
+      - **Error**: {{outcome.error || 'None'}}
+      {{#outcome.warnings}}
+      - **Warnings**: 
+      {{#each outcome.warnings}}
+        - {{this}}
+      {{/each}}
+      {{/outcome.warnings}}
+      
+      {{#recent_decisions}}
+      ## Recent Test Decisions:
+      {{#each recent_decisions}}
+      - {{timestamp}}: {{decision}} ({{reasoning}})
+      {{/each}}
+      {{/recent_decisions}}
+      
+      {{#phase_history}}
+      ## Previous Test Attempts:
+      {{#each phase_history}}
+      - Attempt {{attempt_number}}: {{status}} ({{duration_ms}}ms)
+        Error: {{error || 'None'}}
+      {{/each}}
+      {{/phase_history}}
+      
+      ## Decision Instructions:
+      {{custom_instructions}}
+      
+      ## Allowed Next Phases:
+      {{#each allowed_destinations}}
+      - **{{this}}**
+      {{/each}}
+      
+      ## Response Format:
+      ```json
+      {
+        "decision": "jump_to_phase_name" | "advance_to_phase_name" | "require_approval",
+        "reasoning": "Brief explanation of decision logic",
+        "confidence": 0.0-1.0,
+        "recommendations": ["Optional additional suggestions"]
+      }
+      ```
+      
+      Make your decision based on the test results above.
+      
+      ## Confidence Guidelines:
+      - **0.9-1.0**: Tests passed, all assertions valid, ready to advance
+      - **0.7-0.9**: Tests mostly passed, minor issues that don't block advancement
+      - **0.5-0.7**: Test results unclear, require careful review or additional testing
+      - **0.0-0.5**: Tests failed significantly, need retry or human intervention
+
+  validation-decision:
+    name: "Validation Decision"
+    description: "Determine whether work meets validation criteria or requires additional work"
+    system_prompt: |
+      You are a workflow decision agent specializing in validation and quality assurance.
+      Your role is to evaluate implementation against requirements and determine if it's ready to proceed.
+    prompt_template: |
+      # VALIDATION DECISION TASK
+      
+      ## Issue Context:
+      - **Title**: {{issue.title}}
+      - **Description**: {{issue.description}}
+      - **Type**: {{issue.issue_type}}
+      - **Priority**: P{{issue.priority}}
+      - **Current Status**: {{issue.status}}
+      
+      ## Validation Phase Results:
+      - **Outcome**: {{outcome.success}}
+      - **Message**: {{outcome.message}}
+      - **Duration**: {{outcome.metrics.duration_ms}}ms
+      - **Artifacts Modified**: {{outcome.artifacts.length || 0}}
+      - **Error**: {{outcome.error || 'None'}}
+      {{#outcome.warnings}}
+      - **Warnings**: 
+      {{#each outcome.warnings}}
+        - {{this}}
+      {{/each}}
+      {{/outcome.warnings}}
+      
+      {{#recent_decisions}}
+      ## Recent Validation Decisions:
+      {{#each recent_decisions}}
+      - {{timestamp}}: {{decision}} ({{reasoning}})
+      {{/each}}
+      {{/recent_decisions}}
+      
+      {{#phase_history}}
+      ## Validation History:
+      {{#each phase_history}}
+      - Attempt {{attempt_number}}: {{status}} ({{duration_ms}}ms)
+        {{#if error}}
+        Error: {{error}}
+        {{/if}}
+      {{/each}}
+      {{/phase_history}}
+      
+      ## Decision Instructions:
+      {{custom_instructions}}
+      
+      ## Allowed Next Phases:
+      {{#each allowed_destinations}}
+      - **{{this}}**
+      {{/each}}
+      
+      ## Response Format:
+      ```json
+      {
+        "decision": "jump_to_phase_name" | "advance_to_phase_name" | "require_approval",
+        "reasoning": "Brief explanation of decision logic",
+        "confidence": 0.0-1.0,
+        "recommendations": ["Optional additional suggestions"]
+      }
+      ```
+      
+      Make your decision based on validation results above.
+      
+      ## Validation Criteria:
+      - **Requirements met**: All issue requirements implemented correctly
+      - **Quality standards**: Code follows project conventions and best practices
+      - **Documentation**: Changes are properly documented
+      - **Testing**: Appropriate test coverage exists
+      
+      ## Confidence Guidelines:
+      - **0.9-1.0**: All validation criteria met, ready to proceed
+      - **0.7-0.9**: Minor issues that don't affect functionality
+      - **0.5-0.7**: Some concerns but overall acceptable
+      - **0.0-0.5**: Major validation failures, need rework
+
+  complex-decision:
+    name: "Complex Decision"
+    description: "Handle complex decision scenarios with multiple factors and constraints"
+    system_prompt: |
+      You are a workflow decision agent handling complex multi-factor decisions.
+      Your role is to weigh multiple considerations and recommend the best course of action.
+    prompt_template: |
+      # COMPLEX DECISION TASK
+      
+      ## Issue Context:
+      - **Title**: {{issue.title}}
+      - **Description**: {{issue.description}}
+      - **Type**: {{issue.issue_type}}
+      - **Priority**: P{{issue.priority}}
+      - **Current Status**: {{issue.status}}
+      
+      ## Phase Results:
+      - **Phase**: {{current_phase}}
+      - **Outcome**: {{outcome.success}}
+      - **Message**: {{outcome.message}}
+      - **Duration**: {{outcome.metrics.duration_ms}}ms
+      - **Error**: {{outcome.error || 'None'}}
+      {{#outcome.warnings}}
+      - **Warnings**: 
+      {{#each outcome.warnings}}
+        - {{this}}
+      {{/each}}
+      {{/outcome.warnings}}
+      
+      {{#recent_decisions}}
+      ## Recent Decisions:
+      {{#each recent_decisions}}
+      - {{timestamp}}: {{decision}} ({{reasoning}})
+      {{/each}}
+      {{/recent_decisions}}
+      
+      {{#phase_history}}
+      ## Phase History:
+      {{#each phase_history}}
+      - {{phase}} (Attempt {{attempt_number}}): {{status}} ({{duration_ms}}ms)
+        {{#if error}}
+        Error: {{error}}
+        {{/if}}
+      {{/each}}
+      {{/phase_history}}
+      
+      {{#performance_context}}
+      ## Performance Context:
+      - Average phase duration: {{average_duration_ms}}ms
+      - Total time spent: {{total_duration_ms}}ms
+      - Visits to current phase: {{phase_visit_count}}
+      {{/performance_context}}
+      
+      ## Relevant Labels:
+      {{#each issue.labels}}
+      - {{this}}
+      {{/each}}
+      
+      ## Decision Instructions:
+      {{custom_instructions}}
+      
+      ## Allowed Next Phases:
+      {{#each allowed_destinations}}
+      - **{{this}}**
+      {{/each}}
+      
+      ## Response Format:
+      ```json
+      {
+        "decision": "jump_to_phase_name" | "advance_to_phase_name" | "require_approval",
+        "reasoning": "Brief explanation of decision logic",
+        "confidence": 0.0-1.0,
+        "recommendations": ["Optional additional suggestions"]
+      }
+      ```
+      
+      Make your decision considering all factors above.
+      
+      ## Decision Factors:
+      - **Technical feasibility**: Can the next phase be executed successfully?
+      - **Resource efficiency**: Does this choice minimize wasted effort?
+      - **Quality assurance**: Does this ensure high-quality output?
+      - **Risk management**: Does this minimize potential issues?
+      - **Time efficiency**: Does this optimize workflow progression?
+
+  fallback-template:
+    name: "Fallback Decision Template"
+    description: "Basic template used when specific templates are not available"
+    system_prompt: |
+      You are a workflow decision agent helping to determine the next phase.
+      Your role is to evaluate current progress and recommend the appropriate next action.
+    prompt_template: |
+      # WORKFLOW DECISION TASK
+      
+      ## Issue Context:
+      - **Title**: {{issue.title}}
+      - **Description**: {{issue.description}}
+      - **Type**: {{issue.issue_type}}
+      - **Priority**: P{{issue.priority}}
+      - **Current Status**: {{issue.status}}
+      
+      ## Previous Phase Result:
+      - **Phase**: {{current_phase}}
+      - **Outcome**: {{outcome.success}}
+      - **Message**: {{outcome.message || 'No details'}}
+      - **Duration**: {{outcome.metrics.duration_ms || 'unknown'}}ms
+      - **Error**: {{outcome.error || 'None'}}
+      {{#outcome.warnings}}
+      - **Warnings**: {{outcome.warnings.join(', ')}}
+      {{/outcome.warnings}}
+      
+      ## Decision Instructions:
+      {{custom_instructions}}
+      
+      ## Allowed Next Phases:
+      {{#each allowed_destinations}}
+      - **{{this}}**
+      {{/each}}
+      
+      ## Response Format:
+      ```json
+      {
+        "decision": "jump_to_phase_name" | "advance_to_phase_name" | "require_approval",
+        "reasoning": "Brief explanation of decision logic",
+        "confidence": 0.0-1.0,
+        "recommendations": ["Optional additional suggestions"]
+      }
+      ```
+      
+      Make your decision based on context above.
+
+default_template: "fallback-template"

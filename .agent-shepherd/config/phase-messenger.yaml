@@ -1,0 +1,37 @@
+# Phase Messenger Plugin Configuration
+
+# Size limits for message content and metadata
+size_limits:
+  # Maximum message content length in characters
+  max_content_length: 10000
+
+  # Maximum metadata size in characters (JSON string)
+  max_metadata_length: 5000
+
+  # Maximum messages per issue-phase combination
+  max_messages_per_issue_phase: 100
+
+  # Maximum total messages per issue
+  max_messages_per_issue: 500
+
+# Cleanup configuration
+cleanup:
+  # Default age (in days) after which old read messages can be deleted
+  default_max_age_days: 90
+
+  # Number of recent messages to keep when cleaning up read messages per phase
+  keep_last_n_per_phase: 10
+
+  # Number of recent run iterations to keep when cleaning up old runs
+  keep_last_n_runs: 1
+
+# Storage configuration
+storage:
+  # Data directory for message storage (relative to project root)
+  data_dir: ".agent-shepherd"
+
+  # Database filename
+  database_file: "messages.db"
+
+  # JSONL audit trail filename
+  jsonl_file: "messages.jsonl"

@@ -1,8 +1,22 @@
 version: "1.0"
 
+worker_assistant:
+  enabled: false
+  agentCapability: worker-assistant
+  timeoutMs: 10000
+  fallbackAction: block
+
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
+  picking:
+    mode: simple  # "simple" | "smart"
+    max_issues: 3
+    prefer_epic_affinity: true
+  crash_detection:
+    heartbeat_threshold_ms: 300000  # 5 minutes default
+    lease_duration_ms: 1800000  # 30 minutes default
+    fallback_to_lease: true
 
 monitor:
   poll_interval_ms: 10000
@@ -12,3 +26,37 @@ monitor:
 ui:
   port: 3000
   host: localhost
+
+loop_prevention:
+  enabled: true
+  max_visits_default: 10
+  max_transitions_default: 5
+  cycle_detection_enabled: true
+  cycle_detection_length: 3
+  trigger_hitl: true
+
+cleanup:
+  enabled: true
+  run_on_startup: false
+  archive_on_startup: false
+  delete_on_startup: false
+  schedule_interval_hours: 24
+
+retention:
+  enabled: true
+  policies:
+    - name: default
+      description: Default retention policy for all runs
+      enabled: true
+      age_days: 90
+      max_runs: 1000
+      max_size_mb: 100
+      archive_enabled: true
+      archive_after_days: 30
+      delete_after_days: 90
+      keep_successful_runs: false
+      keep_failed_runs: true
+
+session_continuation:
+  default_max_context_tokens: 130000
+  default_threshold: 0.8

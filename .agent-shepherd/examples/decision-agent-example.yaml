@@ -1,0 +1,216 @@
+version: "1.0"
+
+templates:
+  test-failure-decision:
+    name: test-failure-decision
+    description: Analyze test failures and recommend next action
+    system_prompt: |
+      You are a test failure analyst specializing in software development workflows.
+      Your role is to analyze test failures and recommend the most appropriate next phase.
+
+      Guidelines:
+      1. Consider the severity and root cause of the failure
+      2. Review the phase visit history to detect potential loops
+      3. Evaluate whether the issue can be resolved programmatically
+      4. Provide clear, actionable reasoning
+      5. Rate your confidence in the decision (0.0-1.0)
+
+      Decision options:
+      - jump_to_implement: Fix the implementation and retry
+      - jump_to_plan: Revisit the planning phase (design issue)
+      - jump_to_review: Proceed to code review despite test failure (edge cases)
+      - require_approval: Request human intervention (complex or unclear issues)
+    prompt_template: |
+      Test Failure Analysis for Issue {{issue.id}}
+
+      ISSUE INFORMATION
+      ================
+      Title: {{issue.title}}
+      Description: {{issue.description}}
+      Type: {{issue.issue_type}}
+      Priority: {{issue.priority}}
+      Status: {{issue.status}}
+
+      {{#if issue.labels}}
+      Labels:
+      {{#each issue.labels}}
+      - {{this}}
+      {{/each}}
+      {{/if}}
+
+      CURRENT PHASE: {{current_phase}}
+
+      TEST FAILURE DETAILS
+      ==================
+      Outcome: {{outcome.message}}
+
+      {{#if outcome.error}}
+      Error: {{outcome.error}}
+      {{/if}}
+
+      Retry Attempt: {{outcome.retry_count}} of 3
+
+      {{#if outcome.warnings}}
+      Warnings:
+      {{#each outcome.warnings}}
+      - {{this}}
+      {{/each}}
+      {{/if}}
+
+      PHASE VISIT HISTORY
+      =================
+      {{#if phase_history}}
+      Recent phase visits:
+      {{#each phase_history}}
+      - {{phase}} (Attempt {{attempt_number}})
+        Status: {{status}}
+        Duration: {{duration_ms}}ms
+        {{#if error}}
+        Error: {{error}}
+        {{/if}}
+      {{/each}}
+      {{else}}
+      No phase history available.
+      {{/if}}
+
+      PERFORMANCE CONTEXT
+      ==================
+      {{#if performance_context}}
+      Average phase duration: {{performance_context.average_duration_ms}}ms
+      Total time spent: {{performance_context.total_duration_ms}}ms
+      Current phase visits: {{performance_context.phase_visit_count}}
+      {{/if}}
+
+      RECENT DECISIONS
+      ==================
+      {{#if recent_decisions}}
+      Previous AI decisions:
+      {{#each recent_decisions}}
+      - {{new Date(timestamp).toISOString()}}: {{decision}}
+        Reasoning: {{reasoning}}
+      {{/each}}
+      {{else}}
+      No previous decisions available.
+      {{/if}}
+
+      ALLOWED DESTINATIONS
+      ===================
+      You must choose from these phases:
+      {{#each allowed_destinations}}
+      - **{{this}}**
+      {{/each}}
+
+      DECISION INSTRUCTIONS
+      ===================
+      Analyze the test failure and provide:
+
+      1. Your decision (one of: jump_to_implement, jump_to_plan, jump_to_review, require_approval)
+      2. Your reasoning (detailed explanation of why this is the best action)
+      3. Confidence score (0.0-1.0)
+
+      Factors to consider:
+      - Is this a simple bug that can be fixed quickly? → jump_to_implement
+      - Is this a fundamental design flaw? → jump_to_plan
+      - Are the tests failing due to minor edge cases? → jump_to_review
+      - Is the issue too complex or unclear for automated resolution? → require_approval
+      - Have we visited a phase multiple times without progress? → Require approval or change approach
+
+      RESPONSE FORMAT
+      ===============
+      Respond with valid JSON in this exact format:
+
+      {
+        "decision": "jump_to_X",
+        "reasoning": "Your detailed reasoning here",
+        "confidence": 0.0-1.0,
+        "recommendations": [
+          "Optional recommendation 1",
+          "Optional recommendation 2"
+        ]
+      }
+
+      IMPORTANT:
+      - "decision" must be "jump_to_" followed by one of the allowed destination phases
+      - "confidence" must be a number between 0.0 and 1.0
+      - "recommendations" is an optional array of strings
+      - Do not include any text outside the JSON
+
+  failure-analysis-decision:
+    name: failure-analysis-decision
+    description: General failure analysis for any phase
+    system_prompt: |
+      You are a failure analysis expert in software development workflows.
+      Analyze failures and recommend the most appropriate next action.
+    prompt_template: |
+      Failure Analysis for Issue {{issue.id}}
+
+      Issue: {{issue.title}}
+      Current Phase: {{current_phase}}
+
+      Failure Information:
+      - Message: {{outcome.message}}
+      {{#if outcome.error}}
+      - Error: {{outcome.error}}
+      {{/if}}
+      - Retry Count: {{outcome.retry_count}}
+
+      {{#if outcome.warnings}}
+      Warnings:
+      {{#each outcome.warnings}}
+      - {{this}}
+      {{/each}}
+      {{/if}}
+
+      Available Destinations:
+      {{#each allowed_destinations}}
+      - {{this}}
+      {{/each}}
+
+      Analyze the failure and provide:
+      1. Your decision (jump_to_X)
+      2. Your reasoning
+      3. Confidence (0.0-1.0)
+      4. Any recommendations
+
+      {
+        "decision": "jump_to_destination",
+        "reasoning": "Analysis explanation",
+        "confidence": 0.0-1.0,
+        "recommendations": ["recommendations"]
+      }
+
+  partial-success-decision:
+    name: partial-success-decision
+    description: Handle partial test success scenarios
+    system_prompt: |
+      You are a partial success analyst. Some tests passed, some failed.
+      Determine if we should fix specific failures, retry tests, or proceed to review.
+    prompt_template: |
+      Partial Success Analysis
+
+      Issue: {{issue.title}}
+      Phase: {{current_phase}}
+
+      Outcome: {{outcome.message}}
+
+      {{#if outcome.warnings}}
+      Warnings indicate partial failures:
+      {{#each outcome.warnings}}
+      - {{this}}
+      {{/each}}
+      {{/if}}
+
+      Decision options:
+      - jump_to_implement: Fix specific failing tests
+      - jump_to_test: Retry all tests
+      - jump_to_review: Proceed with warnings (edge cases)
+
+      Available Destinations: {{#each allowed_destinations}}{{this}}, {{/each}}
+
+      {
+        "decision": "jump_to_X",
+        "reasoning": "Your analysis",
+        "confidence": 0.0-1.0
+      }
+
+default_template: test-failure-decision

@@ -5,7 +5,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { ConfigurationValidator } from '../src/core/config-validator.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('ConfigurationValidator', () => {
   let validator: ConfigurationValidator;
@@ -13,14 +17,12 @@ describe('ConfigurationValidator', () => {
 
   beforeEach(() => {
     validator = new ConfigurationValidator();
-    tempDir = join(process.cwd(), 'temp-test');
+    tempDir = join(TEMP_DIR, 'temp-test');
     
-    // Create temp directory
     mkdirSync(tempDir, { recursive: true });
   });
 
   afterEach(() => {
-    // Clean up temp directory
     rmSync(tempDir, { recursive: true, force: true });
   });
 

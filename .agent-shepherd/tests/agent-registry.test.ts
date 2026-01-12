@@ -5,7 +5,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { AgentRegistry } from '../src/core/agent-registry.ts';
 import { writeFileSync, rmSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 describe('AgentRegistry', () => {
   let agentRegistry: AgentRegistry;
@@ -13,10 +17,9 @@ describe('AgentRegistry', () => {
   let agentsPath: string;
 
   beforeEach(() => {
-    tempDir = join(process.cwd(), 'temp-test');
+    tempDir = join(TEMP_DIR, 'temp-test');
     agentsPath = join(tempDir, 'agents.yaml');
     
-    // Create temp directory
     mkdirSync(tempDir, { recursive: true });
     
     // Create test agents file

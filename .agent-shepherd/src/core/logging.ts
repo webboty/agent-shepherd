@@ -21,19 +21,55 @@ export interface RunRecord {
   outcome?: RunOutcome;
   metadata?: {
     [key: string]: unknown;
+    session_id?: string;
+    phase_total_duration_ms?: number;
+    attempt_number?: number;
+    retry_count?: number;
+    initial_prompt?: string;
   };
+}
+
+export interface Artifact {
+  path: string;
+  operation: "created" | "modified" | "deleted";
+  size?: number;
+  type?: "file" | "directory";
+}
+
+export interface ErrorDetails {
+  type?: string;
+  message?: string;
+  stack_trace?: string;
+  file_path?: string;
+  line_number?: number;
+}
+
+export interface ToolCall {
+  name: string;
+  inputs: any;
+  outputs?: string;
+  duration_ms?: number;
+  status: "completed" | "error" | "cancelled";
 }
 
 export interface RunOutcome {
   success: boolean;
   message?: string;
-  artifacts?: string[];
+  artifacts?: string[] | Artifact[];
   requires_approval?: boolean;
   error?: string;
+  error_details?: ErrorDetails;
+  warnings?: string[];
+  tool_calls?: ToolCall[];
   metrics?: {
     duration_ms?: number;
     tokens_used?: number;
     cost?: number;
+    start_time_ms?: number;
+    end_time_ms?: number;
+    api_calls_count?: number;
+    tool_calls_count?: number;
+    model_name?: string;
   };
 }
 
@@ -41,7 +77,7 @@ export interface DecisionRecord {
   id: string;
   run_id: string;
   timestamp: number;
-  type: "agent_selection" | "phase_transition" | "retry" | "hitl";
+  type: "agent_selection" | "phase_transition" | "retry" | "hitl" | "timeout" | "dynamic_decision" | "message_receipt" | "message_send" | "worker_assistant";
   decision: string;
   reasoning?: string;
   metadata?: {
@@ -67,7 +103,8 @@ export class Logger {
   private decisionsPath: string;
 
   constructor(dataDir?: string) {
-    const dir = dataDir || join(process.cwd(), ".agent-shepherd");
+    const envDataDir = process.env.ASHEP_DIR;
+    const dir = dataDir || (envDataDir ? envDataDir : join(process.cwd(), ".agent-shepherd"));
 
     // Ensure directory exists
     if (!existsSync(dir)) {
@@ -120,6 +157,18 @@ export class Logger {
     `);
 
     this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase_status ON runs(issue_id, phase, status)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_phase_completed ON runs(phase, completed_at)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_runs_issue_phase ON runs(issue_id, phase)
+    `);
+
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS decisions (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
@@ -134,6 +183,10 @@ export class Logger {
 
     this.db.run(`
       CREATE INDEX IF NOT EXISTS idx_decisions_run_id ON decisions(run_id)
+    `);
+
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(type)
     `);
   }
 
@@ -334,6 +387,272 @@ export class Logger {
   }
 
   /**
+   * Get retry count for a specific issue and phase
+   * Counts failed attempts for the given issue and phase combination
+   */
+  getPhaseRetryCount(issueId: string, phaseName: string): number {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ? AND status = 'failed'
+    `);
+    const result = stmt.get(issueId, phaseName) as any;
+    return result?.count || 0;
+  }
+
+  /**
+   * Get phase visit count for a specific issue and phase
+   * Counts all executions (regardless of status) for the given issue and phase combination
+   */
+  getPhaseVisitCount(issueId: string, phaseName: string): number {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM runs
+      WHERE issue_id = ? AND phase = ?
+    `);
+    const result = stmt.get(issueId, phaseName) as any;
+    return result?.count || 0;
+  }
+
+  /**
+   * Get total duration for all runs matching a query
+   */
+  getTotalDuration(query: RunQuery): number {
+    let sql = "SELECT SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+    return result?.total || 0;
+  }
+
+  /**
+   * Get average duration for all runs matching a query
+   */
+  getAverageDuration(query: RunQuery): number {
+    let sql = "SELECT AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+    return result?.avg || 0;
+  }
+
+  /**
+   * Get minimum duration for all runs matching a query
+   */
+  getMinDuration(query: RunQuery): number | null {
+    let sql = "SELECT MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+    return result?.min || null;
+  }
+
+  /**
+   * Get maximum duration for all runs matching a query
+   */
+  getMaxDuration(query: RunQuery): number | null {
+    let sql = "SELECT MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max FROM runs WHERE 1=1";
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+    return result?.max || null;
+  }
+
+  /**
+   * Get duration statistics for all runs matching a query
+   */
+  getDurationStats(query: RunQuery): {
+    total: number;
+    average: number;
+    min: number | null;
+    max: number | null;
+    count: number;
+  } {
+    let sql = `
+      SELECT 
+        SUM(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as total,
+        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg,
+        MIN(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as min,
+        MAX(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as max,
+        COUNT(*) as count
+      FROM runs
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (query.issue_id) {
+      sql += " AND issue_id = ?";
+      params.push(query.issue_id);
+    }
+
+    if (query.agent_id) {
+      sql += " AND agent_id = ?";
+      params.push(query.agent_id);
+    }
+
+    if (query.status) {
+      sql += " AND status = ?";
+      params.push(query.status);
+    }
+
+    if (query.phase) {
+      sql += " AND phase = ?";
+      params.push(query.phase);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const result = stmt.get(...params) as any;
+
+    return {
+      total: result?.total || 0,
+      average: result?.avg || 0,
+      min: result?.min || null,
+      max: result?.max || null,
+      count: result?.count || 0,
+    };
+  }
+
+  /**
+   * Get cumulative duration for a specific issue and phase
+   */
+  getPhaseTotalDuration(issueId: string, phaseName: string): number {
+    return this.getTotalDuration({ issue_id: issueId, phase: phaseName });
+  }
+
+  /**
+   * Get average duration for a specific issue and phase
+   */
+  getPhaseAverageDuration(issueId: string, phaseName: string): number {
+    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
+  }
+
+  /**
+   * Get average phase duration (async wrapper for compatibility)
+   */
+  async getAveragePhaseDuration(issueId: string, phaseName: string): Promise<number> {
+    return this.getAverageDuration({ issue_id: issueId, phase: phaseName });
+  }
+
+  /**
+   * Get total duration for all phases of an issue
+   */
+  async getTotalIssueDuration(issueId: string): Promise<number> {
+    const total = this.getTotalDuration({ issue_id: issueId });
+    return total;
+  }
+
+  /**
+   * Get slowest phases for an issue
+   */
+  async getSlowestPhases(
+    issueId: string,
+    limit: number = 10
+  ): Promise<Array<{ phase: string; avg_duration_ms: number }>> {
+    const stmt = this.db.prepare(`
+      SELECT 
+        phase,
+        AVG(CAST(json_extract(outcome, '$.metrics.duration_ms') AS INTEGER)) as avg_duration_ms
+      FROM runs
+      WHERE issue_id = ? 
+        AND outcome IS NOT NULL 
+        AND json_extract(outcome, '$.metrics.duration_ms') IS NOT NULL
+      GROUP BY phase
+      ORDER BY avg_duration_ms DESC
+      LIMIT ?
+    `);
+
+    const rows = stmt.all(issueId, limit) as any[];
+    return rows.map((row) => ({
+      phase: row.phase,
+      avg_duration_ms: row.avg_duration_ms || 0,
+    }));
+  }
+
+  /**
    * Log a decision record
    */
   logDecision(
@@ -364,6 +683,53 @@ export class Logger {
     const rows = stmt.all(runId) as any[];
 
     return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+
+  /**
+   * Get decisions for a specific issue
+   */
+  deleteRun(runId: string): void {
+    this.db.run("DELETE FROM runs WHERE id = ?", [runId]);
+    this.db.run("DELETE FROM decisions WHERE run_id = ?", [runId]);
+  }
+
+  getDecisionsForIssue(issueId: string, options?: { limit?: number }): DecisionRecord[] {
+    let sql = `
+      SELECT d.*
+      FROM decisions d
+      INNER JOIN runs r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+      ORDER BY d.timestamp DESC
+    `;
+    const params: any[] = [issueId];
+
+    if (options?.limit) {
+      sql += " LIMIT ?";
+      params.push(options.limit);
+    }
+
+    const stmt = this.db.prepare(sql);
+    const rows = stmt.all(...params) as any[];
+
+    return rows.map((row) => this.rowToDecisionRecord(row));
+  }
+
+  /**
+   * Get transition count for specific phase→phase pattern
+   * Counts how many times a specific transition has occurred for an issue
+   */
+  getTransitionCount(issueId: string, fromPhase: string, toPhase: string): number {
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM decisions d
+      INNER JOIN runs r ON d.run_id = r.id
+      WHERE r.issue_id = ?
+        AND d.type = 'phase_transition'
+        AND json_extract(d.metadata, '$.from_phase') = ?
+        AND json_extract(d.metadata, '$.to_phase') = ?
+    `);
+    const result = stmt.get(issueId, fromPhase, toPhase) as any;
+    return result?.count || 0;
   }
 
   /**
@@ -407,16 +773,114 @@ export class Logger {
   close(): void {
     this.db.close();
   }
+
+  /**
+   * Reset singleton instance (for testing)
+   */
+  static resetInstance(): void {
+    defaultLogger = null;
+  }
 }
 
 /**
- * Create a singleton Logger instance
- */
+  * Create a singleton Logger instance
+  */
 let defaultLogger: Logger | null = null;
 
 export function getLogger(dataDir?: string): Logger {
+  if (dataDir) {
+    return new Logger(dataDir);
+  }
+  const envDataDir = process.env.ASHEP_DIR;
+  if (envDataDir) {
+    return new Logger(envDataDir);
+  }
   if (!defaultLogger) {
-    defaultLogger = new Logger(dataDir);
+    defaultLogger = new Logger();
   }
   return defaultLogger;
+}
+
+export function resetLogger(): void {
+  if (defaultLogger) {
+    defaultLogger.close();
+    defaultLogger = null;
+  }
+}
+
+export function queryAllRuns(query: RunQuery, dataDir?: string): RunRecord[] {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger } = require("./archive-logger");
+  const archiveLogger = new ArchiveLogger(dataDir);
+
+  try {
+    const activeRuns = logger.queryRuns(query);
+    const archiveRuns = archiveLogger.queryRuns(query);
+
+    const allRunsMap = new Map<string, RunRecord>();
+
+    for (const run of activeRuns) {
+      allRunsMap.set(run.id, run);
+    }
+
+    for (const run of archiveRuns) {
+      if (!allRunsMap.has(run.id)) {
+        allRunsMap.set(run.id, run);
+      }
+    }
+
+    const allRuns = Array.from(allRunsMap.values());
+    allRuns.sort((a, b) => b.created_at - a.created_at);
+
+    if (query.limit) {
+      const offset = query.offset || 0;
+      return allRuns.slice(offset, offset + query.limit);
+    }
+
+    return allRuns;
+  } finally {
+    archiveLogger.close();
+  }
+}
+
+export function getRunHistory(runId: string, dataDir?: string): RunRecord | null {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger } = require("./archive-logger");
+  const archiveLogger = new ArchiveLogger(dataDir);
+
+  try {
+    const activeRun = logger.getRun(runId);
+    if (activeRun) {
+      return activeRun;
+    }
+
+    return archiveLogger.getRun(runId);
+  } finally {
+    archiveLogger.close();
+  }
+}
+
+export function getRunWithArchival(runId: string, dataDir?: string): {
+  run: RunRecord | null;
+  location: "active" | "archive" | "not_found";
+} {
+  const logger = dataDir ? new Logger(dataDir) : getLogger();
+  const { ArchiveLogger } = require("./archive-logger");
+  const archiveLogger = new ArchiveLogger(dataDir);
+
+  try {
+    const activeRun = logger.getRun(runId);
+    if (activeRun) {
+      return { run: activeRun, location: "active" };
+    }
+
+    const archivedRun = archiveLogger.getRun(runId);
+    if (archivedRun) {
+      return { run: archivedRun, location: "archive" };
+    }
+
+    return { run: null, location: "not_found" };
+  } finally {
+    archiveLogger.close();
+  }
 }
