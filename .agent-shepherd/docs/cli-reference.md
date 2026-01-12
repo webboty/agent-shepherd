@@ -780,6 +780,202 @@ Get workflow phases.
 ]
 ```
 
+## Coordination Commands
+
+### `ashep heartbeat status`
+
+Display the status of the heartbeat checker daemon and session monitoring.
+
+**Usage:**
+```bash
+ashep heartbeat status
+```
+
+**Behavior:**
+- Shows whether heartbeat checker is running
+- Displays current configuration (poll_interval_ms, stale_threshold_ms)
+- Shows statistics: total sessions checked, alive sessions, stale sessions, errors
+- Lists monitored epics with their last heartbeat timestamps
+
+**Output:**
+```
+Heartbeat Checker Status:
+  Running: true
+  Config:
+    poll_interval_ms: 30000
+    stale_threshold_ms: 300000
+  Stats:
+    total_checked: 150
+    alive_sessions: 145
+    stale_sessions: 5
+    error_count: 0
+
+Monitored Epics:
+  epic-123: last heartbeat 45s ago (alive)
+  epic-456: last heartbeat 6m ago (STALE)
+```
+
+### `ashep heartbeat start`
+
+Start the heartbeat checker daemon for session monitoring.
+
+**Usage:**
+```bash
+ashep heartbeat start
+ashep heartbeat start --poll-interval 60000
+```
+
+**Options:**
+- `--poll-interval <ms>`: Polling interval in milliseconds (default: 30000)
+- `--stale-threshold <ms>`: Threshold in ms to consider heartbeat stale (default: 300000)
+
+**Behavior:**
+- Starts background daemon that monitors active sessions
+- Updates Beads state with last heartbeat timestamps
+- Detects abandoned sessions based on activity
+- Emits events for monitoring integration
+
+### `ashep heartbeat stop`
+
+Stop the heartbeat checker daemon.
+
+**Usage:**
+```bash
+ashep heartbeat stop
+```
+
+### `ashep coordination status`
+
+Display the current coordination state for epics and workers.
+
+**Usage:**
+```bash
+ashep coordination status
+ashep coordination status --epic epic-123
+ashep coordination status --worker worker-1
+```
+
+**Options:**
+- `--epic <id>`: Filter by specific epic ID
+- `--worker <id>`: Filter by specific worker ID
+
+**Output:**
+```
+Coordination State:
+  Total Managed Epics: 5
+  Active Workers: 2
+
+Epic Assignments:
+  epic-123: worker-1 (lease expires in 25m, heartbeat 45s ago)
+  epic-456: worker-2 (lease expired, ABANDONED)
+  epic-789: worker-1 (lease expires in 28m, heartbeat 2m ago)
+
+Abandoned Epics:
+  epic-456: Detected 5m ago, recoverable
+```
+
+### `ashep coordination claim <epic-id>`
+
+Manually claim an epic for the current worker.
+
+**Usage:**
+```bash
+ashep coordination claim epic-123
+```
+
+**Behavior:**
+- Claims the epic for the current worker (ASHEP_WORKER_ID)
+- Sets lease expiration timestamp
+- Checks for abandonment and recovers if needed
+- Updates coordination state in Beads
+
+### `ashep coordination release <epic-id>`
+
+Release a claimed epic, making it available for other workers.
+
+**Usage:**
+```bash
+ashep coordination release epic-123
+```
+
+**Behavior:**
+- Clears the assigned worker from the epic
+- Removes lease expiration
+- Epic becomes available for other workers to claim
+
+### `ashep coordination recover <epic-id>`
+
+Manually trigger recovery of an abandoned epic.
+
+**Usage:**
+```bash
+ashep coordination recover epic-123
+```
+
+**Behavior:**
+- Detects if epic is truly abandoned (heartbeat stale or lease expired)
+- Recovers any active runs in the epic subtree
+- Claims the epic for the current worker
+- Logs recovery decision
+
+### `ashep picking status`
+
+Display the current issue picker configuration and mode.
+
+**Usage:**
+```bash
+ashep picking status
+```
+
+**Output:**
+```
+Issue Picker Status:
+  Mode: smart
+  Max Issues: 3
+  Epic Affinity: true
+  Coordination Mode: hybrid
+
+Recent Picks:
+  epic-123.1: priority=1, depth=1, epic=123
+  epic-456.2: priority=2, depth=2, epic=456
+  epic-789.1: priority=1, depth=1, epic=789
+```
+
+### `ashep picking mode <simple|smart>`
+
+Switch the issue picker mode at runtime.
+
+**Usage:**
+```bash
+ashep picking mode simple
+ashep picking mode smart
+```
+
+**Behavior:**
+- `simple`: Priority-based selection without dependency awareness
+- `smart`: Dependency-aware selection with epic affinity
+- Change takes effect on next pick cycle
+- Mode stored in configuration for persistence
+
+### Configuration Options
+
+The following configuration options control coordination behavior in `config/config.yaml`:
+
+```yaml
+worker:
+  picking:
+    mode: "smart"           # "simple" | "smart"
+    max_issues: 3           # Max issues to pick per cycle
+    prefer_epic_affinity: true  # Maintain epic ownership
+  coordination:
+    mode: "hybrid"          # "lease" | "heartbeat" | "hybrid"
+    lease_duration_ms: 1800000  # 30 minutes
+  checker:
+    enabled: true           # Enable heartbeat checker daemon
+    poll_interval_ms: 30000 # Heartbeat check interval
+    heartbeat_threshold_ms: 300000  # 5 minutes stale threshold
+```
+
 ## Exit Codes
 
 - `0`: Success

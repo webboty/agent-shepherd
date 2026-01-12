@@ -113,6 +113,102 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 - **CLI** (`src/cli/index.ts`) - Command-line interface
 - **UI Server** (`src/ui/ui-server.ts`) - ReactFlow visualization server
 
+## Smart Issue Picker
+
+The Smart Issue Picker provides dependency-aware issue selection with epic affinity for multi-worker coordination.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Issue Picker                                  │
+│  ┌─────────────────┐  ┌─────────────────────────────────────┐  │
+│  │   Simple Mode   │  │           Smart Mode                │  │
+│  │  (Priority-     │  │  • Dependency graph construction    │  │
+│  │   based)        │  │  • Topological sorting              │  │
+│  └─────────────────┘  │  • Epic affinity filtering          │  │
+│                       │  • Coordination state checks         │  │
+│                       └─────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+- **Issue Picker** (`src/core/issue-picker.ts`) - Main picker with simple and smart modes
+- **Heartbeat Checker** (`src/core/heartbeat-checker.ts`) - Background daemon for session monitoring
+- **Crash Detector** (`src/core/crash-detector.ts`) - Abandonment detection and recovery
+- **OpenCode SDK Client** (`src/core/opencode_sdk.ts`) - SDK integration for session activity
+
+### Picker Modes
+
+#### Simple Mode
+Priority-based selection without dependency awareness:
+```yaml
+worker:
+  picking:
+    mode: "simple"  # Default: priority sorting only
+```
+
+#### Smart Mode
+Dependency-aware selection with epic affinity:
+```yaml
+worker:
+  picking:
+    mode: "smart"           # Dependency-aware
+    prefer_epic_affinity: true  # Maintain epic ownership
+    max_issues: 5           # Max issues per pick
+```
+
+### Coordination Modes
+
+The system supports three coordination modes:
+
+1. **Lease Mode** - Time-based leases for epic ownership
+2. **Heartbeat Mode** - SDK-based session activity detection
+3. **Hybrid Mode** - Combined lease + heartbeat (recommended)
+
+```yaml
+worker:
+  coordination:
+    mode: "hybrid"          # lease | heartbeat | hybrid
+  checker:
+    enabled: true
+    poll_interval_ms: 30000
+    stale_threshold_ms: 300000
+```
+
+### Configuration
+
+```yaml
+worker:
+  picking:
+    mode: "smart"
+    max_issues: 3
+    prefer_epic_affinity: true
+  coordination:
+    mode: "hybrid"
+    lease_duration_ms: 1800000  # 30 minutes
+  checker:
+    enabled: true
+    poll_interval_ms: 30000     # 30 seconds
+    heartbeat_threshold_ms: 300000  # 5 minutes
+```
+
+### Key Features
+
+- **Epic Affinity**: Workers maintain ownership of epic subtrees
+- **Crash Detection**: Heartbeat + lease-based abandonment detection
+- **Dependency Ordering**: Topological sort respecting issue dependencies
+- **Multi-Worker Safety**: State-based coordination prevents conflicts
+- **Recovery**: Automatic recovery of abandoned tasks
+
+### Success Metrics
+
+- Crash Detection: >95% accuracy within 1 minute of actual crash
+- Coordination: Zero conflicting epic assignments in production
+- Performance: <5% overhead vs simple selection
+- Dependencies: 100% constraint satisfaction in ordering
+
 ## Worker Assistant
 
 The worker assistant provides AI-powered interpretation of complex agent outcomes when the worker engine's deterministic logic cannot determine clear advance/retry/block actions.

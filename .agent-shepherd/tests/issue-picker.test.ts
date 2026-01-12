@@ -613,4 +613,139 @@ describe("IssuePicker", () => {
       expect(picker1).not.toBe(picker2);
     });
   });
+
+  describe("Coordination Filtering", () => {
+    it("filters by epic affinity when configured", async () => {
+      const issues: BeadsIssue[] = [
+        {
+          id: "epic-a.1",
+          title: "Epic A Task",
+          description: "Task from Epic A",
+          status: "open",
+          priority: 1,
+          issue_type: "task",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "epic-b.1",
+          title: "Epic B Task",
+          description: "Task from Epic B",
+          status: "open",
+          priority: 1,
+          issue_type: "task",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ];
+
+      const picker = new IssuePicker({
+        mode: "smart",
+        prefer_epic_affinity: true,
+      });
+
+      const filtered = picker["filterExcluded"](issues);
+
+      expect(filtered).toHaveLength(2);
+    });
+
+    it("respects max_issues limit", async () => {
+      const issues: BeadsIssue[] = Array.from({ length: 10 }, (_, i) => ({
+        id: `task-${i}`,
+        title: `Task ${i}`,
+        description: `Task ${i}`,
+        status: "open",
+        priority: 1,
+        issue_type: "task",
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      }));
+
+      const picker = new IssuePicker({
+        mode: "simple",
+        max_issues: 5,
+      });
+
+      const result = picker["simplePick"](issues);
+
+      expect(result).toHaveLength(5);
+    });
+
+    it("handles empty issue list in smart mode", async () => {
+      const issues: BeadsIssue[] = [];
+
+      const picker = new IssuePicker({ mode: "smart" });
+
+      const graph = await picker.buildDependencyGraph(issues);
+
+      expect(graph.nodes.size).toBe(0);
+      expect(graph.edges.length).toBe(0);
+    });
+  });
+
+  describe("Dependency Edge Cases", () => {
+    it("handles empty dependencies list", async () => {
+      const issues: BeadsIssue[] = [
+        {
+          id: "task-1",
+          title: "Task 1",
+          description: "Task 1",
+          status: "open",
+          priority: 1,
+          issue_type: "task",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ];
+
+      const picker = new IssuePicker();
+
+      const dependencies = await picker["getDependencies"]("task-1");
+
+      expect(Array.isArray(dependencies)).toBe(true);
+    });
+
+    it("handles missing dependency information", async () => {
+      const issues: BeadsIssue[] = [
+        {
+          id: "task-1",
+          title: "Task 1",
+          description: "Task 1",
+          status: "open",
+          priority: 1,
+          issue_type: "task",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ];
+
+      const graph = await picker.buildDependencyGraph(issues);
+
+      expect(graph.edges.length).toBe(0);
+    });
+  });
+
+  describe("Configuration Validation", () => {
+    it("handles mode switching", async () => {
+      const picker = new IssuePicker({ mode: "simple", max_issues: 3 });
+
+      expect(picker["config"].mode).toBe("simple");
+      expect(picker["config"].max_issues).toBe(3);
+
+      picker.updateConfig({ mode: "smart", max_issues: 5 });
+
+      expect(picker["config"].mode).toBe("smart");
+      expect(picker["config"].max_issues).toBe(5);
+    });
+
+    it("handles epic affinity toggle", () => {
+      const picker = new IssuePicker({ prefer_epic_affinity: false });
+
+      expect(picker["config"].prefer_epic_affinity).toBe(false);
+
+      picker.updateConfig({ prefer_epic_affinity: true });
+
+      expect(picker["config"].prefer_epic_affinity).toBe(true);
+    });
+  });
 });

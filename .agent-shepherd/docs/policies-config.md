@@ -958,3 +958,149 @@ Sessions for issue ISSUE-123 (2):
 2. **Planning to implementation**: Use `@first` to preserve planning context during implementation
 3. **Token management**: Set lower thresholds for long-running workflows to avoid context overflow
 4. **Independent phases**: Don't enable session continuation for phases that don't benefit from previous context
+
+## Epic Coordination Configuration
+
+Policies can configure how issues are picked and coordinated for multi-worker environments.
+
+### Issue Picker Mode
+
+Control how the worker selects issues to process:
+
+```yaml
+policies:
+  my-policy:
+    picking:
+      mode: "smart"           # "simple" | "smart" (default: simple)
+      max_issues: 3           # Max issues to pick per cycle
+      prefer_epic_affinity: true  # Keep same worker on epic subtree
+```
+
+**Modes:**
+- `simple`: Priority-based selection without dependency awareness
+- `smart`: Dependency-aware selection with topological ordering and epic affinity
+
+**Benefits of Smart Mode:**
+- Respects issue dependencies (blocks relationships)
+- Maintains epic affinity (same worker continues with epic subtree)
+- Prevents coordination conflicts in multi-worker setups
+- Orders by hierarchical depth (leaf tasks first)
+
+### Coordination Mode
+
+Configure how workers coordinate on shared epics:
+
+```yaml
+policies:
+  my-policy:
+    coordination:
+      mode: "hybrid"              # "lease" | "heartbeat" | "hybrid"
+      lease_duration_ms: 1800000  # 30 minutes (default)
+```
+
+**Modes:**
+- `lease`: Time-based lease expiration
+- `heartbeat`: SDK-based session activity detection
+- `hybrid`: Combined approach (recommended)
+
+### Heartbeat Configuration
+
+Configure session activity monitoring:
+
+```yaml
+policies:
+  my-policy:
+    heartbeat:
+      enabled: true               # Enable heartbeat checker
+      poll_interval_ms: 30000     # Check every 30 seconds
+      stale_threshold_ms: 300000  # 5 minutes before considered stale
+      fallback_to_lease: true     # Fall back to lease if heartbeat fails
+```
+
+### Per-Phase Overrides
+
+Fine-tune coordination per phase:
+
+```yaml
+policies:
+  my-policy:
+    picking:
+      mode: "smart"
+    coordination:
+      mode: "hybrid"
+    phases:
+      - name: plan
+        picking:
+          max_issues: 1           # Plan one issue at a time
+          prefer_epic_affinity: true
+      - name: implement
+        picking:
+          max_issues: 3           # Implement multiple issues concurrently
+          prefer_epic_affinity: false
+      - name: test
+        coordination:
+          mode: "lease"           # Simpler coordination for testing
+```
+
+### Epic ID Format
+
+The system uses dot notation for epic/task hierarchy:
+
+| Issue ID | Type | Epic ID |
+|----------|------|---------|
+| `epic-123` | Epic | `epic-123` |
+| `epic-123.1` | Task | `epic-123` |
+| `epic-123.1.1` | Subtask | `epic-123` |
+
+The smart picker uses this to maintain epic affinity - once a worker claims an epic, they continue processing its tasks.
+
+### Coordination State
+
+The system stores coordination state in Beads using `bd set-state`:
+
+| State Key | Description |
+|-----------|-------------|
+| `assigned-worker` | Worker ID currently processing the epic |
+| `last-heartbeat` | Unix timestamp of last session activity |
+| `lease-expires` | Unix timestamp when lease expires |
+
+### CLI Commands for Coordination
+
+```bash
+# View current coordination status
+ashep coordination status
+
+# View heartbeat checker status
+ashep heartbeat status
+
+# View picker configuration
+ashep picking status
+
+# Switch picker mode at runtime
+ashep picking mode smart
+ashep picking mode simple
+
+# Manually claim/release epics
+ashep coordination claim epic-123
+ashep coordination release epic-123
+
+# Recover abandoned epics
+ashep coordination recover epic-123
+```
+
+### Troubleshooting
+
+**Issue: Multiple workers picking same epic**
+- Check `coordination.mode` is set to `hybrid` or `heartbeat`
+- Verify `heartbeat.checker.enabled: true`
+- Check `ashep coordination status` for conflicting assignments
+
+**Issue: Heartbeat checker not detecting stale sessions**
+- Verify `poll_interval_ms` is less than `stale_threshold_ms`
+- Check OpenCode SDK connectivity
+- Review logs for SDK errors
+
+**Issue: Worker not maintaining epic affinity**
+- Verify `prefer_epic_affinity: true` in policy config
+- Check that issue IDs use proper epic.task notation
+- Review `ashep picking status` for mode configuration
