@@ -619,6 +619,57 @@ bun run test  # Runs tests + posttest cleanup automatically
 
 Do not commit test artifacts or temporary files to the repository.
 
+#### Beads Database Isolation
+
+**CRITICAL:** Tests that interact with Beads issue tracking MUST use isolated databases. Production issue data (`.beads/`) must never be touched during testing.
+
+Integration tests and performance tests that involve Beads operations must use the `setupBeadsIsolation` helper from `tests/helpers/beads-test-isolation.ts`:
+
+```typescript
+import { setupBeadsIsolation, type BeadsTestEnv } from './helpers/beads-test-isolation';
+
+describe('Beads Integration Tests', () => {
+  let beadsTestEnv: BeadsTestEnv;
+
+  beforeEach(async () => {
+    beadsTestEnv = setupBeadsIsolation();
+    await beadsTestEnv.initialize();
+
+    // Set environment variables for Beads functions to use isolated database
+    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
+    process.env.BD_NO_DAEMON = "true";
+    process.env.BD_SANDBOX = "true";
+  });
+
+  afterEach(async () => {
+    await beadsTestEnv.cleanup();
+  });
+
+  it('should create issues in isolated database', async () => {
+    // Use beadsTestEnv.exec() instead of direct bd commands
+    const output = await beadsTestEnv.exec(['create', '--type', 'task', '--title', 'Test issue']);
+    // Issues are created in isolated database
+  });
+});
+```
+
+The `setupBeadsIsolation` helper:
+- Creates isolated Beads databases in `tmp_test/beads-isolation/` with unique timestamps
+- Uses `BD_SANDBOX` and `BD_NO_DAEMON` environment variables for isolation
+- Provides `exec()` method to run `bd` commands in the isolated database
+- Automatically cleans up all test data on `cleanup()`
+
+**FORBIDDEN:**
+- Never import or use production Beads database at `.beads/`
+- Never run direct `bd` commands without isolation
+- Never mock Beads functions (use real infrastructure)
+- Never create issues in production during tests
+
+**REQUIRED:**
+- Always use `setupBeadsIsolation` for Beads integration tests
+- Always set `BEADS_DIR`, `BD_NO_DAEMON`, `BD_SANDBOX` environment variables
+- Always cleanup with `beadsTestEnv.cleanup()` in `afterEach` or `afterAll`
+
 ## Architecture Patterns
 
 ### Dual Storage
@@ -640,6 +691,8 @@ Do not commit test artifacts or temporary files to the repository.
 ## Beads Integration
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+
+**IMPORTANT:** When writing tests that interact with Beads (integration tests, performance tests), you MUST use the Beads isolation helper to avoid touching production issue data. See the "Beads Database Isolation" section in the Testing Guidelines above.
 
 ### Beads Label System
 
