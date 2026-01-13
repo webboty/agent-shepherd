@@ -15,6 +15,8 @@ import {
   setAshepManagedLabel,
   removeAshepManagedLabel,
   hasAshepManagedLabel,
+  setContainerValidationLabel,
+  clearContainerValidationLabels,
 } from "./beads.ts";
 import { getIssuePicker, type PickerConfig } from "./issue-picker.ts";
 import { getOpenCodeClient } from "./opencode.ts";
@@ -367,12 +369,14 @@ export class WorkerEngine {
 
       switch (validationDecision.outcome) {
         case "DONE":
+          await setContainerValidationLabel(issue.id, "DONE");
           transition = {
             type: "close",
             reason: `Container validation passed: ${validationDecision.reasoning}`
           };
           break;
         case "NEEDS_WORK":
+          await setContainerValidationLabel(issue.id, "NEEDS_WORK");
           transition = {
             type: "advance",
             next_phase: "plan",
@@ -380,12 +384,21 @@ export class WorkerEngine {
           };
           break;
         case "UNCLEAR":
+          await setContainerValidationLabel(issue.id, "UNCLEAR");
+          {
+            const config = loadConfig();
+            if (validateHITLReason("container-validation", config.hitl)) {
+              await setHITLLabel(issue.id, "container-validation");
+              await this.generateContainerValidationNote(issue.id, validationDecision);
+            }
+          }
           transition = {
             type: "block",
             reason: `Container validation unclear: ${validationDecision.reasoning}. Human review required.`
           };
           break;
         default:
+          await setContainerValidationLabel(issue.id, "UNCLEAR");
           transition = {
             type: "block",
             reason: `Invalid container validation outcome: ${validationDecision.outcome}`
@@ -1014,91 +1027,99 @@ Previous phases may have sent messages containing context, results, or data for 
     return result;
   }
 
-  /**
-   * Apply phase transition to issue
-   */
-  private async applyTransition(
-    issueId: string,
-    transition: PhaseTransition
-  ): Promise<void> {
-    switch (transition.type) {
-      case "advance":
-        await updateIssue(issueId, { status: "open" });
-        // Update phase label to next phase
-        if (transition.next_phase) {
-          await setPhaseLabel(issueId, transition.next_phase);
-          // Clear HITL labels when advancing
-          await clearHITLLabels(issueId);
-        }
-        console.log(
-          `Advanced to next phase: ${transition.next_phase || "unknown"}`
-        );
-        break;
+   /**
+    * Apply phase transition to issue
+    */
+   private async applyTransition(
+     issueId: string,
+     transition: PhaseTransition
+   ): Promise<void> {
+     switch (transition.type) {
+       case "advance":
+         await updateIssue(issueId, { status: "open" });
+         // Update phase label to next phase
+         if (transition.next_phase) {
+           await setPhaseLabel(issueId, transition.next_phase);
+           // Clear HITL labels when advancing
+           await clearHITLLabels(issueId);
+           // Clear container validation labels when advancing to new phase
+           await clearContainerValidationLabels(issueId);
+         }
+         console.log(
+           `Advanced to next phase: ${transition.next_phase || "unknown"}`
+         );
+         break;
 
-      case "retry":
-        await updateIssue(issueId, { status: "open" });
-        // Keep existing phase label on retry
-        // Clear HITL labels when retrying
-        await clearHITLLabels(issueId);
-        console.log(`Retrying phase: ${transition.reason}`);
-        break;
+       case "retry":
+         await updateIssue(issueId, { status: "open" });
+         // Keep existing phase label on retry
+         // Clear HITL labels when retrying
+         await clearHITLLabels(issueId);
+         // Clear container validation labels when retrying
+         await clearContainerValidationLabels(issueId);
+         console.log(`Retrying phase: ${transition.reason}`);
+         break;
 
-      case "block":
-        await updateIssue(issueId, { status: "blocked" });
-        // Set HITL label for approval required
-        if (transition.reason?.includes("approval") || transition.reason?.includes("Human approval")) {
-          const config = loadConfig();
-          const hitlReason = transition.reason?.toLowerCase().includes("approval") 
-            ? "approval" 
-            : "manual-intervention";
-          
-          if (validateHITLReason(hitlReason, config.hitl)) {
-            await setHITLLabel(issueId, hitlReason);
-            // Generate approval note
-            await this.generateApprovalNote(issueId, hitlReason, transition.reason);
-          }
-        }
-        console.log(`Blocked issue: ${transition.reason}`);
-        break;
+       case "block":
+         await updateIssue(issueId, { status: "blocked" });
+         // Set HITL label for approval required
+         if (transition.reason?.includes("approval") || transition.reason?.includes("Human approval")) {
+           const config = loadConfig();
+           const hitlReason = transition.reason?.toLowerCase().includes("approval")
+             ? "approval"
+             : "manual-intervention";
 
-      case "close":
-        await updateIssue(issueId, { status: "closed" });
-        // Remove all tracking labels on close
-        await removeAshepManagedLabel(issueId);
-        await removePhaseLabels(issueId);
-        await clearHITLLabels(issueId);
-        console.log(`Closed issue: ${transition.reason}`);
-        break;
+           if (validateHITLReason(hitlReason, config.hitl)) {
+             await setHITLLabel(issueId, hitlReason);
+             // Generate approval note
+             await this.generateApprovalNote(issueId, hitlReason, transition.reason);
+           }
+         }
+         console.log(`Blocked issue: ${transition.reason}`);
+         break;
 
-      case "jump_back": {
-        await updateIssue(issueId, { status: "open" });
-        const targetPhase = transition.jump_target_phase || transition.next_phase;
-        if (targetPhase) {
-          await setPhaseLabel(issueId, targetPhase);
-          await clearHITLLabels(issueId);
-          console.log(`Jumped back to phase: ${targetPhase}`);
-        }
-        break;
-      }
+       case "close":
+         await updateIssue(issueId, { status: "closed" });
+         // Remove all tracking labels on close
+         await removeAshepManagedLabel(issueId);
+         await removePhaseLabels(issueId);
+         await clearHITLLabels(issueId);
+         // Clear container validation labels on close
+         await clearContainerValidationLabels(issueId);
+         console.log(`Closed issue: ${transition.reason}`);
+         break;
 
-      case "dynamic_decision": {
-        try {
-          const finalTransition = await this.executeDecisionAgent(issueId, transition);
-          await this.applyTransition(issueId, finalTransition);
-          console.log(`Dynamic decision resulted in: ${finalTransition.type}`);
-        } catch (error) {
-          console.error(`Dynamic decision failed: ${error}`);
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          await updateIssue(issueId, { status: "blocked" });
-          if (validateHITLReason("manual-intervention", loadConfig().hitl)) {
-            await setHITLLabel(issueId, "manual-intervention");
-            await this.generateApprovalNote(issueId, "manual-intervention", `Dynamic decision failed: ${errorMsg}`);
-          }
-        }
-        break;
-      }
-    }
-  }
+       case "jump_back": {
+         await updateIssue(issueId, { status: "open" });
+         const targetPhase = transition.jump_target_phase || transition.next_phase;
+         if (targetPhase) {
+           await setPhaseLabel(issueId, targetPhase);
+           await clearHITLLabels(issueId);
+           // Clear container validation labels when jumping back
+           await clearContainerValidationLabels(issueId);
+           console.log(`Jumped back to phase: ${targetPhase}`);
+         }
+         break;
+       }
+
+       case "dynamic_decision": {
+         try {
+           const finalTransition = await this.executeDecisionAgent(issueId, transition);
+           await this.applyTransition(issueId, finalTransition);
+           console.log(`Dynamic decision resulted in: ${finalTransition.type}`);
+         } catch (error) {
+           console.error(`Dynamic decision failed: ${error}`);
+           const errorMsg = error instanceof Error ? error.message : String(error);
+           await updateIssue(issueId, { status: "blocked" });
+           if (validateHITLReason("manual-intervention", loadConfig().hitl)) {
+             await setHITLLabel(issueId, "manual-intervention");
+             await this.generateApprovalNote(issueId, "manual-intervention", `Dynamic decision failed: ${errorMsg}`);
+           }
+         }
+         break;
+       }
+     }
+   }
 
   /**
    * Check if worker assistant should be triggered based on outcome and phase
@@ -1157,121 +1178,267 @@ Previous phases may have sent messages containing context, results, or data for 
     return triggerCount > 0;
   }
   
-  /**
-   * Execute container validation decision agent
-   */
-  private async executeContainerValidation(
-    issue: BeadsIssue,
-    outcome: RunOutcome,
-    phase: string
-  ): Promise<{
-    outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR";
-    confidence: number;
-    reasoning: string;
-    recommendations?: string[];
-  }> {
-    const config = loadConfig();
-    
-    if (!config.worker_assistant?.enabled) {
-      console.log(`Worker assistant disabled, returning default container decision: UNCLEAR`);
+   /**
+    * Execute container validation decision agent
+    */
+   private async executeContainerValidation(
+     issue: BeadsIssue,
+     outcome: RunOutcome,
+     phase: string
+   ): Promise<{
+     outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR";
+     confidence: number;
+     reasoning: string;
+     recommendations?: string[];
+   }> {
+     const config = loadConfig();
+
+     if (!config.worker_assistant?.enabled) {
+       console.log(`Worker assistant disabled, returning default container decision: UNCLEAR`);
+       this.logger.logDecision({
+         run_id: this.currentRunId || "",
+         type: "container_validation_fallback",
+         decision: "worker_assistant_disabled",
+         reasoning: "Worker assistant disabled, defaulting to UNCLEAR",
+         metadata: {
+           issue_id: issue.id,
+           phase
+         }
+       });
+       return {
+         outcome: "UNCLEAR",
+         confidence: 0.5,
+         reasoning: "Worker assistant disabled, defaulting to UNCLEAR"
+       };
+     }
+
+     let containerCheck;
+     try {
+       containerCheck = await this.isContainerEpic(issue);
+     } catch (error) {
+       const errorMsg = error instanceof Error ? error.message : String(error);
+       console.error(`Failed to check container status for ${issue.id}: ${errorMsg}`);
+       this.logger.logDecision({
+         run_id: this.currentRunId || "",
+         type: "container_validation_error",
+         decision: "container_check_failed",
+         reasoning: `Container check failed: ${errorMsg}`,
+         metadata: {
+           issue_id: issue.id,
+           phase,
+           error: errorMsg
+         }
+       });
+
+       return {
+         outcome: "UNCLEAR",
+         confidence: 0.3,
+         reasoning: `Container check failed: ${errorMsg}. HITL escalation required.`
+       };
+     }
+
+     const agent = this.agentRegistry.selectAgent({
+       required_capabilities: ["container-validation", "worker-assistant"]
+     });
+
+     if (!agent) {
+       console.warn(`No container validation agent found, using fallback logic`);
+       this.logger.logDecision({
+         run_id: this.currentRunId || "",
+         type: "container_validation_fallback",
+         decision: "no_validation_agent",
+         reasoning: "No validation agent available, using default logic",
+         metadata: {
+           issue_id: issue.id,
+           phase,
+           container_mode: containerCheck.mode
+         }
+       });
+
+       return {
+         outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+         confidence: 0.8,
+         reasoning: "No validation agent available, using default logic"
+       };
+     }
+
+     const decisionBuilder = await import("./decision-builder.ts").then(m => m.getDecisionPromptBuilder());
+
+     let containerChildren;
+     try {
+       containerChildren = await this.getContainerChildrenInfo(issue);
+     } catch (error) {
+       const errorMsg = error instanceof Error ? error.message : String(error);
+       console.warn(`Failed to get container children for ${issue.id}: ${errorMsg}`);
+       this.logger.logDecision({
+         run_id: this.currentRunId || "",
+         type: "container_validation_warning",
+         decision: "children_check_failed",
+         reasoning: `Children check failed: ${errorMsg}`,
+         metadata: {
+           issue_id: issue.id,
+           phase,
+           error: errorMsg
+         }
+       });
+
+       containerChildren = { total: 0, completed: 0 };
+     }
+
+     const allowedDestinations = ["DONE", "NEEDS_WORK", "UNCLEAR"];
+
+     const context = {
+       issue,
+       outcome,
+       current_phase: phase,
+       custom_instructions: "Evaluate if this container epic is complete or requires further work.",
+       allowed_destinations: allowedDestinations,
+       container_children: {
+         child_count: containerChildren.total,
+         completed_count: containerChildren.completed,
+         pending_count: containerChildren.total - containerChildren.completed
+       },
+       container_status: {
+         all_children_complete: containerCheck.ready_to_close,
+         container_confidence: containerCheck.confidence,
+         container_mode: containerCheck.mode
+       }
+     };
+
+     let promptData;
+     try {
+       promptData = decisionBuilder.buildPrompt("container-validation", context);
+     } catch (error) {
+       const errorMsg = error instanceof Error ? error.message : String(error);
+       console.error(`Failed to build container validation prompt: ${errorMsg}`);
+      this.logger.logDecision({
+         run_id: this.currentRunId || "",
+         type: "container_validation_error",
+         decision: "prompt_build_failed",
+         reasoning: `Prompt build failed: ${errorMsg}`,
+         metadata: {
+           issue_id: issue.id,
+           phase,
+           error: errorMsg
+         }
+       });
+
       return {
-        outcome: "UNCLEAR",
-        confidence: 0.5,
-        reasoning: "Worker assistant disabled, defaulting to UNCLEAR"
-      };
+         outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+         confidence: 0.7,
+         reasoning: "Failed to build validation prompt, using fallback logic"
+       };
     }
 
-    const containerCheck = await this.isContainerEpic(issue);
-    
-    const agent = this.agentRegistry.selectAgent({
-      required_capabilities: ["container-validation", "worker-assistant"]
-    });
-    
-    if (!agent) {
-      console.warn(`No container validation agent found, defaulting to DONE for containers with all children complete`);
-      return {
-        outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
-        confidence: 0.8,
-        reasoning: "No validation agent available, using default logic"
-      };
-    }
+     if (!promptData) {
+       console.warn(`Failed to build container validation prompt, using fallback`);
+       this.logger.logDecision({
+         run_id: this.currentRunId || "",
+         type: "container_validation_fallback",
+         decision: "prompt_data_null",
+         reasoning: "Prompt data is null, using fallback logic",
+         metadata: {
+           issue_id: issue.id,
+           phase
+         }
+       });
 
-    const decisionBuilder = await import("./decision-builder.ts").then(m => m.getDecisionPromptBuilder());
-    
-    const containerChildren = await this.getContainerChildrenInfo(issue);
-    
-    const allowedDestinations = ["DONE", "NEEDS_WORK", "UNCLEAR"];
-    
-    const context = {
-      issue,
-      outcome,
-      current_phase: phase,
-      custom_instructions: "Evaluate if this container epic is complete or requires further work.",
-      allowed_destinations: allowedDestinations,
-      container_children: {
-        child_count: containerChildren.total,
-        completed_count: containerChildren.completed,
-        pending_count: containerChildren.total - containerChildren.completed
-      },
-      container_status: {
-        all_children_complete: containerCheck.ready_to_close,
-        container_confidence: containerCheck.confidence,
-        container_mode: containerCheck.mode
-      }
-    };
+       return {
+         outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+         confidence: 0.7,
+         reasoning: "Failed to build validation prompt, using fallback logic"
+       };
+     }
 
-    const promptData = decisionBuilder.buildPrompt("container-validation", context);
+     const prompt = `${promptData.system_prompt}\n\n${promptData.user_prompt}`;
 
-    if (!promptData) {
-      console.warn(`Failed to build container validation prompt, using fallback`);
-      return {
-        outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
-        confidence: 0.7,
-        reasoning: "Failed to build validation prompt, using fallback logic"
-      };
-    }
+     const timeoutPromise = new Promise<never>((_, reject) => {
+       setTimeout(() => reject(new Error("Container validation timeout")), config.worker_assistant?.timeoutMs || 10000);
+     });
 
-    const prompt = `${promptData.system_prompt}\n\n${promptData.user_prompt}`;
+     try {
+       const result = await Promise.race([
+         this.opencode.runAgentCLI({
+           directory: process.cwd(),
+           title: `Container Validation: ${issue.id}`,
+           agent: agent.id,
+           message: prompt
+         }),
+         timeoutPromise
+       ]) as any;
 
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("Container validation timeout")), config.worker_assistant?.timeoutMs || 10000);
-    });
+       if (!result.success) {
+         console.warn(`Container validation execution failed: ${result.error}`);
+         this.logger.logDecision({
+           run_id: this.currentRunId || "",
+           type: "container_validation_error",
+           decision: "agent_execution_failed",
+           reasoning: `Validation agent failed: ${result.error}`,
+           metadata: {
+             issue_id: issue.id,
+             phase,
+             error: result.error
+           }
+         });
 
-    try {
-      const result = await Promise.race([
-        this.opencode.runAgentCLI({
-          directory: process.cwd(),
-          title: `Container Validation: ${issue.id}`,
-          agent: agent.id,
-          message: prompt
-        }),
-        timeoutPromise
-      ]) as any;
+         return {
+           outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+           confidence: 0.6,
+           reasoning: `Validation agent failed: ${result.error}`
+         };
+       }
 
-      if (!result.success) {
-        console.warn(`Container validation execution failed: ${result.error}`);
-        return {
-          outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
-          confidence: 0.6,
-          reasoning: `Validation agent failed: ${result.error}`
-        };
-      }
+       let validation;
+       try {
+         validation = this.parseContainerValidationResponse(result.output);
+       } catch (error) {
+         const errorMsg = error instanceof Error ? error.message : String(error);
+         console.error(`Failed to parse container validation response: ${errorMsg}`);
+         this.logger.logDecision({
+           run_id: this.currentRunId || "",
+           type: "container_validation_error",
+           decision: "response_parse_failed",
+           reasoning: `Response parse failed: ${errorMsg}`,
+           metadata: {
+             issue_id: issue.id,
+             phase,
+             error: errorMsg,
+             raw_output: result.output.substring(0, 500)
+           }
+         });
 
-      const validation = this.parseContainerValidationResponse(result.output);
-      
-      console.log(`Container validation decision: ${validation.outcome} (confidence: ${validation.confidence})`);
-      
-      return validation;
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.warn(`Container validation error: ${errorMsg}`);
-      return {
-        outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
-        confidence: 0.5,
-        reasoning: `Validation error: ${errorMsg}`
-      };
-    }
-  }
+         return {
+           outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+           confidence: 0.4,
+           reasoning: `Failed to parse validation response: ${errorMsg}`
+         };
+       }
+
+       console.log(`Container validation decision: ${validation.outcome} (confidence: ${validation.confidence})`);
+       return validation;
+     } catch (error) {
+       const errorMsg = error instanceof Error ? error.message : String(error);
+       console.warn(`Container validation error: ${errorMsg}`);
+
+       this.logger.logDecision({
+         run_id: this.currentRunId || "",
+         type: "container_validation_error",
+         decision: "validation_failed",
+         reasoning: `Validation error: ${errorMsg}`,
+         metadata: {
+           issue_id: issue.id,
+           phase,
+           error: errorMsg
+         }
+       });
+
+       return {
+         outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+         confidence: 0.5,
+         reasoning: `Validation error: ${errorMsg}`
+       };
+     }
+   }
 
   /**
    * Get container children information
@@ -1707,17 +1874,59 @@ Respond with ONLY one word: ADVANCE, RETRY, or BLOCK
     throw new Error(`Decision agent failed after ${maxRetries + 1} attempts: ${lastError}`);
   }
 
-  /**
-   * Generate approval note when HITL is triggered
-   */
-  private async generateApprovalNote(
-    issueId: string,
-    reason: string,
-    details: string
-  ): Promise<void> {
-    const note = `🔔 HITL Required: ${reason}\n\n${details}\n\nPlease review and provide approval to proceed.`;
-    await updateIssue(issueId, { notes: note });
-  }
+   /**
+    * Generate approval note when HITL is triggered
+    */
+   private async generateApprovalNote(
+     issueId: string,
+     reason: string,
+     details: string
+   ): Promise<void> {
+     const note = `🔔 HITL Required: ${reason}\n\n${details}\n\nPlease review and provide approval to proceed.`;
+     await updateIssue(issueId, { notes: note });
+   }
+
+   /**
+    * Generate container validation note when validation requires HITL
+    */
+   private async generateContainerValidationNote(
+     issueId: string,
+     validationDecision: {
+       outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR";
+       confidence: number;
+       reasoning: string;
+       recommendations?: string[];
+     }
+   ): Promise<void> {
+     const confidencePercent = Math.round(validationDecision.confidence * 100);
+
+     let recommendationsText = "";
+     if (validationDecision.recommendations && validationDecision.recommendations.length > 0) {
+       recommendationsText = "\n\n## Recommendations\n" +
+         validationDecision.recommendations.map((rec, i) => `${i + 1}. ${rec}`).join("\n");
+     }
+
+     const note = `🔔 Container Validation Requires Human Review
+
+## Validation Outcome: UNCLEAR
+
+## Confidence
+${confidencePercent}%
+
+## Reasoning
+${validationDecision.reasoning}${recommendationsText}
+
+## Instructions
+Please review the container epic and determine if it is complete or needs additional work. After review, choose one of the following actions:
+
+1. **Close the issue** - If the container is complete and all work is done
+2. **Remove HITL label and unblock** - If the container needs more work (it will be treated as a regular task)
+3. **Add new subtasks** - If additional work is identified that wasn't captured
+
+To override this HITL decision, remove the \`ashep-hitl:container-validation\` label and set the status to \`open\`.
+`;
+     await updateIssue(issueId, { notes: note });
+   }
 
   /**
    * Resolve session reuse target from keyword or phase name

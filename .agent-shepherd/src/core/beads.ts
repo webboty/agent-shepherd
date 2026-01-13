@@ -429,15 +429,60 @@ export async function removeAshepManagedLabel(issueId: string): Promise<void> {
     return Date.now() > expiresAt;
   }
 
-  /**
-   * Clear all coordination states for an epic
-   * 
-   * @param epicId - The epic issue ID
-   */
-  export async function clearEpicStates(epicId: string): Promise<void> {
-    await Promise.all([
-      setEpicState(epicId, "assigned-worker", ""),
-      setEpicState(epicId, "last-heartbeat", ""),
-      setEpicState(epicId, "lease-expires", ""),
-    ]);
-  }
+   /**
+    * Clear all coordination states for an epic
+    *
+    * @param epicId - The epic issue ID
+    */
+   export async function clearEpicStates(epicId: string): Promise<void> {
+     await Promise.all([
+       setEpicState(epicId, "assigned-worker", ""),
+       setEpicState(epicId, "last-heartbeat", ""),
+       setEpicState(epicId, "lease-expires", ""),
+     ]);
+   }
+
+   /**
+    * Set container validation outcome label for an issue (ashep-validation:<outcome>)
+    *
+    * @param issueId - The issue ID
+    * @param outcome - Validation outcome (DONE, NEEDS_WORK, UNCLEAR)
+    */
+   export async function setContainerValidationLabel(issueId: string, outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR"): Promise<void> {
+     const label = `ashep-validation:${outcome}`;
+     await addIssueLabel(issueId, label);
+   }
+
+   /**
+    * Clear all container validation labels from an issue
+    *
+    * @param issueId - The issue ID
+    */
+   export async function clearContainerValidationLabels(issueId: string): Promise<void> {
+     const labels = await getIssueLabels(issueId);
+     const validationLabels = labels.filter((label) => label.startsWith("ashep-validation:"));
+
+     for (const label of validationLabels) {
+       await removeIssueLabel(issueId, label);
+     }
+   }
+
+   /**
+    * Get container validation outcome from issue labels
+    *
+    * @param issueId - The issue ID
+    * @returns Validation outcome, or null if not set
+    */
+   export async function getContainerValidationOutcome(issueId: string): Promise<"DONE" | "NEEDS_WORK" | "UNCLEAR" | null> {
+     const labels = await getIssueLabels(issueId);
+     const validationLabel = labels.find((label) => label.startsWith("ashep-validation:"));
+
+     if (validationLabel) {
+       const outcome = validationLabel.replace("ashep-validation:", "");
+       if (["DONE", "NEEDS_WORK", "UNCLEAR"].includes(outcome)) {
+         return outcome as "DONE" | "NEEDS_WORK" | "UNCLEAR";
+       }
+     }
+
+     return null;
+   }
