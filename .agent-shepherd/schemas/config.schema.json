@@ -432,6 +432,27 @@
         "policies"
       ],
       "additionalProperties": false
+    },
+    "session_continuation": {
+      "type": "object",
+      "description": "Session continuation configuration for managing token limits and thresholds",
+      "properties": {
+        "default_max_context_tokens": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 1000000,
+          "default": 130000,
+          "description": "Default maximum context tokens for session continuation"
+        },
+        "default_threshold": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 1.0,
+          "default": 0.8,
+          "description": "Default threshold for triggering session continuation (as fraction of max tokens)"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,

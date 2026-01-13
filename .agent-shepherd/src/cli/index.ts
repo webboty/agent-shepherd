@@ -7,7 +7,7 @@
 import { getWorkerEngine } from "../core/worker-engine.ts";
 import { getMonitorEngine } from "../core/monitor-engine.ts";
 import { getIssue } from "../core/beads.ts";
-import { findAgentShepherdDir, findInstallDir } from "../core/path-utils.ts";
+import { findAgentShepherdDir, findInstallDir, findLocalAgentShepherdDir, getGlobalInstallDir } from "../core/path-utils.ts";
 import { getAssignedWorker, getLastHeartbeat, getLeaseExpires, listIssues, getReadyIssues } from "../core/beads.ts";
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync, cpSync, rmSync } from "fs";
 import { join } from "path";
@@ -1912,6 +1912,10 @@ async function promptForIssueId(): Promise<string> {
  * Main CLI entry point
  */
 async function main(): Promise<void> {
+  // Set ASHEP_DIR to avoid debug messages during initialization
+  const agentShepherdDir = findLocalAgentShepherdDir() || getGlobalInstallDir();
+  process.env.ASHEP_DIR = agentShepherdDir;
+
   // Load plugins first
   loadPlugins();
 

@@ -194,52 +194,13 @@ policies:
         capabilities:
           - testing
           - qa
-        transitions:
-          on_success:
-            capability: quality-decision
-            prompt: |
-              Assess test results and code quality:
-              - All tests passing?
-              - Code coverage meets threshold?
-              - Any linting issues?
-            allowed_destinations:
-              - review
-              - implement
-              - test
-            confidence_thresholds:
-              auto_advance: 0.9
-              require_approval: 0.7
-          on_partial_success:
-            capability: quality-decision
-            prompt: |
-              Partial success detected. Determine next step:
-              - Some tests failed but critical ones passed?
-              - Minor quality issues only?
-              - Need additional validation?
-            allowed_destinations:
-              - review
-              - implement
-              - test
 
       - name: review
         description: Code review phase
         capabilities:
           - review
           - documentation
-        transitions:
-          on_success: close
-          on_partial_success:
-            capability: review-decision
-            prompt: |
-              Review partially successful. Assess:
-              - Minor issues that can be addressed post-merge?
-              - Requires additional documentation?
-              - Needs rework?
-            allowed_destinations:
-              - implement
-              - review
-              - close
-          require_approval: true
+        require_approval: true
 
     retry:
       max_attempts: 2
@@ -318,29 +279,7 @@ policies:
         capabilities:
           - review
           - documentation
-        transitions:
-          on_success: close
-          on_failure:
-            capability: review-decision
-            prompt: |
-              Review failed. Determine next step:
-              - Major issues requiring rework?
-              - Minor issues that can be addressed post-merge?
-              - Documentation concerns?
-            allowed_destinations:
-              - implement
-              - review
-          on_partial_success:
-            capability: review-decision
-            prompt: |
-              Review partially successful. Assess:
-              - Can proceed with minor tweaks?
-              - Requires additional documentation?
-            allowed_destinations:
-              - implement
-              - review
-              - close
-          require_approval: true
+        require_approval: true
 
     retry:
       max_attempts: 3

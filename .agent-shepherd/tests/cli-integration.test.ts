@@ -184,7 +184,7 @@ worker:
       const outputs = await runCLICommand('work');
       const output = outputs.join(' ');
 
-      expect(output).toContain('Issue ID required');
+      expect(output).toContain('Error: Issue ID or Epic ID required');
     });
   });
 
