@@ -223,10 +223,11 @@ export class OpenCodeClient {
     const SDKError = sdkModule.SDKError;
     const sdkClient = getSDKClient();
 
+    let sessionId: string | undefined;
+    const isSessionReused = !!config.sessionId;
+
     try {
       // Create or reuse session
-      let sessionId: string;
-
       if (config.sessionId) {
         sessionId = config.sessionId;
         console.log(`Reusing existing session ${sessionId}`);
@@ -304,7 +305,7 @@ export class OpenCodeClient {
         }
 
         // Cleanup session on error (only if it's a new session)
-        if (!config.sessionId) {
+        if (!isSessionReused) {
           await sdkClient.cleanupSession(sessionId, false, true); // isTestSession=false, onError=true
         }
 
@@ -347,7 +348,7 @@ export class OpenCodeClient {
             errorMessage = `Agent not found: ${config.agent || 'default'}`;
             break;
           case SDKErrorType.SESSION_NOT_FOUND:
-            errorMessage = `Session not found: ${sessionId}`;
+            errorMessage = `Session not found: ${sessionId || 'unknown'}`;
             break;
           case SDKErrorType.SESSION_CREATION_FAILED:
             errorMessage = `Failed to create session: ${error.message}`;
@@ -357,7 +358,7 @@ export class OpenCodeClient {
         }
 
         // Cleanup session on error (only if it's a new session)
-        if (sessionId && !config.sessionId) {
+        if (sessionId && !isSessionReused) {
           await sdkClient.cleanupSession(sessionId, false, true); // isTestSession=false, onError=true
         }
       } else {
