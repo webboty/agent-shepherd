@@ -1,24 +1,24 @@
 /**
  * Beads Test Isolation Helper
- * 
+ *
  * Provides utilities to run tests with isolated Beads databases,
- * preventing test runs from polluting the production issue tracker.
- * 
+ * preventing test runs from polluting production issue tracker.
+ *
  * Usage:
- *   const { setupBeadsIsolation, teardownBeadsIsolation } = await import('./helpers/beads-test-isolation');
- *   
+ *   import { setupBeadsIsolation, cleanupAllIsolatedTestDatabases } from './helpers/beads-test-isolation';
+ *
  *   describe('My Beads Tests', () => {
  *     let beadsTestEnv: ReturnType<typeof setupBeadsIsolation>;
- *     
+ *
  *     beforeEach(async () => {
  *       beadsTestEnv = setupBeadsIsolation();
  *       await beadsTestEnv.initialize();
  *     });
- *     
+ *
  *     afterEach(async () => {
  *       await beadsTestEnv.cleanup();
  *     });
- *     
+ *
  *     it('should create issues in isolated database', async () => {
  *       // Use beadsTestEnv.exec() instead of direct bd commands
  *       const output = await beadsTestEnv.exec(['create', '--type', 'task', '--title', 'Test issue']);
@@ -31,33 +31,34 @@ import { mkdirSync, rmSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const TEMP_TEST_DIR = join(__dirname, '..', 'tmp_test', 'beads-isolation');
 
 export interface BeadsTestEnv {
   tempDir: string;
   beadsDir: string;
-  
+
   /**
-   * Execute a bd command in the isolated database
+   * Execute a bd command in isolated database
    */
   exec(args: string[]): Promise<string>;
-  
+
   /**
    * Initialize the isolated Beads database
    */
   initialize(): Promise<void>;
-  
+
   /**
-   * Clean up the isolated database and temp directory
+   * Clean up isolated database and temp directory
    */
   cleanup(): Promise<void>;
-  
+
   /**
    * Create a test issue and return its ID
    */
   createIssue(title: string, issueType?: string, labels?: string[]): Promise<string>;
-  
+
   /**
    * Delete a test issue by ID
    */
@@ -65,7 +66,6 @@ export interface BeadsTestEnv {
 }
 
 function isStealthModeAvailable(): boolean {
-  // Stealth mode is available in Beads as confirmed by --help output
   return true;
 }
 
@@ -74,7 +74,7 @@ export function setupBeadsIsolation(useRealBeads: boolean = false): BeadsTestEnv
   const random = Math.random().toString(36).substring(7);
   const tempDir = join(TEMP_TEST_DIR, `beads-test-${timestamp}-${random}`);
   const beadsDir = join(tempDir, '.beads');
-  
+
   async function execBeadsCommand(args: string[]): Promise<string> {
     const proc = Bun.spawn(["bd", ...args], {
       cwd: tempDir,
@@ -84,8 +84,8 @@ export function setupBeadsIsolation(useRealBeads: boolean = false): BeadsTestEnv
         ...process.env,
         BEADS_DIR: beadsDir,
         PATH: process.env.PATH,
-        BD_NO_DAEMON: "true",  // Disable daemon functionality
-        BD_SANDBOX: "true",    // Enable sandbox mode
+        BD_NO_DAEMON: "true",
+        BD_SANDBOX: "true",
       },
     });
 
@@ -103,7 +103,7 @@ export function setupBeadsIsolation(useRealBeads: boolean = false): BeadsTestEnv
   const env: BeadsTestEnv = {
     tempDir,
     beadsDir,
-    
+
     async exec(args: string[]) {
       return execBeadsCommand(args);
     },
@@ -112,7 +112,6 @@ export function setupBeadsIsolation(useRealBeads: boolean = false): BeadsTestEnv
       mkdirSync(tempDir, { recursive: true });
       mkdirSync(beadsDir, { recursive: true });
 
-      // Use init with test prefix to allow test-* issue IDs
       const initArgs = ["init", "--prefix", "test-"];
 
       try {
@@ -130,7 +129,7 @@ export function setupBeadsIsolation(useRealBeads: boolean = false): BeadsTestEnv
 
     async createIssue(title: string, issueType: string = "task", labels: string[] = []): Promise<string> {
       const args = ["create", "--type", issueType, "--title", title];
-      
+
       for (const label of labels) {
         args.push("--labels", label);
       }
@@ -175,7 +174,7 @@ export async function cleanupTestIssues(
   try {
     const output = await env.exec(["list", "--json"]);
     const issues = JSON.parse(output);
-    
+
     for (const issue of issues) {
       if (issue.title && issue.title.includes(prefix)) {
         await env.deleteIssue(issue.id);

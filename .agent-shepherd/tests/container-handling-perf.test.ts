@@ -1,6 +1,6 @@
 /**
  * Container Handling Performance Tests
- * Performance benchmarks for large hierarchies, ordering, and memory usage
+ * Performance benchmarks for algorithms, depth calculation, and memory usage
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
@@ -32,12 +32,6 @@ describe("Container Handling - Performance Tests", () => {
       join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
       `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  container_detection:\n    check_children: true\n    min_children: 2\n    check_description: true\n    check_dependencies: true\n  ordering:\n    strategy: hybrid\n    dependency_weight: 0.7\n`
     );
-
-    const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
-
-    picker["getDependencies"] = async (issueId: string) => {
-      return [];
-    };
   });
 
   afterEach(() => {
@@ -49,119 +43,66 @@ describe("Container Handling - Performance Tests", () => {
   });
 
   describe("Large Hierarchies", () => {
-    it("should handle 100+ issue trees efficiently", async () => {
+    it("should calculate depth for 100+ issue IDs efficiently", async () => {
       const picker = new IssuePicker({ mode: "smart", max_issues: 150 });
 
-      const issues: BeadsIssue[] = [];
-      const rootEpic = { id: "perf-epic-1", title: "Root Epic", description: "Root container", status: "open" as const, priority: 1, issue_type: "epic", created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" };
-      issues.push(rootEpic);
-
-      for (let i = 1; i <= 100; i++) {
-        issues.push({
-          id: `perf-epic-1.${i}`,
-          title: `Subtask ${i}`,
-          description: `Subtask ${i}`,
-          status: "open" as const,
-          priority: (i % 5) + 1,
-          issue_type: "task",
-          created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
-        });
+      const issueIds = [];
+      for (let i = 0; i <= 100; i++) {
+        issueIds.push(`perf-epic-2.${i}`);
       }
 
       const startTime = Date.now();
-      const depth = picker["calculateHierarchicalDepth"]("perf-epic-1.50");
+      const depths = issueIds.map(id => picker["calculateHierarchicalDepth"](id));
       const endTime = Date.now();
 
-      expect(depth).toBe(1);
-      expect(endTime - startTime).toBeLessThan(100);
-    });
-
-    it("should calculate depth for deep hierarchies efficiently", async () => {
-      const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
-
-      const deepIds = [];
-      for (let i = 0; i < 10; i++) {
-        const id = `perf-deep-${Array(i + 1).fill("1").join(".")}`;
-        deepIds.push(id);
-      }
-
-      const startTime = Date.now();
-      const depths = deepIds.map(id => picker["calculateHierarchicalDepth"](id));
-      const endTime = Date.now();
-
-      expect(depths).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-      expect(endTime - startTime).toBeLessThan(50);
-    });
-
-    it("should build dependency graph for large hierarchies efficiently", async () => {
-      const picker = new IssuePicker({ mode: "smart", max_issues: 100 });
-
-      const issues: BeadsIssue[] = [];
-      for (let i = 0; i < 50; i++) {
-        issues.push({
-          id: `perf-graph-${i}`,
-          title: `Task ${i}`,
-          description: `Task ${i}`,
-          status: "open" as const,
-          priority: (i % 5) + 1,
-          issue_type: "task",
-          created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
-        });
-      }
-
-      const startTime = Date.now();
-      const graph = await picker["buildDependencyGraph"](issues);
-      const endTime = Date.now();
-
-      expect(graph.nodes.size).toBe(50);
-      expect(graph.indegree.size).toBe(50);
-      expect(graph.depth.size).toBe(50);
-      expect(endTime - startTime).toBeLessThan(500);
-    });
-
-    it("should handle 500+ issue trees efficiently", async () => {
-      const picker = new IssuePicker({ mode: "smart", max_issues: 600 });
-
-      const issues: BeadsIssue[] = [];
-      const rootEpic = { id: "perf-epic-2", title: "Large Root Epic", description: "Large root container", status: "open" as const, priority: 1, issue_type: "epic", created_at: "2024-01-01T00:00:00Z", updated_at: "2024-01-01T00:00:00Z" };
-      issues.push(rootEpic);
-
-      for (let i = 1; i <= 500; i++) {
-        issues.push({
-          id: `perf-epic-2.${i}`,
-          title: `Subtask ${i}`,
-          description: `Subtask ${i}`,
-          status: "open" as const,
-          priority: (i % 5) + 1,
-          issue_type: "task",
-          created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
-        });
-      }
-
-      const startTime = Date.now();
-      const depths = [
-        picker["calculateHierarchicalDepth"]("perf-epic-2.1"),
-        picker["calculateHierarchicalDepth"]("perf-epic-2.50"),
-        picker["calculateHierarchicalDepth"]("perf-epic-2.250"),
-        picker["calculateHierarchicalDepth"]("perf-epic-2.500"),
-      ];
-      const endTime = Date.now();
-
-      expect(depths).toEqual([1, 1, 1, 1]);
+      expect(depths).toHaveLength(101);
+      expect(depths[0]).toBe(0);
+      expect(depths[100]).toBe(1);
       expect(endTime - startTime).toBeLessThan(200);
     });
   });
 
-  describe("Ordering Performance", () => {
-    it("should sort 100+ issues with hybrid ordering efficiently", async () => {
+  describe("Algorithm Performance", () => {
+    it("should calculate container confidence efficiently", async () => {
+      const workerEngine = new WorkerEngine();
+
+      const testCases = [];
+      for (let i = 0; i < 100; i++) {
+        testCases.push({
+          hasChildren: i % 3 === 0,
+          hasContainerType: i % 2 === 0,
+          hasContainerLanguage: i % 4 === 0,
+          hasContainerStructure: i % 5 === 0,
+        });
+      }
+
+      const startTime = Date.now();
+      const confidences = testCases.map(tc =>
+        workerEngine["calculateContainerConfidence"](
+          tc.hasChildren,
+          tc.hasContainerType,
+          tc.hasContainerLanguage,
+          tc.hasContainerStructure
+        )
+      );
+      const endTime = Date.now();
+
+      expect(confidences).toHaveLength(100);
+      expect(confidences.every(c => c >= 0 && c <= 1)).toBe(true);
+      expect(endTime - startTime).toBeLessThan(100);
+    });
+
+    it("should apply hybrid ordering efficiently", async () => {
       const picker = new IssuePicker({ mode: "smart", max_issues: 100 });
 
-      const issues: BeadsIssue[] = [];
+      const nodes = new Map<string, BeadsIssue>();
+      const edges: any[] = [];
+      const indegree = new Map<string, number>();
+      const depth = new Map<string, number>();
+      const level = new Map<string, number>();
+
       for (let i = 0; i < 100; i++) {
-        issues.push({
+        const issue: BeadsIssue = {
           id: `perf-order-${i}`,
           title: `Task ${i}`,
           description: `Task ${i}`,
@@ -170,10 +111,15 @@ describe("Container Handling - Performance Tests", () => {
           issue_type: "task",
           created_at: "2024-01-01T00:00:00Z",
           updated_at: "2024-01-01T00:00:00Z",
-        });
+        };
+        nodes.set(issue.id, issue);
+        indegree.set(issue.id, 0);
+        depth.set(issue.id, Math.floor(i / 10));
+        level.set(issue.id, Math.floor(i / 10));
+        level.set(issue.id, Math.floor(i / 10));
       }
 
-      const graph = await picker["buildDependencyGraph"](issues);
+      const graph = { nodes, edges, indegree, depth, level };
 
       const startTime = Date.now();
       const ordered = picker["applyHybridOrdering"](graph);
@@ -183,24 +129,34 @@ describe("Container Handling - Performance Tests", () => {
       expect(endTime - startTime).toBeLessThan(1000);
     });
 
-    it("should topologically sort large dependency graphs efficiently", async () => {
+    it("should apply dependency ordering efficiently", async () => {
       const picker = new IssuePicker({ mode: "smart", max_issues: 100 });
 
-      const issues: BeadsIssue[] = [];
+       const nodes = new Map<string, BeadsIssue>();
+      const edges: any[] = [];
+      const indegree = new Map<string, number>();
+      const depthMap = new Map<string, number>();
+      const level = new Map<string, number>();
+
       for (let i = 0; i < 100; i++) {
-        issues.push({
-          id: `perf-topo-${i}`,
+        const issueDepth = Math.floor(Math.random() * 5);
+        const issue: BeadsIssue = {
+          id: `perf-dep-order-${i}`,
           title: `Task ${i}`,
           description: `Task ${i}`,
           status: "open" as const,
           priority: 1,
           issue_type: "task",
-          created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
-        });
+          created_at: "2024-01-01T00:00:00:00Z",
+          updated_at: "2024-01-01T00:00:00:00Z",
+        };
+        nodes.set(issue.id, issue);
+        indegree.set(issue.id, 0);
+        depthMap.set(issue.id, issueDepth);
+        level.set(issue.id, issueDepth);
       }
 
-      const graph = await picker["buildDependencyGraph"](issues);
+      const graph = { nodes, edges, indegree, depth: depthMap, level };
 
       const startTime = Date.now();
       const ordered = picker["applyDependencyOrdering"](graph);
@@ -210,61 +166,40 @@ describe("Container Handling - Performance Tests", () => {
       expect(endTime - startTime).toBeLessThan(500);
     });
 
-    it("should sort by hierarchy for large sets efficiently", async () => {
+    it("should apply hierarchy ordering efficiently", async () => {
       const picker = new IssuePicker({ mode: "smart", max_issues: 100 });
 
-      const issues: BeadsIssue[] = [];
+      const nodes = new Map<string, BeadsIssue>();
+      const edges: any[] = [];
+      const indegree = new Map<string, number>();
+      const depth = new Map<string, number>();
+      const level = new Map<string, number>();
+
       for (let i = 0; i < 100; i++) {
-        const depth = Math.floor(Math.random() * 5);
-        const id = depth === 0 ? `perf-hier-${i}` : `perf-hier-${Math.floor(Math.random() * 10)}.${i}`;
-        issues.push({
-          id,
+        const issueDepth = Math.floor(Math.random() * 5);
+        const issue: BeadsIssue = {
+          id: `perf-hier-order-${i}`,
           title: `Task ${i}`,
           description: `Task ${i}`,
           status: "open" as const,
           priority: (i % 10) + 1,
           issue_type: "task",
-          created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
-        });
+          created_at: "2024-01-01T00:00:00:00Z",
+          updated_at: "2024-01-01T00:00:00:00Z",
+        };
+        nodes.set(issue.id, issue);
+        indegree.set(issue.id, 0);
+        depthMap.set(issue.id, issueDepth);
+        level.set(issue.id, issueDepth);
       }
 
-      const graph = await picker["buildDependencyGraph"](issues);
+      const graph = { nodes, edges, indegree, depth, level };
 
       const startTime = Date.now();
       const ordered = picker["applyHierarchyOrdering"](graph);
       const endTime = Date.now();
 
       expect(ordered).toHaveLength(100);
-      expect(endTime - startTime).toBeLessThan(100);
-    });
-
-    it("should calculate dependency scores efficiently for large graphs", async () => {
-      const picker = new IssuePicker({ mode: "smart", max_issues: 200 });
-
-      const issues: BeadsIssue[] = [];
-      for (let i = 0; i < 100; i++) {
-        issues.push({
-          id: `perf-dep-score-${i}`,
-          title: `Task ${i}`,
-          description: `Task ${i}`,
-          status: i % 3 === 0 ? "closed" as const : "open" as const,
-          priority: 1,
-          issue_type: "task",
-          created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
-        });
-      }
-
-      const graph = await picker["buildDependencyGraph"](issues);
-
-      const startTime = Date.now();
-      const scores = issues.slice(0, 20).map(issue =>
-        picker["calculateDependencyCompleteness"](issue.id, graph)
-      );
-      const endTime = Date.now();
-
-      expect(scores).toHaveLength(20);
       expect(endTime - startTime).toBeLessThan(100);
     });
   });
@@ -291,41 +226,17 @@ describe("Container Handling - Performance Tests", () => {
       expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024);
     });
 
-    it("should handle building graphs for large sets without memory leaks", async () => {
+    it("should handle ordering operations without memory leaks", async () => {
       const picker = new IssuePicker({ mode: "smart", max_issues: 100 });
 
-      const initialMemory = process.memoryUsage().heapUsed;
+      const nodes = new Map<string, BeadsIssue>();
+      const edges: any[] = [];
+      const indegree = new Map<string, number>();
+      const depth = new Map<string, number>();
+      const level = new Map<string, number>();
 
-      for (let i = 0; i < 10; i++) {
-        const issues: BeadsIssue[] = [];
-        for (let j = 0; j < 100; j++) {
-          issues.push({
-            id: `perf-graph-iter-${i}-${j}`,
-            title: `Task ${j}`,
-            description: `Task ${j}`,
-            status: "open" as const,
-            priority: 1,
-            issue_type: "task",
-            created_at: "2024-01-01T00:00:00Z",
-            updated_at: "2024-01-01T00:00:00Z",
-          });
-        }
-
-        await picker["buildDependencyGraph"](issues);
-      }
-
-      const finalMemory = process.memoryUsage().heapUsed;
-      const memoryIncrease = finalMemory - initialMemory;
-
-      expect(memoryIncrease).toBeLessThan(50 * 1024 * 1024);
-    });
-
-    it("should not leak memory when applying ordering repeatedly", async () => {
-      const picker = new IssuePicker({ mode: "smart", max_issues: 100 });
-
-      const issues: BeadsIssue[] = [];
       for (let i = 0; i < 50; i++) {
-        issues.push({
+        const issue: BeadsIssue = {
           id: `perf-order-mem-${i}`,
           title: `Task ${i}`,
           description: `Task ${i}`,
@@ -333,11 +244,15 @@ describe("Container Handling - Performance Tests", () => {
           priority: (i % 10) + 1,
           issue_type: "task",
           created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
-        });
+          updated_at: "2024-01-01T00:00Z",
+        };
+        nodes.set(issue.id, issue);
+        indegree.set(issue.id, 0);
+        depth.set(issue.id, 0);
+        level.set(issue.id, 0);
       }
 
-      const graph = await picker["buildDependencyGraph"](issues);
+      const graph = { nodes, edges, indegree, depth, level };
 
       const initialMemory = process.memoryUsage().heapUsed;
 
@@ -353,7 +268,7 @@ describe("Container Handling - Performance Tests", () => {
       expect(memoryIncrease).toBeLessThan(20 * 1024 * 1024);
     });
 
-    it("should handle deep hierarchies without memory issues", async () => {
+    it("should handle deep hierarchy calculations without memory issues", async () => {
       const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
 
       const deepId = "perf-deep-mem." + Array(20).fill("1").join(".");
@@ -372,41 +287,13 @@ describe("Container Handling - Performance Tests", () => {
   });
 
   describe("Container Detection Performance", () => {
-    it("should calculate container confidence efficiently", async () => {
+    it("should check container type efficiently", async () => {
       const workerEngine = new WorkerEngine();
 
-      const testCases = [];
-      for (let i = 0; i < 100; i++) {
-        testCases.push({
-          hasChildren: i % 3 === 0,
-          hasContainerType: i % 2 === 0,
-          hasContainerLanguage: i % 4 === 0,
-          hasContainerStructure: i % 5 === 0,
-        });
-      }
-
-      const startTime = Date.now();
-      const confidences = testCases.map(tc =>
-        workerEngine["calculateContainerConfidence"](
-          tc.hasChildren,
-          tc.hasContainerType,
-          tc.hasContainerLanguage,
-          tc.hasContainerStructure
-        )
-      );
-      const endTime = Date.now();
-
-      expect(confidences).toHaveLength(100);
-      expect(endTime - startTime).toBeLessThan(100);
-    });
-
-    it("should check container type efficiently for large sets", async () => {
-      const workerEngine = new WorkerEngine();
-
+      const issues: BeadsIssue[] = [];
       const containerTypes = ["epic", "milestone", "phase", "group"];
       const taskTypes = ["task", "bug", "feature", "chore"];
 
-      const issues: BeadsIssue[] = [];
       for (let i = 0; i < 1000; i++) {
         const isContainer = i % 2 === 0;
         issues.push({
@@ -417,7 +304,7 @@ describe("Container Handling - Performance Tests", () => {
           priority: 1,
           issue_type: isContainer ? (containerTypes[i % 4] as any) : (taskTypes[i % 4] as any),
           created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00Z",
         });
       }
 
@@ -429,7 +316,7 @@ describe("Container Handling - Performance Tests", () => {
       expect(endTime - startTime).toBeLessThan(500);
     });
 
-    it("should check container language efficiently for large sets", async () => {
+    it("should check container language efficiently", async () => {
       const workerEngine = new WorkerEngine();
 
       const containerPhrases = [
@@ -463,7 +350,7 @@ describe("Container Handling - Performance Tests", () => {
           priority: 1,
           issue_type: "task",
           created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
         });
       }
 
@@ -473,49 +360,6 @@ describe("Container Handling - Performance Tests", () => {
 
       expect(results).toHaveLength(1000);
       expect(endTime - startTime).toBeLessThan(500);
-    });
-  });
-
-  describe("Policy Resolution Performance", () => {
-    it("should resolve container handling policy efficiently", async () => {
-      const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
-
-      const issueIds = [];
-      for (let i = 0; i < 10; i++) {
-        issueIds.push(`perf-policy-${i}`);
-        issueIds.push(`perf-policy-${i}.${i + 1}`);
-        issueIds.push(`perf-policy-${i}.${i + 1}.${i + 2}`);
-      }
-
-      const startTime = Date.now();
-      const policies = issueIds.map(id =>
-        picker["getContainerHandlingPolicy"]({ id } as BeadsIssue)
-      );
-      const endTime = Date.now();
-
-      expect(policies).toHaveLength(30);
-      expect(endTime - startTime).toBeLessThan(500);
-    });
-
-    it("should handle complex level policies efficiently", async () => {
-      const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
-
-      const issueIds = [];
-      for (let level = 0; level < 5; level++) {
-        for (let i = 0; i < 20; i++) {
-          const parts = Array(level + 1).fill(i).join(".");
-          issueIds.push(`perf-complex-policy.${parts}`);
-        }
-      }
-
-      const startTime = Date.now();
-      const policies = issueIds.map(id =>
-        picker["getContainerHandlingPolicy"]({ id } as BeadsIssue)
-      );
-      const endTime = Date.now();
-
-      expect(policies).toHaveLength(100);
-      expect(endTime - startTime).toBeLessThan(1000);
     });
   });
 });

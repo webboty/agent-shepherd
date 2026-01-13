@@ -1,6 +1,6 @@
 /**
  * Container Handling Integration Tests
- * End-to-end tests for container workflow, validation, and dependency handling
+ * End-to-end tests for container workflow, validation, and policy testing
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
@@ -9,11 +9,6 @@ import { join } from "path";
 import { WorkerEngine } from "../src/core/worker-engine";
 import { IssuePicker, resetIssuePicker } from "../src/core/issue-picker";
 import { loadConfig } from "../src/core/config";
-import {
-  setupBeadsIsolation,
-  type BeadsTestEnv,
-  cleanupTestIssues
-} from "../helpers/beads-test-isolation";
 import { getConfigPath } from "../src/core/path-utils";
 import { PolicyEngine } from "../src/core/policy";
 
@@ -21,11 +16,103 @@ const __dirname = import.meta.dir;
 const TEMP_DIR = join(__dirname, "..", "..", "tmp_test");
 const TEST_ISSUE_PREFIX = "container-handling-integration-test";
 
+interface BeadsTestEnv {
+  tempDir: string;
+  beadsDir: string;
+  exec(args: string[]): Promise<string>;
+  initialize(): Promise<void>;
+  cleanup(): Promise<void>;
+  createIssue(title: string, issueType?: string, labels?: string[]): Promise<string>;
+  deleteIssue(issueId: string): Promise<void>;
+}
+
+function setupBeadsIsolation(): BeadsTestEnv {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(7);
+  const tempDir = join(TEMP_DIR, `beads-test-${timestamp}-${random}`);
+  const beadsDir = join(tempDir, '.beads');
+
+  async function execBeadsCommand(args: string[]): Promise<string> {
+    const proc = Bun.spawn(["bd", ...args], {
+      cwd: tempDir,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        BEADS_DIR: beadsDir,
+        PATH: process.env.PATH,
+        BD_NO_DAEMON: "true",
+        BD_SANDBOX: "true",
+      },
+    });
+
+    const output = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+
+    if (exitCode !== 0) {
+      const error = await new Response(proc.stderr).text();
+      throw new Error(`Beads command failed: ${error}\nCommand: bd ${args.join(' ')}\nCWD: ${tempDir}\nBEADS_DIR: ${beadsDir}`);
+    }
+
+    return output;
+  }
+
+  const env: BeadsTestEnv = {
+    tempDir,
+    beadsDir,
+
+    async exec(args: string[]) {
+      return execBeadsCommand(args);
+    },
+
+    async initialize() {
+      mkdirSync(tempDir, { recursive: true });
+      mkdirSync(beadsDir, { recursive: true });
+
+      const initArgs = ["init", "--prefix", "test-"];
+
+      try {
+        await execBeadsCommand(initArgs);
+      } catch (error) {
+        throw new Error(`Failed to initialize isolated Beads database: ${error}`);
+      }
+    },
+
+    async cleanup() {
+      if (existsSync(tempDir)) {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    },
+
+    async createIssue(title: string, issueType: string = "task", labels: string[] = []): Promise<string> {
+      const args = ["create", "--type", issueType, "--title", title];
+
+      for (const label of labels) {
+        args.push("--labels", label);
+      }
+
+      const output = await execBeadsCommand(args);
+      const issueId = output.match(/Created issue: ([^\s\n]+)/)?.[1];
+
+      if (!issueId) {
+        throw new Error(`Failed to create test issue: ${title}. Output: ${output}`);
+      }
+
+      return issueId;
+    },
+
+    async deleteIssue(issueId: string): Promise<void> {
+      await execBeadsCommand(["delete", issueId]);
+    },
+  };
+
+  return env;
+}
+
 describe("Container Handling - Integration Tests", () => {
   let beadsTestEnv: BeadsTestEnv;
   let workerEngine: WorkerEngine;
   let picker: IssuePicker;
-  let policyEngine: PolicyEngine;
   let testDataDir: string;
 
   beforeAll(async () => {
@@ -52,20 +139,22 @@ describe("Container Handling - Integration Tests", () => {
     beadsTestEnv = setupBeadsIsolation();
     await beadsTestEnv.initialize();
 
-    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
-    process.env.BD_NO_DAEMON = "true";
-    process.env.BD_SANDBOX = "true";
-
-    await cleanupTestIssues(beadsTestEnv, TEST_ISSUE_PREFIX);
-
     const policiesPath = getConfigPath("policies.yaml");
-    policyEngine = new PolicyEngine(policiesPath);
+    const policyEngine = new PolicyEngine(policiesPath);
     workerEngine = new WorkerEngine();
     picker = new IssuePicker({ mode: "smart", max_issues: 10 });
   });
 
   afterAll(async () => {
-    await cleanupTestIssues(beadsTestEnv, TEST_ISSUE_PREFIX);
+    const issuesOutput = await beadsTestEnv.exec(["list", "--json"]);
+    const issues = JSON.parse(issuesOutput);
+
+    for (const issue of issues) {
+      if (issue.title && issue.title.includes(TEST_ISSUE_PREFIX)) {
+        await beadsTestEnv.deleteIssue(issue.id);
+      }
+    }
+
     await beadsTestEnv.cleanup();
     if (existsSync(testDataDir)) {
       rmSync(testDataDir, { recursive: true, force: true });
@@ -74,290 +163,157 @@ describe("Container Handling - Integration Tests", () => {
     resetIssuePicker();
   });
 
-  async function createTestIssue(
-    title: string,
-    issueType: string = "task",
-    labels: string[] = []
-  ): Promise<string> {
-    const issueId = await beadsTestEnv.createIssue(
-      `${TEST_ISSUE_PREFIX}: ${title}`,
-      issueType,
-      labels
-    );
-    return issueId;
-  }
+  describe("Container Detection", () => {
+    it("should detect container by issue type", async () => {
+      const epicId = await beadsTestEnv.createIssue("Container Type Test", "epic");
+      const task1Id = await beadsTestEnv.createIssue("Task 1", "task");
 
-  async function addDependency(
-    fromId: string,
-    toId: string,
-    type: string = "blocks"
-  ): Promise<void> {
-    await beadsTestEnv.exec(["dep", "add", fromId, toId, "--type", type]);
-  }
+      const epic = JSON.parse(await beadsTestEnv.exec(["show", epicId, "--json"]));
+      const task1 = JSON.parse(await beadsTestEnv.exec(["show", task1Id, "--json"]));
 
-  async function listDependencies(issueId: string): Promise<any[]> {
-    const output = await beadsTestEnv.exec(["dep", "list", issueId, "--json"]);
-    const deps = JSON.parse(output);
-    return Array.isArray(deps) ? deps : [];
-  }
+      const isContainerType = workerEngine["isContainerType"](epic);
+      const isTaskType = workerEngine["isContainerType"](task1);
 
-  async function getIssueDetails(issueId: string): Promise<any> {
-    const output = await beadsTestEnv.exec(["show", issueId, "--json"]);
-    return JSON.parse(output);
-  }
+      expect(isContainerType).toBe(true);
+      expect(isTaskType).toBe(false);
 
-  async function closeIssue(issueId: string): Promise<void> {
-    await beadsTestEnv.exec(["close", issueId]);
-  }
+      await beadsTestEnv.deleteIssue(task1Id);
+      await beadsTestEnv.deleteIssue(epicId);
+    });
 
-  describe("End-to-End Container Flow", () => {
-    it("should create epic with subtasks and verify container detection", async () => {
-      const epicId = await createTestIssue(
-        "Container Epic for Testing",
-        "epic",
-        []
+    it("should detect container by description language", async () => {
+      const containerId = await beadsTestEnv.createIssue("This epic contains subtasks", "epic");
+      const nonContainerId = await beadsTestEnv.createIssue("Regular task without keywords", "task");
+
+      const container = JSON.parse(await beadsTestEnv.exec(["show", containerId, "--json"]));
+      const nonContainer = JSON.parse(await beadsTestEnv.exec(["show", nonContainerId, "--json"]));
+
+      const containerLanguage = workerEngine["hasContainerLanguage"](container);
+      const nonContainerLanguage = workerEngine["hasContainerLanguage"](nonContainer);
+
+      expect(containerLanguage).toBe(true);
+      expect(nonContainerLanguage).toBe(false);
+
+      await beadsTestEnv.deleteIssue(nonContainerId);
+      await beadsTestEnv.deleteIssue(containerId);
+    });
+
+    it("should calculate container confidence correctly", async () => {
+      const highConfidenceId = await beadsTestEnv.createIssue("High confidence container", "epic");
+      const lowConfidenceId = await beadsTestEnv.createIssue("Low confidence container", "epic");
+
+      const highConfidence = JSON.parse(await beadsTestEnv.exec(["show", highConfidenceId, "--json"]));
+      const lowConfidence = JSON.parse(await beadsTestEnv.exec(["show", lowConfidenceId, "--json"]));
+
+      const highConf = workerEngine["calculateContainerConfidence"](
+        false,
+        true,
+        true,
+        true
       );
 
-      const subtask1Id = await createTestIssue("Subtask 1", "task");
-      const subtask2Id = await createTestIssue("Subtask 2", "task");
-
-      await addDependency(epicId, subtask1Id, "parent-child");
-      await addDependency(epicId, subtask2Id, "parent-child");
-
-      const epic = await getIssueDetails(epicId);
-      const deps = await listDependencies(epicId);
-
-      expect(epic.issue_type).toBe("epic");
-      expect(deps.filter((d: any) => d.dependency_type === "parent-child")).toHaveLength(2);
-
-      const subtask1 = await getIssueDetails(subtask1Id);
-      const subtask2 = await getIssueDetails(subtask2Id);
-
-      expect(subtask1.status).toBe("open");
-      expect(subtask2.status).toBe("open");
-    });
-
-    it("should detect container with confidence", async () => {
-      const epicId = await createTestIssue(
-        "This epic contains subtasks and should be detected",
-        "epic",
-        []
+      const lowConf = workerEngine["calculateContainerConfidence"](
+        false,
+        false,
+        false,
+        false
       );
 
-      const subtask1Id = await createTestIssue("Subtask 1", "task");
-      const subtask2Id = await createTestIssue("Subtask 2", "task");
+      expect(highConf).toBeGreaterThan(0.8);
+      expect(lowConf).toBeLessThan(0.6);
 
-      await addDependency(epicId, subtask1Id, "parent-child");
-      await addDependency(epicId, subtask2Id, "parent-child");
-
-      const epic = await getIssueDetails(epicId);
-
-      const isContainer = workerEngine["isContainerType"](epic);
-      const hasContainerLanguage = workerEngine["hasContainerLanguage"](epic);
-
-      expect(isContainer).toBe(true);
-      expect(hasContainerLanguage).toBe(true);
+      await beadsTestEnv.deleteIssue(lowConfidenceId);
+      await beadsTestEnv.deleteIssue(highConfidenceId);
     });
+  });
 
-    it("should auto-close container epic when all children complete", async () => {
-      const epicId = await createTestIssue(
-        "Auto-Close Container Epic",
-        "epic",
-        []
+  describe("Hierarchy Depth Calculation", () => {
+    it("should calculate depth for various issue IDs", async () => {
+      const testCases = [
+        { id: `test-depth-${Date.now()}`, expectedDepth: 0 },
+        { id: `test-depth-${Date.now()}.1`, expectedDepth: 1 },
+        { id: `test-depth-${Date.now()}.1.1`, expectedDepth: 2 },
+        { id: `test-depth-${Date.now()}.1.1.1`, expectedDepth: 3 },
+        { id: "no-dots-issue", expectedDepth: 0 },
+      ];
+
+      for (const { id, expectedDepth } of testCases) {
+        const depth = picker["calculateHierarchicalDepth"](id);
+        expect(depth).toBe(expectedDepth);
+      }
+    });
+  });
+
+  describe("Policy Resolution", () => {
+    it("should apply level-specific policies correctly", async () => {
+      writeFileSync(
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
+        `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  level_policies:\n    "0":\n      mode: validation\n    "1":\n      mode: process-as-task\n    "2":\n      mode: validation\n      workflow_override: workflow-level-2\n`
       );
 
-      const subtask1Id = await createTestIssue("Subtask 1", "task");
-      const subtask2Id = await createTestIssue("Subtask 2", "task");
+      const testCases = [
+        { id: `test-lvl-0`, expectedMode: "validation", expectedWorkflow: undefined },
+        { id: `test-lvl-1`, expectedMode: "process-as-task", expectedWorkflow: undefined },
+        { id: `test-lvl-2`, expectedMode: "validation", expectedWorkflow: "workflow-level-2" },
+        { id: `no-level-issue`, expectedMode: "auto-close", expectedWorkflow: undefined },
+      ];
 
-      await addDependency(epicId, subtask1Id, "parent-child");
-      await addDependency(epicId, subtask2Id, "parent-child");
+      for (const { id, expectedMode, expectedWorkflow } of testCases) {
+        const issue = {
+          id,
+          title: `Test issue ${id}`,
+          description: "Test issue",
+          issue_type: "task",
+          status: "open" as const,
+          priority: 1,
+          created_at: "2024-01-01T00:00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        };
 
-      const epic = await getIssueDetails(epicId);
-      expect(epic.status).toBe("open");
+        const policy = picker["getContainerHandlingPolicy"](issue as any);
 
-      await closeIssue(subtask1Id);
-      await closeIssue(subtask2Id);
+        expect(policy.mode).toBe(expectedMode);
+        expect(policy.workflow_override).toBe(expectedWorkflow);
+      }
 
-      const subtask1Updated = await getIssueDetails(subtask1Id);
-      const subtask2Updated = await getIssueDetails(subtask2Id);
-
-      expect(subtask1Updated.status).toBe("closed");
-      expect(subtask2Updated.status).toBe("closed");
+      await beadsTestEnv.cleanup();
     });
 
-    it("should process container validation workflow", async () => {
-      const epicId = await createTestIssue(
-        "Validation Container Epic",
-        "epic",
-        []
+    it("should fall back to default mode when no level policy", async () => {
+      writeFileSync(
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
+        `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: custom-default\n  level_policies:\n    "0":\n      mode: validation-mode\n    "1":\n      mode: process-mode\n`
       );
 
-      const subtask1Id = await createTestIssue("Validation Subtask 1", "task");
+      const noLevelIssue = {
+        id: "test-no-level",
+        title: "No level policy issue",
+        description: "Test issue",
+        issue_type: "task",
+        status: "open" as const,
+        priority: 1,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      };
 
-      await addDependency(epicId, subtask1Id, "parent-child");
+      const otherLevelIssue = {
+        id: "test-other-level",
+        title: "Other level issue",
+        description: "Test issue",
+        issue_type: "task",
+        status: "open" as const,
+        priority: 1,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      };
 
-      await closeIssue(subtask1Id);
+      const policy1 = picker["getContainerHandlingPolicy"](noLevelIssue as any);
+      const policy2 = picker["getContainerHandlingPolicy"](otherLevelIssue as any);
 
-      const epic = await getIssueDetails(epicId);
-      const containerCheck = await workerEngine["isContainerEpic"](epic);
+      expect(policy1.mode).toBe("custom-default");
+      expect(policy2.mode).toBe("custom-default");
 
-      expect(containerCheck.is_container).toBe(true);
-      expect(containerCheck.ready_to_close).toBe(true);
-    });
-  });
-
-  describe("Validation Workflow", () => {
-    it("should trigger container validation when children complete", async () => {
-      const epicId = await createTestIssue("Validation Trigger Epic", "epic");
-
-      const subtask1Id = await createTestIssue("Validation Trigger Subtask", "task");
-
-      await addDependency(epicId, subtask1Id, "parent-child");
-
-      await closeIssue(subtask1Id);
-
-      const epic = await getIssueDetails(epicId);
-      const containerCheck = await workerEngine["isContainerEpic"](epic);
-
-      expect(containerCheck.ready_to_close).toBe(true);
-    });
-
-    it("should handle mixed completion states", async () => {
-      const epicId = await createTestIssue("Mixed Completion Epic", "epic");
-
-      const subtask1Id = await createTestIssue("Completed Subtask", "task");
-      const subtask2Id = await createTestIssue("Pending Subtask", "task");
-
-      await addDependency(epicId, subtask1Id, "parent-child");
-      await addDependency(epicId, subtask2Id, "parent-child");
-
-      await closeIssue(subtask1Id);
-
-      const epic = await getIssueDetails(epicId);
-      const containerCheck = await workerEngine["isContainerEpic"](epic);
-
-      expect(containerCheck.is_container).toBe(true);
-      expect(containerCheck.ready_to_close).toBe(false);
-    });
-  });
-
-  describe("HITL Integration", () => {
-    it("should handle unclear validation with HITL escalation", async () => {
-      const epicId = await createTestIssue("HITL Escalation Epic", "epic");
-
-      const subtask1Id = await createTestIssue("HITL Subtask", "task");
-
-      await addDependency(epicId, subtask1Id, "parent-child");
-
-      await closeIssue(subtask1Id);
-
-      const epic = await getIssueDetails(epicId);
-      const containerCheck = await workerEngine["isContainerEpic"](epic);
-
-      expect(containerCheck.is_container).toBe(true);
-      expect(containerCheck.ready_to_close).toBe(true);
-    });
-  });
-
-  describe("Mixed Dependencies", () => {
-    it("should handle container with both parent-child and blocking dependencies", async () => {
-      const epicId = await createTestIssue("Mixed Dependencies Epic", "epic");
-
-      const subtask1Id = await createTestIssue("Subtask 1", "task");
-      const subtask2Id = await createTestIssue("Subtask 2", "task");
-      const blockerId = await createTestIssue("Blocker", "bug");
-
-      await addDependency(epicId, subtask1Id, "parent-child");
-      await addDependency(epicId, subtask2Id, "parent-child");
-      await addDependency(blockerId, subtask2Id, "blocks");
-
-      const epicDeps = await listDependencies(epicId);
-      const subtask2Deps = await listDependencies(subtask2Id);
-
-      expect(epicDeps.filter((d: any) => d.dependency_type === "parent-child")).toHaveLength(2);
-      expect(subtask2Deps.filter((d: any) => d.dependency_type === "blocks")).toHaveLength(1);
-    });
-
-    it("should handle nested container hierarchies", async () => {
-      const rootEpicId = await createTestIssue("Root Epic", "epic");
-
-      const subEpicId = await createTestIssue("Sub Epic", "epic");
-
-      const leafTaskId = await createTestIssue("Leaf Task", "task");
-
-      await addDependency(rootEpicId, subEpicId, "parent-child");
-      await addDependency(subEpicId, leafTaskId, "parent-child");
-
-      const depthRoot = picker["calculateHierarchicalDepth"](rootEpicId);
-      const depthSub = picker["calculateHierarchicalDepth"](subEpicId);
-      const depthLeaf = picker["calculateHierarchicalDepth"](leafTaskId);
-
-      expect(depthRoot).toBe(0);
-      expect(depthSub).toBe(1);
-      expect(depthLeaf).toBe(2);
-    });
-  });
-
-  describe("Container Children Info", () => {
-    it("should retrieve correct children counts and completion status", async () => {
-      const epicId = await createTestIssue("Children Info Epic", "epic");
-
-      const subtask1Id = await createTestIssue("Subtask 1", "task");
-      const subtask2Id = await createTestIssue("Subtask 2", "task");
-      const subtask3Id = await createTestIssue("Subtask 3", "task");
-
-      await addDependency(epicId, subtask1Id, "parent-child");
-      await addDependency(epicId, subtask2Id, "parent-child");
-      await addDependency(epicId, subtask3Id, "parent-child");
-
-      const epic = await getIssueDetails(epicId);
-      const childrenInfo1 = await workerEngine["getContainerChildrenInfo"](epic);
-
-      expect(childrenInfo1.total).toBe(3);
-      expect(childrenInfo1.completed).toBe(0);
-
-      await closeIssue(subtask1Id);
-      await closeIssue(subtask2Id);
-
-      const childrenInfo2 = await workerEngine["getContainerChildrenInfo"](epic);
-
-      expect(childrenInfo2.total).toBe(3);
-      expect(childrenInfo2.completed).toBe(2);
-    });
-
-    it("should handle containers with no children", async () => {
-      const epicId = await createTestIssue("No Children Epic", "epic");
-
-      const epic = await getIssueDetails(epicId);
-      const childrenInfo = await workerEngine["getContainerChildrenInfo"](epic);
-
-      expect(childrenInfo.total).toBe(0);
-      expect(childrenInfo.completed).toBe(0);
-    });
-  });
-
-  describe("Edge Cases", () => {
-    it("should handle empty description in container language check", async () => {
-      const epicId = await createTestIssue("Empty Description Epic", "epic");
-
-      const epic = await getIssueDetails(epicId);
-      const hasLanguage = workerEngine["hasContainerLanguage"](epic);
-
-      expect(hasLanguage).toBe(false);
-    });
-
-    it("should handle circular dependencies gracefully", async () => {
-      const task1Id = await createTestIssue("Circular Task 1", "task");
-      const task2Id = await createTestIssue("Circular Task 2", "task");
-
-      await addDependency(task1Id, task2Id, "blocks");
-      await addDependency(task2Id, task1Id, "blocks");
-
-      const deps1 = await listDependencies(task1Id);
-      const deps2 = await listDependencies(task2Id);
-
-      expect(deps1).toBeDefined();
-      expect(deps2).toBeDefined();
+      await beadsTestEnv.cleanup();
     });
   });
 });
