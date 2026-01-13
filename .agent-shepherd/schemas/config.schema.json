@@ -462,7 +462,7 @@
           "type": "string",
           "enum": ["cli", "sdk"],
           "default": "sdk",
-          "description": "Execution mode: 'cli' (use OpenCode CLI) or 'sdk' (use OpenCode SDK for reliability)"
+          "description": "Execution mode: 'cli' (deprecated, use OpenCode CLI) or 'sdk' (use OpenCode SDK, recommended for reliability)"
         },
         "sdk_base_url": {
           "type": "string",

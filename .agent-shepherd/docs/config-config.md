@@ -281,11 +281,123 @@ picking:
 - **Security**: "localhost" restricts to local machine only
 - **Remote access**: Use specific IP or "0.0.0.0" for network access
 
-**Values**: Hostname, IP address, or "0.0.0.0"  
+**Values**: Hostname, IP address, or "0.0.0.0"
 **Examples**:
 - `"localhost"`: Local development (secure)
 - `"127.0.0.1"`: Explicit local binding
 - `"0.0.0.0"`: All network interfaces (less secure)
+
+## Execution Configuration
+
+The execution configuration controls how Agent Shepherd executes agents via OpenCode.
+
+### `execution` (object)
+**Required**: No
+**Purpose**: Agent execution mode and settings
+**Impact**: Determines how agents are executed and sessions are managed
+
+#### `mode` (string)
+**Required**: No (default: "sdk")
+**Purpose**: Execution backend for agent operations
+**Impact**: Controls reliability and session management behavior
+
+**Values**:
+- `"sdk"`: Use OpenCode SDK for reliable execution (recommended)
+- `"cli"`: Use OpenCode CLI (deprecated, will be removed)
+
+**Mode Comparison:**
+
+**SDK Mode** (recommended):
+- ✅ Reliable programmatic integration
+- ✅ Preserved sessions for debugging
+- ✅ Better error handling and monitoring
+- ✅ Direct API communication
+- ✅ Selective session cleanup
+- ✅ Production-ready
+
+**CLI Mode** (deprecated):
+- ⚠️ Legacy execution method
+- ⚠️ Less reliable error handling
+- ⚠️ No session preservation
+- ⚠️ Will be removed in future version
+- Use only for testing or migration
+
+**Examples**:
+```yaml
+worker:
+  execution:
+    mode: sdk  # Recommended for production
+```
+
+```yaml
+worker:
+  execution:
+    mode: cli  # Legacy mode (not recommended)
+```
+
+#### `sdk_base_url` (string)
+**Required**: No (default: "http://localhost:4096")
+**Purpose**: Base URL for OpenCode SDK API server
+**Impact**: Only used when `mode: sdk`
+
+**Values**: Valid HTTP/HTTPS URL
+
+**Examples**:
+```yaml
+worker:
+  execution:
+    mode: sdk
+    sdk_base_url: http://localhost:4096  # Default
+```
+
+```yaml
+worker:
+  execution:
+    mode: sdk
+    sdk_base_url: https://opencode.example.com  # Remote server
+```
+
+### SDK vs CLI: Why SDK is Better
+
+**Session Management:**
+- **SDK**: Sessions preserved for debugging, selective cleanup of test sessions only
+- **CLI**: Sessions auto-deleted after phase completion
+
+**Reliability:**
+- **SDK**: Direct API integration with structured error handling
+- **CLI**: Shell execution with fragile parsing
+
+**Monitoring:**
+- **SDK**: Real-time progress tracking and detailed status
+- **CLI**: Limited visibility during execution
+
+**Future-Proof:**
+- **SDK**: Active development and feature support
+- **CLI**: Deprecated, will be removed
+
+### Configuration Recommendations
+
+**For New Installations:**
+```yaml
+worker:
+  execution:
+    mode: sdk  # Use SDK by default
+```
+
+**For Existing CLI Installations:**
+1. Update config to use SDK mode
+2. Test SDK mode with a sample issue
+3. Verify session preservation works
+4. Once satisfied, stay with SDK mode
+
+**Rollback Plan:**
+```yaml
+worker:
+  execution:
+    mode: cli  # Rollback to CLI if needed (temporary)
+```
+
+For detailed SDK integration information, see [SDK Integration Documentation](sdk-integration.md).
 
 ## Workflow Configuration
 

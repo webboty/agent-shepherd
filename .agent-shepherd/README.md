@@ -17,6 +17,7 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 - **Plugin System**: Extensible architecture for optional functionality and custom integrations - [Plugin Documentation](docs/plugin-system.md)
 - **Configuration Management**: YAML-based configuration with JSON schema validation
 - **Dual Storage**: Efficient logging with JSONL for source-of-truth and SQLite for fast queries
+- **Reliable SDK Integration**: Robust OpenCode SDK integration with improved reliability and session management
 
 ## What to Expect
 
@@ -125,6 +126,7 @@ This command will:
 - ✅ Generate sample configuration files
 - ✅ Sync with available AI agents
 - ✅ Validate your setup
+- ✅ Configure OpenCode SDK for reliable agent execution (default mode)
 - ✅ Show next steps for using Agent Shepherd
 
 **Important**: Quickstart is REQUIRED after initialization - it completes the setup process. Don't skip to `ashep worker` directly, or your system won't be ready!
@@ -497,6 +499,54 @@ This displays all OpenCode sessions associated with the issue, including token c
 
 For detailed configuration, see [Policy Configuration](docs/policies-config.md#session-continuation).
 
+## OpenCode SDK Integration
+
+Agent Shepherd uses the **OpenCode SDK** for reliable agent execution, providing:
+
+- **Robust Session Management**: Programmatic control over session lifecycle with proper cleanup
+- **Preserved Debugging Sessions**: Sessions kept for debugging after phase completion (not auto-deleted)
+- **Clean Separation**: SDK logic isolated from CLI code for better maintainability
+- **Selective Cleanup**: Only test sessions are deleted; production sessions preserved for debugging
+- **Better Reliability**: SDK integration offers more reliable execution than CLI
+
+### Execution Modes
+
+Agent Shepherd supports two execution modes (configurable in `config/config.yaml`):
+
+**SDK Mode** (default, recommended):
+```yaml
+execution:
+  mode: sdk  # Use OpenCode SDK (recommended)
+```
+
+- **Reliability**: Direct API integration with proper error handling
+- **Session Preservation**: Keeps sessions for debugging and context continuity
+- **Progress Tracking**: Better monitoring of execution status
+- **Recommended**: Best choice for production use
+
+**CLI Mode** (deprecated):
+```yaml
+execution:
+  mode: cli  # Use OpenCode CLI (deprecated)
+```
+
+- **Legacy**: Original CLI-based execution method
+- **Deprecation Notice**: Will be removed in future versions
+- **Use Cases**: Only for testing or migration purposes
+
+### Configuration
+
+SDK execution is configured in `.agent-shepherd/config/config.yaml`:
+
+```yaml
+worker:
+  execution:
+    mode: sdk  # Default: SDK mode for reliability
+    sdk_base_url: http://localhost:4096  # OpenCode server URL
+```
+
+For detailed configuration, see [SDK Integration Documentation](docs/sdk-integration.md).
+
 ---
 
 After you have a working setup, customize Agent Shepherd to your needs:
@@ -545,7 +595,7 @@ If you prefer manual installation:
 
 - **Bun** runtime (1.0.0+)
 - **Beads** (issue tracking system) - `curl -fsSL https://get.beads.dev | bash`
-- **OpenCode** (AI agent execution platform)
+- **OpenCode** (AI agent execution platform) with **SDK support** (recommended for reliability)
 
 #### Installation
 
@@ -1005,6 +1055,7 @@ DEBUG=agent-shepherd ashep worker
 - **[Config Reference](.agent-shepherd/docs/config-config.md)** - Main configuration file documentation (worker, monitor, UI settings)
 - **[Policy Configuration](.agent-shepherd/docs/policies-config.md)** - Workflow definitions, phases, capabilities, and agent selection
 - **[Agent Configuration](.agent-shepherd/docs/agents-config.md)** - Agent registry, capabilities, and customization
+- **[SDK Integration](.agent-shepherd/docs/sdk-integration.md)** - OpenCode SDK for reliable agent execution
 
 ### Workflows & Automation
 - **[Phase Transition Flow](.agent-shepherd/docs/phase-transition-flow.md)** - Complete visual guide to Agent Shepherd's workflow orchestration

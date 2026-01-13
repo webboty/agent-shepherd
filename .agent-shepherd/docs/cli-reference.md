@@ -4,6 +4,9 @@
 
 Agent Shepherd provides a comprehensive CLI for managing the orchestration system. All commands are run via `ashep <command> [options]`.
 
+**Important Note:**
+Agent Shepherd now uses **OpenCode SDK** for reliable agent execution by default. The legacy CLI execution mode is deprecated and will be removed in a future version. See [Configuration](#execution-configuration) for details.
+
 ## Core Commands
 
 ### `ashep quickstart`
@@ -1024,6 +1027,13 @@ worker:
 - Verify OpenCode is running
 - Check network connectivity
 - Validate authentication credentials
+- Ensure SDK mode is enabled (default: `mode: sdk` in config)
+- If using CLI mode, consider switching to SDK mode for better reliability
+
+**"Agent execution unreliable"**
+- Check execution mode in `.agent-shepherd/config/config.yaml`
+- Ensure SDK mode is enabled: `worker.execution.mode: sdk`
+- CLI mode is deprecated and less reliable; switch to SDK mode
 
 **"UI server won't start"**
 - Check if port is already in use: `lsof -i :3000`

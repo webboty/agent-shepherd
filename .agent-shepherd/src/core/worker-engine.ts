@@ -847,7 +847,7 @@ export class WorkerEngine {
     // Execute agent with or without session reuse
     let result;
     const config = loadConfig();
-    const executionMode = config.execution?.mode || "cli";
+    const executionMode = config.execution?.mode || "sdk";
 
     try {
       if (executionMode === "sdk") {

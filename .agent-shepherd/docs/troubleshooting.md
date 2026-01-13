@@ -6,6 +6,7 @@ This guide helps you diagnose and resolve common issues when working with Agent 
 
 - [Installation Issues](#installation-issues)
 - [Configuration Issues](#configuration-issues)
+- [Execution Mode Issues](#execution-mode-issues)
 - [Policy Issues](#policy-issues)
 - [Decision Agent Issues](#decision-agent-issues)
 - [Transition Issues](#transition-issues)
@@ -324,9 +325,218 @@ Configuration doesn't use environment variables
    BEADS_REPO_PATH=/path/to/repo
    EOF
 
-   # Source it
-   source .env
+    # Source it
+    source .env
+    ```
+
+---
+
+## Execution Mode Issues
+
+### Issue: SDK Mode Not Available
+
+**Symptom:**
+```
+Error: Cannot find module '@opencode-ai/sdk'
+```
+
+**Causes:**
+- SDK package not installed
+- Wrong Node.js/Bun version
+- Dependency conflicts
+
+**Solutions:**
+
+1. **Install SDK package:**
+   ```bash
+   bun install @opencode-ai/sdk
    ```
+
+2. **Check package.json:**
+   ```json
+   {
+     "dependencies": {
+       "@opencode-ai/sdk": "^1.0.0"
+     }
+   }
+   ```
+
+3. **Rebuild Agent Shepherd:**
+   ```bash
+   bun run build
+   ```
+
+4. **Verify installation:**
+   ```bash
+   bun pm ls | grep @opencode-ai/sdk
+   ```
+
+---
+
+### Issue: OpenCode Connection Failed
+
+**Symptom:**
+```
+Error: Failed to connect to OpenCode SDK server
+```
+
+**Causes:**
+- OpenCode server not running
+- Wrong URL configured
+- Network connectivity issues
+- Firewall blocking connection
+
+**Solutions:**
+
+1. **Verify OpenCode is running:**
+   ```bash
+   curl http://localhost:4096/health
+   ```
+
+2. **Check configuration URL:**
+   ```yaml
+   worker:
+     execution:
+       mode: sdk
+       sdk_base_url: http://localhost:4096  # Verify correct
+   ```
+
+3. **Test network connectivity:**
+   ```bash
+   ping localhost  # Or remote host
+   telnet localhost 4096  # Test port
+   ```
+
+4. **Check firewall rules:**
+   - Ensure port 4096 is not blocked
+   - Verify inbound/outbound connections allowed
+
+5. **Check OpenCode logs:**
+   - Look for startup errors
+   - Verify port binding
+   - Check for authentication issues
+
+---
+
+### Issue: Session Not Preserved
+
+**Symptom:**
+```
+Sessions disappear after phase completion
+Cannot review sessions with ashep list-sessions
+```
+
+**Causes:**
+- CLI mode is active (auto-deletes sessions)
+- Retention policy too aggressive
+- Sessions marked as test
+
+**Solutions:**
+
+1. **Verify SDK mode is enabled:**
+   ```yaml
+   worker:
+     execution:
+       mode: sdk  # Must be 'sdk'
+   ```
+
+2. **Check retention policy:**
+   ```yaml
+   retention:
+     policies:
+       - name: default
+         delete_after_days: 90  # Not too aggressive
+         keep_successful_runs: true  # Keep for audit
+   ```
+
+3. **Verify session preservation in logs:**
+   - Look for "Session preserved for debugging"
+   - Check OpenCode directly to see sessions
+
+4. **Test with a sample issue:**
+   - Process a simple issue
+   - Run `ashep list-sessions ISSUE-ID`
+   - Verify session appears
+
+---
+
+### Issue: Progress Not Tracking
+
+**Symptom:**
+```
+No progress feedback during execution
+Stuck on "Agent working..." message
+```
+
+**Causes:**
+- CLI mode (limited progress tracking)
+- Monitoring disabled
+- SDK communication issues
+
+**Solutions:**
+
+1. **Verify SDK mode is active:**
+   ```yaml
+   worker:
+     execution:
+       mode: sdk
+   ```
+
+2. **Check monitoring configuration:**
+   ```yaml
+   monitor:
+     poll_interval_ms: 10000  # Ensure enabled
+   ```
+
+3. **Enable debug logging:**
+   ```bash
+   DEBUG=agent-shepherd ashep worker
+   ```
+
+4. **Check OpenCode SDK logs:**
+   - Look for session activity
+   - Verify API calls succeeding
+
+---
+
+### Issue: SDK Mode Slower than Expected
+
+**Symptom:**
+```
+Agent execution seems slower in SDK mode
+```
+
+**Causes:**
+- First session creation overhead
+- Network latency to OpenCode server
+- Different polling behavior
+
+**Solutions:**
+
+1. **First execution overhead:**
+   - First execution creates new session (slower)
+   - Subsequent executions reuse session (faster)
+
+2. **Check network latency:**
+   ```bash
+   ping -c 10 localhost  # Or remote host
+   ```
+
+3. **Adjust polling interval:**
+   ```yaml
+   worker:
+     poll_interval_ms: 30000  # Adjust for your needs
+   ```
+
+4. **Monitor session reuse:**
+   ```bash
+   ashep list-sessions ISSUE-ID  # Check for session reuse
+   ```
+
+5. **Compare over time:**
+   - SDK mode should be more reliable overall
+   - Individual runs may vary
+   - Track success/failure rates
 
 ---
 
@@ -1634,28 +1844,52 @@ Agent Shepherd can't call OpenCode agents
 - Invalid API key
 - Network connectivity
 - Agent not registered
+- SDK mode not configured correctly
 
 **Solutions:**
 
-1. **Verify API key:**
+1. **Verify SDK mode is enabled:**
+   ```yaml
+   worker:
+     execution:
+       mode: sdk  # Ensure SDK mode is active
+   ```
+
+2. **Verify API key:**
    ```bash
+   cat .opencode/config.yaml | grep api_key
    echo $OPENCODE_API_KEY | cut -c1-10
    ```
 
-2. **Test API connectivity:**
+3. **Test API connectivity:**
    ```bash
+   # For SDK mode
+   curl http://localhost:4096/health
+
+   # For remote OpenCode servers
    curl -H "Authorization: Bearer $OPENCODE_API_KEY" \
-     https://api.opencode.ai/v1/agents
+      https://api.opencode.ai/v1/agents
    ```
 
-3. **Sync agents:**
+4. **Sync agents:**
    ```bash
    ashep sync-agents
    ```
 
-4. **Check agent availability:**
+5. **Check agent availability:**
    ```bash
    ashep show-agents
+   ```
+
+6. **Verify SDK package installed:**
+   ```bash
+   bun pm ls | grep @opencode-ai/sdk
+   ```
+
+7. **Check OpenCode logs:**
+   ```bash
+   # Look for SDK connection errors
+   tail -f .opencode/logs/*.log | grep -i sdk
    ```
 
 ---
@@ -1723,6 +1957,7 @@ If you encounter an issue not covered here:
 
 ## Additional Resources
 
+- [SDK Integration Documentation](./sdk-integration.md) - OpenCode SDK for reliable execution
 - [API Documentation](./api-reference.md)
 - [Integration Examples](./integration-examples.md)
 - [Integration Guides](./integration-guides.md)
