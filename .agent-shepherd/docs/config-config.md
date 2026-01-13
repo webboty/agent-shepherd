@@ -193,10 +193,18 @@ picking:
 
 **Smart Mode** (`mode: smart`):
 - **Selection**: Dependency-aware with epic affinity
-- **Dependencies**: Respects issue relationships
+- **Dependencies**: Respects issue relationships, topological ordering
 - **Coordination**: Prevents conflicts, maintains ownership
 - **Performance**: Higher overhead, more sophisticated
 - **Use Case**: Multi-worker environments, complex dependency chains
+
+**Smart Mode Ordering Logic:**
+1. **Dependency Resolution**: Only picks issues with no unresolved dependencies (indegree 0)
+2. **Depth Priority**: Prefers leaf tasks (higher depth) over epics
+3. **Priority Sorting**: Lower priority numbers first (P1 > P2)
+4. **ID Ordering**: Lexicographic sort as final tiebreaker
+
+**Example**: For epic → phase epic → leaf tasks, smart mode picks leaf tasks first, then phase epics, then main epic (if all dependencies resolved).
 
 **When to Use Each Mode:**
 
@@ -211,6 +219,7 @@ picking:
   - Epic-based development (subtasks)
   - Complex dependency relationships
   - Need for consistent ownership
+  - Sequential phase completion required
 
 ### `monitor` (object)
 **Required**: Yes  
