@@ -9,21 +9,19 @@ export function getGlobalInstallDir(): string {
 export function findLocalAgentShepherdDir(): string | null {
   let currentDir = process.cwd();
   const visited = new Set<string>();
-  
+
   while (true) {
     // Prevent infinite loops
     if (visited.has(currentDir)) {
       break;
     }
     visited.add(currentDir);
-    
+
     const agentShepherdDir = join(currentDir, ".agent-shepherd");
     if (existsSync(agentShepherdDir)) {
-      // Check if this has src/ (to distinguish install directory from runtime directory)
-      const hasSrc = existsSync(join(agentShepherdDir, "src"));
-      if (hasSrc) {
-        return agentShepherdDir;
-      }
+      // Found a .agent-shepherd directory - this is the local one we want
+      // (regardless of whether it has src/ or not)
+      return agentShepherdDir;
     }
     const parentDir = dirname(currentDir);
     if (parentDir === currentDir) break;
@@ -55,7 +53,7 @@ export function findConfigDir(): string {
   if (envOverride && existsSync(join(envOverride, "config"))) {
     return join(envOverride, "config");
   }
-  // Check for local config
+  // Check for local config (prioritize local project over global)
   const local = findLocalAgentShepherdDir();
   if (local && existsSync(join(local, "config"))) {
     return join(local, "config");

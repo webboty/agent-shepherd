@@ -25,11 +25,11 @@
        "type": "object",
        "required": ["id", "name", "capabilities"],
       "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]*$",
-          "description": "Unique agent identifier"
-        },
+         "id": {
+           "type": "string",
+           "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+           "description": "Unique agent identifier (can include uppercase for OpenCode compatibility)"
+         },
         "name": {
           "type": "string",
           "description": "Human-readable agent name"
@@ -38,16 +38,20 @@
           "type": "string",
           "description": "Agent description"
         },
-        "capabilities": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]*$"
-          },
-          "description": "Agent capabilities"
-        },
-         "provider_id": {
+         "capabilities": {
+           "type": "array",
+           "minItems": 1,
+           "items": {
+             "type": "string",
+             "pattern": "^[a-z][a-z0-9_-]*$"
+           },
+           "description": "Agent capabilities"
+         },
+         "opencode_agent": {
+           "type": "string",
+           "description": "OpenCode agent name to use in CLI calls (optional, defaults to 'id' if not specified)"
+         },
+          "provider_id": {
            "type": "string",
            "pattern": "^[a-z][a-z0-9_-]*$",
            "description": "AI provider identifier (optional, uses OpenCode default if not specified)"

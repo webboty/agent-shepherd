@@ -14,6 +14,7 @@ export interface AgentConfig {
   name: string;
   description?: string;
   capabilities: string[];
+  opencode_agent?: string; // Optional - OpenCode agent name to use in CLI, defaults to 'id'
   provider_id?: string;  // Optional - uses OpenCode agent default if not specified
   model_id?: string;     // Optional - uses OpenCode agent default if not specified
   priority?: number;
