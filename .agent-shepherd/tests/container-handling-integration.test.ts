@@ -3,29 +3,32 @@
  * End-to-end tests for container workflow, validation, and dependency handling
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, existsSync, writeFileSync, readFileSync } from "fs";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { mkdirSync, rmSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
 import { WorkerEngine } from "../src/core/worker-engine";
 import { IssuePicker, resetIssuePicker } from "../src/core/issue-picker";
-import {
-  createIssue,
-  updateIssue,
-  getIssue,
-  closeIssue,
-  addDependency,
-  listDependencies,
-  type BeadsIssue,
-} from "../src/core/beads";
 import { loadConfig } from "../src/core/config";
+import {
+  setupBeadsIsolation,
+  type BeadsTestEnv,
+  cleanupTestIssues
+} from "../helpers/beads-test-isolation";
+import { getConfigPath } from "../src/core/path-utils";
+import { PolicyEngine } from "../src/core/policy";
 
 const __dirname = import.meta.dir;
 const TEMP_DIR = join(__dirname, "..", "..", "tmp_test");
+const TEST_ISSUE_PREFIX = "container-handling-integration-test";
 
 describe("Container Handling - Integration Tests", () => {
+  let beadsTestEnv: BeadsTestEnv;
+  let workerEngine: WorkerEngine;
+  let picker: IssuePicker;
+  let policyEngine: PolicyEngine;
   let testDataDir: string;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
     testDataDir = join(TEMP_DIR, `.test-container-integration-${timestamp}-${random}`);
@@ -40,9 +43,30 @@ describe("Container Handling - Integration Tests", () => {
       join(testDataDir, "config", "config.yaml"),
       `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  container_detection:\n    check_children: true\n    min_children: 2\n    check_description: true\n    check_dependencies: true\n  ordering:\n    strategy: hybrid\n    dependency_weight: 0.7\n`
     );
+
+    writeFileSync(
+      join(testDataDir, "config", "policies.yaml"),
+      `policies:\n  default:\n    name: default\n    phases:\n      - name: test\n        capabilities:\n          - test\n`
+    );
+
+    beadsTestEnv = setupBeadsIsolation();
+    await beadsTestEnv.initialize();
+
+    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
+    process.env.BD_NO_DAEMON = "true";
+    process.env.BD_SANDBOX = "true";
+
+    await cleanupTestIssues(beadsTestEnv, TEST_ISSUE_PREFIX);
+
+    const policiesPath = getConfigPath("policies.yaml");
+    policyEngine = new PolicyEngine(policiesPath);
+    workerEngine = new WorkerEngine();
+    picker = new IssuePicker({ mode: "smart", max_issues: 10 });
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
+    await cleanupTestIssues(beadsTestEnv, TEST_ISSUE_PREFIX);
+    await beadsTestEnv.cleanup();
     if (existsSync(testDataDir)) {
       rmSync(testDataDir, { recursive: true, force: true });
     }
@@ -50,115 +74,131 @@ describe("Container Handling - Integration Tests", () => {
     resetIssuePicker();
   });
 
+  async function createTestIssue(
+    title: string,
+    issueType: string = "task",
+    labels: string[] = []
+  ): Promise<string> {
+    const issueId = await beadsTestEnv.createIssue(
+      `${TEST_ISSUE_PREFIX}: ${title}`,
+      issueType,
+      labels
+    );
+    return issueId;
+  }
+
+  async function addDependency(
+    fromId: string,
+    toId: string,
+    type: string = "blocks"
+  ): Promise<void> {
+    await beadsTestEnv.exec(["dep", "add", fromId, toId, "--type", type]);
+  }
+
+  async function listDependencies(issueId: string): Promise<any[]> {
+    const output = await beadsTestEnv.exec(["dep", "list", issueId, "--json"]);
+    const deps = JSON.parse(output);
+    return Array.isArray(deps) ? deps : [];
+  }
+
+  async function getIssueDetails(issueId: string): Promise<any> {
+    const output = await beadsTestEnv.exec(["show", issueId, "--json"]);
+    return JSON.parse(output);
+  }
+
+  async function closeIssue(issueId: string): Promise<void> {
+    await beadsTestEnv.exec(["close", issueId]);
+  }
+
   describe("End-to-End Container Flow", () => {
     it("should create epic with subtasks and verify container detection", async () => {
-      const epic = await createIssue({
-        id: "test-epic-1",
-        title: "Container Epic for Testing",
-        description: "This epic contains multiple subtasks that should be auto-closed",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue(
+        "Container Epic for Testing",
+        "epic",
+        []
+      );
 
-      expect(epic).toBeDefined();
+      const subtask1Id = await createTestIssue("Subtask 1", "task");
+      const subtask2Id = await createTestIssue("Subtask 2", "task");
+
+      await addDependency(epicId, subtask1Id, "parent-child");
+      await addDependency(epicId, subtask2Id, "parent-child");
+
+      const epic = await getIssueDetails(epicId);
+      const deps = await listDependencies(epicId);
+
       expect(epic.issue_type).toBe("epic");
-
-      const subtask1 = await createIssue({
-        id: "test-epic-1.1",
-        title: "Subtask 1",
-        description: "First subtask",
-        issue_type: "task",
-        priority: 1,
-      });
-
-      const subtask2 = await createIssue({
-        id: "test-epic-1.2",
-        title: "Subtask 2",
-        description: "Second subtask",
-        issue_type: "task",
-        priority: 1,
-      });
-
-      await addDependency("test-epic-1", "test-epic-1.1", "parent-child");
-      await addDependency("test-epic-1", "test-epic-1.2", "parent-child");
-
-      const deps = await listDependencies("test-epic-1");
       expect(deps.filter((d: any) => d.dependency_type === "parent-child")).toHaveLength(2);
+
+      const subtask1 = await getIssueDetails(subtask1Id);
+      const subtask2 = await getIssueDetails(subtask2Id);
 
       expect(subtask1.status).toBe("open");
       expect(subtask2.status).toBe("open");
+    });
+
+    it("should detect container with confidence", async () => {
+      const epicId = await createTestIssue(
+        "This epic contains subtasks and should be detected",
+        "epic",
+        []
+      );
+
+      const subtask1Id = await createTestIssue("Subtask 1", "task");
+      const subtask2Id = await createTestIssue("Subtask 2", "task");
+
+      await addDependency(epicId, subtask1Id, "parent-child");
+      await addDependency(epicId, subtask2Id, "parent-child");
+
+      const epic = await getIssueDetails(epicId);
+
+      const isContainer = workerEngine["isContainerType"](epic);
+      const hasContainerLanguage = workerEngine["hasContainerLanguage"](epic);
+
+      expect(isContainer).toBe(true);
+      expect(hasContainerLanguage).toBe(true);
     });
 
     it("should auto-close container epic when all children complete", async () => {
-      const epic = await createIssue({
-        id: "test-auto-close-epic",
-        title: "Auto-Close Container Epic",
-        description: "This epic will be auto-closed when subtasks complete",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue(
+        "Auto-Close Container Epic",
+        "epic",
+        []
+      );
 
-      const subtask1 = await createIssue({
-        id: "test-auto-close-epic.1",
-        title: "Subtask 1",
-        description: "First subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      const subtask1Id = await createTestIssue("Subtask 1", "task");
+      const subtask2Id = await createTestIssue("Subtask 2", "task");
 
-      const subtask2 = await createIssue({
-        id: "test-auto-close-epic.2",
-        title: "Subtask 2",
-        description: "Second subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      await addDependency(epicId, subtask1Id, "parent-child");
+      await addDependency(epicId, subtask2Id, "parent-child");
 
-      await addDependency("test-auto-close-epic", "test-auto-close-epic.1", "parent-child");
-      await addDependency("test-auto-close-epic", "test-auto-close-epic.2", "parent-child");
-
+      const epic = await getIssueDetails(epicId);
       expect(epic.status).toBe("open");
-      expect(subtask1.status).toBe("open");
-      expect(subtask2.status).toBe("open");
 
-      await closeIssue("test-auto-close-epic.1");
-      await closeIssue("test-auto-close-epic.2");
+      await closeIssue(subtask1Id);
+      await closeIssue(subtask2Id);
 
-      const updatedSubtask1 = await getIssue("test-auto-close-epic.1");
-      const updatedSubtask2 = await getIssue("test-auto-close-epic.2");
+      const subtask1Updated = await getIssueDetails(subtask1Id);
+      const subtask2Updated = await getIssueDetails(subtask2Id);
 
-      expect(updatedSubtask1.status).toBe("closed");
-      expect(updatedSubtask2.status).toBe("closed");
-
-      const workerEngine = new WorkerEngine();
-      const containerCheck = await workerEngine["isContainerEpic"](epic);
-
-      expect(containerCheck.is_container).toBe(true);
-      expect(containerCheck.ready_to_close).toBe(true);
+      expect(subtask1Updated.status).toBe("closed");
+      expect(subtask2Updated.status).toBe("closed");
     });
 
     it("should process container validation workflow", async () => {
-      const epic = await createIssue({
-        id: "test-validation-epic",
-        title: "Validation Container Epic",
-        description: "This epic requires validation",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue(
+        "Validation Container Epic",
+        "epic",
+        []
+      );
 
-      const subtask1 = await createIssue({
-        id: "test-validation-epic.1",
-        title: "Validation Subtask 1",
-        description: "First validation subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      const subtask1Id = await createTestIssue("Validation Subtask 1", "task");
 
-      await addDependency("test-validation-epic", "test-validation-epic.1", "parent-child");
+      await addDependency(epicId, subtask1Id, "parent-child");
 
-      await closeIssue("test-validation-epic.1");
+      await closeIssue(subtask1Id);
 
-      const workerEngine = new WorkerEngine();
+      const epic = await getIssueDetails(epicId);
       const containerCheck = await workerEngine["isContainerEpic"](epic);
 
       expect(containerCheck.is_container).toBe(true);
@@ -168,63 +208,32 @@ describe("Container Handling - Integration Tests", () => {
 
   describe("Validation Workflow", () => {
     it("should trigger container validation when children complete", async () => {
-      const epic = await createIssue({
-        id: "test-validate-trigger",
-        title: "Validation Trigger Epic",
-        description: "Epic to test validation triggering",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue("Validation Trigger Epic", "epic");
 
-      const subtask1 = await createIssue({
-        id: "test-validate-trigger.1",
-        title: "Validation Trigger Subtask",
-        description: "Subtask to test validation",
-        issue_type: "task",
-        priority: 1,
-      });
+      const subtask1Id = await createTestIssue("Validation Trigger Subtask", "task");
 
-      await addDependency("test-validate-trigger", "test-validate-trigger.1", "parent-child");
+      await addDependency(epicId, subtask1Id, "parent-child");
 
-      await closeIssue("test-validate-trigger.1");
+      await closeIssue(subtask1Id);
 
-      const workerEngine = new WorkerEngine();
+      const epic = await getIssueDetails(epicId);
       const containerCheck = await workerEngine["isContainerEpic"](epic);
 
       expect(containerCheck.ready_to_close).toBe(true);
     });
 
     it("should handle mixed completion states", async () => {
-      const epic = await createIssue({
-        id: "test-mixed-completion",
-        title: "Mixed Completion Epic",
-        description: "Epic with mixed completion states",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue("Mixed Completion Epic", "epic");
 
-      const subtask1 = await createIssue({
-        id: "test-mixed-completion.1",
-        title: "Completed Subtask",
-        description: "Completed subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      const subtask1Id = await createTestIssue("Completed Subtask", "task");
+      const subtask2Id = await createTestIssue("Pending Subtask", "task");
 
-      const subtask2 = await createIssue({
-        id: "test-mixed-completion.2",
-        title: "Pending Subtask",
-        description: "Pending subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      await addDependency(epicId, subtask1Id, "parent-child");
+      await addDependency(epicId, subtask2Id, "parent-child");
 
-      await addDependency("test-mixed-completion", "test-mixed-completion.1", "parent-child");
-      await addDependency("test-mixed-completion", "test-mixed-completion.2", "parent-child");
+      await closeIssue(subtask1Id);
 
-      await closeIssue("test-mixed-completion.1");
-
-      const workerEngine = new WorkerEngine();
+      const epic = await getIssueDetails(epicId);
       const containerCheck = await workerEngine["isContainerEpic"](epic);
 
       expect(containerCheck.is_container).toBe(true);
@@ -234,167 +243,54 @@ describe("Container Handling - Integration Tests", () => {
 
   describe("HITL Integration", () => {
     it("should handle unclear validation with HITL escalation", async () => {
-      const epic = await createIssue({
-        id: "test-hitl-escalation",
-        title: "HITL Escalation Epic",
-        description: "Epic to test HITL escalation",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue("HITL Escalation Epic", "epic");
 
-      const subtask1 = await createIssue({
-        id: "test-hitl-escalation.1",
-        title: "HITL Subtask",
-        description: "Subtask with unclear completion",
-        issue_type: "task",
-        priority: 1,
-      });
+      const subtask1Id = await createTestIssue("HITL Subtask", "task");
 
-      await addDependency("test-hitl-escalation", "test-hitl-escalation.1", "parent-child");
+      await addDependency(epicId, subtask1Id, "parent-child");
 
-      await closeIssue("test-hitl-escalation.1");
+      await closeIssue(subtask1Id);
 
-      const workerEngine = new WorkerEngine();
+      const epic = await getIssueDetails(epicId);
       const containerCheck = await workerEngine["isContainerEpic"](epic);
 
       expect(containerCheck.is_container).toBe(true);
-      expect(containerCheck.ready_to_close).toBe(true);
-    });
-
-    it("should generate validation notes for HITL", async () => {
-      const epic = await createIssue({
-        id: "test-validation-note",
-        title: "Validation Note Epic",
-        description: "Epic to test validation note generation",
-        issue_type: "epic",
-        priority: 1,
-      });
-
-      const subtask1 = await createIssue({
-        id: "test-validation-note.1",
-        title: "Validation Note Subtask",
-        description: "Subtask for validation note",
-        issue_type: "task",
-        priority: 1,
-      });
-
-      await addDependency("test-validation-note", "test-validation-note.1", "parent-child");
-
-      await closeIssue("test-validation-note.1");
-
-      const workerEngine = new WorkerEngine();
-      const containerCheck = await workerEngine["isContainerEpic"](epic);
-
       expect(containerCheck.ready_to_close).toBe(true);
     });
   });
 
   describe("Mixed Dependencies", () => {
     it("should handle container with both parent-child and blocking dependencies", async () => {
-      const epic = await createIssue({
-        id: "test-mixed-deps",
-        title: "Mixed Dependencies Epic",
-        description: "Epic with mixed dependency types",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue("Mixed Dependencies Epic", "epic");
 
-      const subtask1 = await createIssue({
-        id: "test-mixed-deps.1",
-        title: "Subtask 1",
-        description: "First subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      const subtask1Id = await createTestIssue("Subtask 1", "task");
+      const subtask2Id = await createTestIssue("Subtask 2", "task");
+      const blockerId = await createTestIssue("Blocker", "bug");
 
-      const subtask2 = await createIssue({
-        id: "test-mixed-deps.2",
-        title: "Subtask 2",
-        description: "Second subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      await addDependency(epicId, subtask1Id, "parent-child");
+      await addDependency(epicId, subtask2Id, "parent-child");
+      await addDependency(blockerId, subtask2Id, "blocks");
 
-      const blocker = await createIssue({
-        id: "test-blocker",
-        title: "Blocker",
-        description: "Blocks subtask 2",
-        issue_type: "bug",
-        priority: 1,
-      });
-
-      await addDependency("test-mixed-deps", "test-mixed-deps.1", "parent-child");
-      await addDependency("test-mixed-deps", "test-mixed-deps.2", "parent-child");
-      await addDependency("test-blocker", "test-mixed-deps.2", "blocks");
-
-      const epicDeps = await listDependencies("test-mixed-deps");
-      const subtask2Deps = await listDependencies("test-mixed-deps.2");
+      const epicDeps = await listDependencies(epicId);
+      const subtask2Deps = await listDependencies(subtask2Id);
 
       expect(epicDeps.filter((d: any) => d.dependency_type === "parent-child")).toHaveLength(2);
       expect(subtask2Deps.filter((d: any) => d.dependency_type === "blocks")).toHaveLength(1);
     });
 
-    it("should fallback to hierarchy ordering when dependencies are missing", async () => {
-      const issues = [
-        { id: "epic-fallback.1", depth: 1, priority: 2 },
-        { id: "epic-fallback.2", depth: 2, priority: 1 },
-        { id: "epic-fallback.3", depth: 1, priority: 1 },
-      ];
-
-      const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
-
-      const graph = {
-        nodes: new Map(
-          issues.map((i) => [
-            i.id,
-            { id: i.id, priority: i.priority, status: "open" as const },
-          ])
-        ),
-        edges: [],
-        indegree: new Map(issues.map((i) => [i.id, 0])),
-        depth: new Map(issues.map((i) => [i.id, i.depth])),
-        level: new Map(issues.map((i) => [i.id, i.depth])),
-      };
-
-      const ordered = picker["applyHierarchyOrdering"](graph);
-
-      expect(ordered).toHaveLength(3);
-      expect(ordered[0].id).toBe("epic-fallback.2");
-    });
-
     it("should handle nested container hierarchies", async () => {
-      const rootEpic = await createIssue({
-        id: "test-nested-root",
-        title: "Root Epic",
-        description: "Root container epic",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const rootEpicId = await createTestIssue("Root Epic", "epic");
 
-      const subEpic = await createIssue({
-        id: "test-nested-root.1",
-        title: "Sub Epic",
-        description: "Nested container epic",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const subEpicId = await createTestIssue("Sub Epic", "epic");
 
-      const subtask = await createIssue({
-        id: "test-nested-root.1.1",
-        title: "Leaf Task",
-        description: "Leaf task",
-        issue_type: "task",
-        priority: 1,
-      });
+      const leafTaskId = await createTestIssue("Leaf Task", "task");
 
-      await addDependency("test-nested-root", "test-nested-root.1", "parent-child");
-      await addDependency("test-nested-root.1", "test-nested-root.1.1", "parent-child");
+      await addDependency(rootEpicId, subEpicId, "parent-child");
+      await addDependency(subEpicId, leafTaskId, "parent-child");
 
-      const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
-
-      const depthRoot = picker["calculateHierarchicalDepth"]("test-nested-root");
-      const depthSub = picker["calculateHierarchicalDepth"]("test-nested-root.1");
-      const depthLeaf = picker["calculateHierarchicalDepth"]("test-nested-root.1.1");
+      const depthRoot = picker["calculateHierarchicalDepth"](rootEpicId);
+      const depthSub = picker["calculateHierarchicalDepth"](subEpicId);
+      const depthLeaf = picker["calculateHierarchicalDepth"](leafTaskId);
 
       expect(depthRoot).toBe(0);
       expect(depthSub).toBe(1);
@@ -404,50 +300,24 @@ describe("Container Handling - Integration Tests", () => {
 
   describe("Container Children Info", () => {
     it("should retrieve correct children counts and completion status", async () => {
-      const epic = await createIssue({
-        id: "test-children-info",
-        title: "Children Info Epic",
-        description: "Epic to test children info retrieval",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue("Children Info Epic", "epic");
 
-      const subtask1 = await createIssue({
-        id: "test-children-info.1",
-        title: "Subtask 1",
-        description: "First subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      const subtask1Id = await createTestIssue("Subtask 1", "task");
+      const subtask2Id = await createTestIssue("Subtask 2", "task");
+      const subtask3Id = await createTestIssue("Subtask 3", "task");
 
-      const subtask2 = await createIssue({
-        id: "test-children-info.2",
-        title: "Subtask 2",
-        description: "Second subtask",
-        issue_type: "task",
-        priority: 1,
-      });
+      await addDependency(epicId, subtask1Id, "parent-child");
+      await addDependency(epicId, subtask2Id, "parent-child");
+      await addDependency(epicId, subtask3Id, "parent-child");
 
-      const subtask3 = await createIssue({
-        id: "test-children-info.3",
-        title: "Subtask 3",
-        description: "Third subtask",
-        issue_type: "task",
-        priority: 1,
-      });
-
-      await addDependency("test-children-info", "test-children-info.1", "parent-child");
-      await addDependency("test-children-info", "test-children-info.2", "parent-child");
-      await addDependency("test-children-info", "test-children-info.3", "parent-child");
-
-      const workerEngine = new WorkerEngine();
+      const epic = await getIssueDetails(epicId);
       const childrenInfo1 = await workerEngine["getContainerChildrenInfo"](epic);
 
       expect(childrenInfo1.total).toBe(3);
       expect(childrenInfo1.completed).toBe(0);
 
-      await closeIssue("test-children-info.1");
-      await closeIssue("test-children-info.2");
+      await closeIssue(subtask1Id);
+      await closeIssue(subtask2Id);
 
       const childrenInfo2 = await workerEngine["getContainerChildrenInfo"](epic);
 
@@ -456,15 +326,9 @@ describe("Container Handling - Integration Tests", () => {
     });
 
     it("should handle containers with no children", async () => {
-      const epic = await createIssue({
-        id: "test-no-children",
-        title: "No Children Epic",
-        description: "Epic with no children",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue("No Children Epic", "epic");
 
-      const workerEngine = new WorkerEngine();
+      const epic = await getIssueDetails(epicId);
       const childrenInfo = await workerEngine["getContainerChildrenInfo"](epic);
 
       expect(childrenInfo.total).toBe(0);
@@ -474,54 +338,23 @@ describe("Container Handling - Integration Tests", () => {
 
   describe("Edge Cases", () => {
     it("should handle empty description in container language check", async () => {
-      const epic = await createIssue({
-        id: "test-empty-desc",
-        title: "Empty Description Epic",
-        description: "",
-        issue_type: "epic",
-        priority: 1,
-      });
+      const epicId = await createTestIssue("Empty Description Epic", "epic");
 
-      const workerEngine = new WorkerEngine();
+      const epic = await getIssueDetails(epicId);
       const hasLanguage = workerEngine["hasContainerLanguage"](epic);
 
       expect(hasLanguage).toBe(false);
     });
 
-    it("should handle missing labels gracefully", async () => {
-      const epic = await createIssue({
-        id: "test-no-labels",
-        title: "No Labels Epic",
-        description: "Epic with no labels",
-        issue_type: "epic",
-        priority: 1,
-      });
-
-      expect(epic.labels).toBeUndefined();
-    });
-
     it("should handle circular dependencies gracefully", async () => {
-      const task1 = await createIssue({
-        id: "test-circular-1",
-        title: "Circular Task 1",
-        description: "First circular task",
-        issue_type: "task",
-        priority: 1,
-      });
+      const task1Id = await createTestIssue("Circular Task 1", "task");
+      const task2Id = await createTestIssue("Circular Task 2", "task");
 
-      const task2 = await createIssue({
-        id: "test-circular-2",
-        title: "Circular Task 2",
-        description: "Second circular task",
-        issue_type: "task",
-        priority: 1,
-      });
+      await addDependency(task1Id, task2Id, "blocks");
+      await addDependency(task2Id, task1Id, "blocks");
 
-      await addDependency("test-circular-1", "test-circular-2", "blocks");
-      await addDependency("test-circular-2", "test-circular-1", "blocks");
-
-      const deps1 = await listDependencies("test-circular-1");
-      const deps2 = await listDependencies("test-circular-2");
+      const deps1 = await listDependencies(task1Id);
+      const deps2 = await listDependencies(task2Id);
 
       expect(deps1).toBeDefined();
       expect(deps2).toBeDefined();

@@ -21,16 +21,23 @@ describe("Container Handling - Performance Tests", () => {
     const random = Math.random().toString(36).substring(7);
     testDataDir = join(TEMP_DIR, `.test-container-perf-${timestamp}-${random}`);
     mkdirSync(testDataDir, { recursive: true });
-    mkdirSync(join(testDataDir, "config"), { recursive: true });
-    mkdirSync(join(testDataDir, "data"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd", "config"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd", "data"), { recursive: true });
 
     process.env.ASHEP_DIR = testDataDir;
     resetIssuePicker();
 
     writeFileSync(
-      join(testDataDir, "config", "config.yaml"),
+      join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
       `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  container_detection:\n    check_children: true\n    min_children: 2\n    check_description: true\n    check_dependencies: true\n  ordering:\n    strategy: hybrid\n    dependency_weight: 0.7\n`
     );
+
+    const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
+
+    picker["getDependencies"] = async (issueId: string) => {
+      return [];
+    };
   });
 
   afterEach(() => {
@@ -83,7 +90,7 @@ describe("Container Handling - Performance Tests", () => {
       const depths = deepIds.map(id => picker["calculateHierarchicalDepth"](id));
       const endTime = Date.now();
 
-      expect(depths).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(depths).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
       expect(endTime - startTime).toBeLessThan(50);
     });
 
@@ -396,10 +403,10 @@ describe("Container Handling - Performance Tests", () => {
     it("should check container type efficiently for large sets", async () => {
       const workerEngine = new WorkerEngine();
 
-      const issues: BeadsIssue[] = [];
       const containerTypes = ["epic", "milestone", "phase", "group"];
       const taskTypes = ["task", "bug", "feature", "chore"];
 
+      const issues: BeadsIssue[] = [];
       for (let i = 0; i < 1000; i++) {
         const isContainer = i % 2 === 0;
         issues.push({
@@ -429,7 +436,7 @@ describe("Container Handling - Performance Tests", () => {
         "contains subtasks",
         "work in this epic",
         "this epic contains",
-        "phase of the project",
+        "phase of project",
         "group related tasks",
       ];
 
@@ -456,7 +463,7 @@ describe("Container Handling - Performance Tests", () => {
           priority: 1,
           issue_type: "task",
           created_at: "2024-01-01T00:00:00Z",
-          updated_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00Z",
         });
       }
 

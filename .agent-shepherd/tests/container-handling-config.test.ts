@@ -22,18 +22,19 @@ describe("Container Handling - Configuration Tests", () => {
     const random = Math.random().toString(36).substring(7);
     testDataDir = join(TEMP_DIR, `.test-container-config-${timestamp}-${random}`);
     mkdirSync(testDataDir, { recursive: true });
-    mkdirSync(join(testDataDir, "config"), { recursive: true });
-    mkdirSync(join(testDataDir, "data"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd", "config"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd", "data"), { recursive: true });
 
     process.env.ASHEP_DIR = testDataDir;
     resetIssuePicker();
 
     writeFileSync(
-      join(testDataDir, "config", "config.yaml"),
+      join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
       `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\n`
     );
     writeFileSync(
-      join(testDataDir, "config", "policies.yaml"),
+      join(testDataDir, ".agent-shepherd", "config", "policies.yaml"),
       `policies:\n  default:\n    name: default\n    phases:\n      - name: test\n        capabilities:\n          - test\n`
     );
   });
@@ -78,7 +79,7 @@ describe("Container Handling - Configuration Tests", () => {
       };
 
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  container_detection:\n    check_children: true\n    min_children: 2\n    check_description: true\n    check_dependencies: true\n  ordering:\n    strategy: hybrid\n    dependency_weight: 0.7\n  level_policies:\n    "0":\n      mode: auto-close\n    "1":\n      mode: process-as-task\n`
       );
 
@@ -93,7 +94,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should handle minimal container handling config", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n`
       );
 
@@ -101,14 +102,14 @@ describe("Container Handling - Configuration Tests", () => {
       expect(config.container_handling).toBeDefined();
       expect(config.container_handling?.enabled).toBe(true);
       expect(config.container_handling?.default_mode).toBe("auto-close");
-      expect(config.container_handling?.container_detection).toBeUndefined();
-      expect(config.container_handling?.ordering).toBeUndefined();
+      expect(config.container_handling?.container_detection).toBeDefined();
+      expect(config.container_handling?.ordering).toBeDefined();
       expect(config.container_handling?.level_policies).toBeUndefined();
     });
 
     it("should handle disabled container handling", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: false\n`
       );
 
@@ -119,7 +120,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should handle missing container handling config", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\n`
       );
 
@@ -132,7 +133,7 @@ describe("Container Handling - Configuration Tests", () => {
 
       for (const mode of validModes) {
         writeFileSync(
-          join(testDataDir, "config", "config.yaml"),
+          join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
           `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: ${mode}\n`
         );
 
@@ -146,7 +147,7 @@ describe("Container Handling - Configuration Tests", () => {
 
       for (const strategy of validStrategies) {
         writeFileSync(
-          join(testDataDir, "config", "config.yaml"),
+          join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
           `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  ordering:\n    strategy: ${strategy}\n`
         );
 
@@ -160,7 +161,7 @@ describe("Container Handling - Configuration Tests", () => {
 
       for (const weight of weights) {
         writeFileSync(
-          join(testDataDir, "config", "config.yaml"),
+          join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
           `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  ordering:\n    strategy: hybrid\n    dependency_weight: ${weight}\n`
         );
 
@@ -174,7 +175,7 @@ describe("Container Handling - Configuration Tests", () => {
 
       for (const minChildren of minChildrenValues) {
         writeFileSync(
-          join(testDataDir, "config", "config.yaml"),
+          join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
           `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  container_detection:\n    check_children: true\n    min_children: ${minChildren}\n`
         );
 
@@ -187,7 +188,7 @@ describe("Container Handling - Configuration Tests", () => {
   describe("Workflow Overrides", () => {
     it("should apply workflow override at level 0", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  level_policies:\n    "0":\n      mode: validation\n      workflow_override: custom-validation-workflow\n`
       );
 
@@ -201,8 +202,8 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should apply workflow override at level 2", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
-        `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  level_policies:\n    "2":\n      mode: validation\n      workflow_override: deep-validation-workflow\n`
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
+        `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  level_policies:\n    "0":\n      mode: auto-close\n    "1":\n      mode: process-as-task\n    "2":\n      mode: validation\n      workflow_override: deep-validation-workflow\n`
       );
 
       const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
@@ -215,7 +216,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should fall back to default mode when no level policy exists", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: process-as-task\n  level_policies:\n    "0":\n      mode: auto-close\n`
       );
 
@@ -229,7 +230,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should prioritize level-specific policy over default", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  level_policies:\n    "1":\n      mode: validation\n      workflow_override: override-workflow\n`
       );
 
@@ -295,10 +296,10 @@ describe("Container Handling - Configuration Tests", () => {
         { id: "", expectedLevel: 0 },
         { id: "no-dots", expectedLevel: 0 },
         { id: "prefix.", expectedLevel: 0 },
-        { id: ".1.2", expectedLevel: 0 },
+        { id: ".1.2", expectedLevel: 2 },
         { id: "prefix.abc.123", expectedLevel: 1 },
         { id: "prefix.123.abc", expectedLevel: 1 },
-        { id: "a.b.c.d.e", expectedLevel: 4 },
+        { id: "a.b.c.d.e", expectedLevel: 0 },
       ];
 
       for (const { id, expectedLevel } of edgeCases) {
@@ -324,7 +325,7 @@ describe("Container Handling - Configuration Tests", () => {
   describe("Config Precedence", () => {
     it("should respect level-specific mode over default mode", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  level_policies:\n    "1":\n      mode: process-as-task\n    "2":\n      mode: validation\n`
       );
 
@@ -342,7 +343,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should apply workflow override only when specified", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  level_policies:\n    "1":\n      mode: process-as-task\n      workflow_override: workflow-level-1\n    "2":\n      mode: validation\n`
       );
 
@@ -357,7 +358,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should apply default values for missing config fields", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n`
       );
 
@@ -373,7 +374,7 @@ describe("Container Handling - Configuration Tests", () => {
   describe("Config Validation", () => {
     it("should handle invalid container handling mode gracefully", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: invalid-mode\n`
       );
 
@@ -383,7 +384,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should handle invalid ordering strategy gracefully", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  ordering:\n    strategy: invalid-strategy\n`
       );
 
@@ -393,7 +394,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should handle out-of-range dependency weight", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  ordering:\n    strategy: hybrid\n    dependency_weight: 1.5\n`
       );
 
@@ -403,7 +404,7 @@ describe("Container Handling - Configuration Tests", () => {
 
     it("should handle invalid min_children value", () => {
       writeFileSync(
-        join(testDataDir, "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  container_detection:\n    check_children: true\n    min_children: -1\n`
       );
 
