@@ -275,10 +275,12 @@ export class WorkerEngine {
     // 5. Launch agent in OpenCode
     let outcome: RunOutcome;
     let sessionId: string | undefined;
+    let isAutoClosed = false;
     try {
       const launchResult = await this.launchAgent(run.id, issue, agent.id, phase, policy);
       outcome = launchResult.outcome;
       sessionId = launchResult.sessionId;
+      isAutoClosed = launchResult.metadata?.auto_closed === true;
 
       // Update run with outcome
       const updateData: any = {
@@ -323,8 +325,14 @@ export class WorkerEngine {
 
     // 6. Determine transition based on outcome
     let transition: PhaseTransition;
-    
-    if (this.shouldTriggerWorkerAssistant(outcome, phase, policy)) {
+
+    // Special handling for auto-closed container epics
+    if (isAutoClosed) {
+      transition = {
+        type: "close",
+        reason: outcome.message || "Container epic auto-closed - all subtasks completed"
+      };
+    } else if (this.shouldTriggerWorkerAssistant(outcome, phase, policy)) {
       const directive = await this.executeWorkerAssistant(issue.id, outcome, phase);
       
       this.logger.logDecision({
@@ -433,22 +441,116 @@ export class WorkerEngine {
     };
   }
 
-  /**
-   * Launch agent using OpenCode CLI
-   */
-  private async launchAgent(
-    runId: string,
-    issue: BeadsIssue,
-    agentId: string,
-    phase: string,
-    policy: string
-  ): Promise<{ outcome: RunOutcome; sessionId?: string; metadata?: any }> {
-    const startTimestamp = Date.now();
+   /**
+    * Check if an issue is a container epic (should be auto-closed)
+    */
+   private async isContainerEpic(issue: BeadsIssue): Promise<boolean> {
+     if (issue.issue_type !== "epic") {
+       return false;
+     }
 
-    const agent = this.agentRegistry.getAgent(agentId);
-    if (!agent) {
-      throw new Error(`Agent ${agentId} not found in registry`);
-    }
+     // Get all dependencies for this issue
+     const dependencies = await this.getIssueDependencies(issue.id);
+
+     // If this epic has no dependencies, it's not a container
+     if (dependencies.length === 0) {
+       return false;
+     }
+
+     // Check if all dependencies are completed
+     const allDepsComplete = dependencies.every(dep => dep.status === "closed");
+
+     if (!allDepsComplete) {
+       return false; // Not ready to auto-close yet
+     }
+
+     // Additional check: if the epic description suggests it's a container
+     // (contains phrases like "contains", "phase", "group", etc.)
+     const containerIndicators = [
+       "contains", "phase", "group", "subtasks", "children",
+       "when assigned this epic", "select the next available child"
+     ];
+
+     const description = (issue.description || "").toLowerCase();
+     const hasContainerLanguage = containerIndicators.some(indicator =>
+       description.includes(indicator)
+     );
+
+     return hasContainerLanguage;
+   }
+
+   /**
+    * Get dependencies for an issue
+    */
+   private async getIssueDependencies(issueId: string): Promise<BeadsIssue[]> {
+     // This is a simplified implementation
+     // In practice, we'd query Beads for all issues that this issue depends on
+     const { execBeadsCommand } = await import("./beads.ts");
+
+     try {
+       const output = await execBeadsCommand(["dep", "list", issueId, "--json"]);
+       const deps = JSON.parse(output);
+
+       if (!Array.isArray(deps)) {
+         return [];
+       }
+
+       // Get full issue details for each dependency
+       const depIssues: BeadsIssue[] = [];
+       for (const dep of deps) {
+         try {
+           const depOutput = await execBeadsCommand(["show", dep.id, "--json"]);
+           const depIssue = JSON.parse(depOutput);
+           depIssues.push(depIssue);
+         } catch (error) {
+           console.warn(`Failed to get details for dependency ${dep.id}: ${error}`);
+         }
+       }
+
+       return depIssues;
+     } catch (error) {
+       console.warn(`Failed to get dependencies for ${issueId}: ${error}`);
+       return [];
+     }
+   }
+
+   /**
+    * Launch agent using OpenCode CLI
+    */
+   private async launchAgent(
+     runId: string,
+     issue: BeadsIssue,
+     agentId: string,
+     phase: string,
+     policy: string
+   ): Promise<{ outcome: RunOutcome; sessionId?: string; metadata?: any }> {
+     const startTimestamp = Date.now();
+
+     // Check if this is a container epic that should be auto-closed
+     if (await this.isContainerEpic(issue)) {
+       console.log(`Detected container epic ${issue.id} - auto-closing since all subtasks are complete`);
+       return {
+         outcome: {
+           success: true,
+           message: "Container epic auto-closed - all subtasks completed",
+           artifacts: [],
+           metrics: {
+             duration_ms: Date.now() - startTimestamp,
+             tokens_used: 0,
+             cost: 0
+           }
+         },
+         metadata: {
+           auto_closed: true,
+           reason: "container_epic_completed"
+         }
+       };
+     }
+
+     const agent = this.agentRegistry.getAgent(agentId);
+     if (!agent) {
+       throw new Error(`Agent ${agentId} not found in registry`);
+     }
 
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
     const policyConfig = this.policyEngine.getPolicyConfig(policy);
