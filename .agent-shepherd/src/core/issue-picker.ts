@@ -550,12 +550,12 @@ export class IssuePicker {
        if (b.depScore !== a.depScore) {
          return b.depScore - a.depScore;
        }
-       return b.hierarchyScore - a.hierarchyScore;
-     });
+      return b.hierarchyScore - a.hierarchyScore;
+      });
 
-     // Combine: partially available first, then fully available
-     const combined = [...partiallyAvailable, ...fullyAvailable];
-     return combined.map(s => s.issue);
+      // Combine: fully available first (topological order), then partially available
+      const combined = [...fullyAvailable, ...partiallyAvailable];
+      return combined.map(s => s.issue);
    }
 
    /**
