@@ -1,16 +1,59 @@
-# Smart Container Handling - API Documentation
+# Issue Container Handling - API Documentation
 
-This document provides technical details about the Smart Container Handling System implementation, including container detection algorithms, ordering logic, and validation integration.
+This document provides technical details about Smart Issue Container Handling System implementation, including issue container detection algorithms, ordering logic, and validation integration.
 
 ## Overview
 
-The container handling system is implemented across multiple components:
+## What is an Issue Container?
+
+An **issue container** is an organizational issue in Beads that:
+
+- **Groups related work items**: Contains subtasks that represent actual implementation work
+- **Has no direct function**: The container itself doesn't require coding or implementation
+- **Tracks progress**: Represents collective completion of grouped subtasks
+- **Common types**: Epics, milestones, phases, or parent tasks
+
+**Example Structure:**
+
+```
+EPIC-123 (Issue Container)
+  ├── TASK-123.1 (Implementation task - requires coding)
+  ├── TASK-123.2 (Implementation task - requires coding)
+  └── TASK-123.3 (Implementation task - requires coding)
+```
+
+The issue container (EPIC-123) is automatically marked as complete when all its subtasks finish. It doesn't have its own implementation work - it's purely an organizational wrapper.
+
+**Important:** This documentation refers to "issue containers" - organizational issues in Beads that contain subtasks. This is **not** related to Docker containers or software containerization.
+
+The issue container handling system is implemented across multiple components:
 
 - **Config Schema** - Configuration validation and defaults
 - **Config Module** (`src/core/config.ts`) - TypeScript interfaces
 - **Worker Engine** (`src/core/worker-engine.ts`) - Core implementation
 - **Issue Picker** (`src/core/issue-picker.ts`) - Smart ordering
 - **Beads Integration** (`src/core/beads.ts`) - Issue tracking interface
+
+## What is an Issue Container?
+
+An **issue container** is an organizational issue in Beads system that:
+
+- **Groups related work items**: Contains subtasks that represent actual implementation work
+- **Has no direct function**: The container itself doesn't require coding or implementation
+- **Tracks progress**: Represents collective completion of grouped subtasks
+- **Common types**: Epics, milestones, phases, or parent tasks
+
+**Example Structure:**
+```
+EPIC-123 (Issue Container)
+  ├── TASK-123.1 (Implementation task - requires coding)
+  ├── TASK-123.2 (Implementation task - requires coding)
+  └── TASK-123.3 (Implementation task - requires coding)
+```
+
+The issue container (EPIC-123) is automatically marked as complete when all its subtasks finish. It doesn't have its own implementation work - it's purely an organizational wrapper.
+
+**Important:** This documentation refers to "issue containers" - organizational issues in Beads that contain subtasks. This is **not** related to Docker containers or software containerization.
 
 ## Configuration API
 
@@ -94,7 +137,7 @@ interface ContainerDetectionConfig {
 - `check_dependencies` - Enable dependency pattern analysis
 - `min_children` - Minimum children to consider as container
 
-## Container Detection API
+## Issue Container Detection API
 
 ### isContainerEpic
 
@@ -618,9 +661,9 @@ agents:
 
 ## State Management API
 
-### Container State Labels
+### Issue Container State Labels
 
-The system tracks container state using Beads labels:
+The system tracks issue container state using Beads labels:
 
 #### ashep-managed
 
@@ -710,7 +753,7 @@ try {
 
 ### Caching Strategies
 
-**Container Detection Cache:**
+**Issue Container Detection Cache:**
 - Cache container detection results for issue lifecycle
 - Invalidate on issue status changes
 - Typical cache time: 5 minutes
@@ -787,7 +830,7 @@ try {
 
 **Detection Tests:**
 ```typescript
-describe('Container Detection', () => {
+describe('Issue Container Detection', () => {
   it('detects epic with children', async () => {
     const issue = createMockIssue({ type: 'epic', children: 5 });
     const result = await isContainerEpic(issue);

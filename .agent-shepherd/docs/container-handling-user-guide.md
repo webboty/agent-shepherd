@@ -1,15 +1,38 @@
-# Smart Container Handling - User Guide
+# Issue Container Handling - User Guide
 
-The Smart Container Handling System provides intelligent management of epics and parent tasks, automatically detecting container issues and applying appropriate handling policies based on hierarchy level and configuration.
+The Smart Issue Container Handling System provides intelligent management of epics and parent tasks, automatically detecting issue containers and applying appropriate handling policies based on hierarchy level and configuration.
 
 ## Overview
 
-Container handling automatically manages issues that contain subtasks, such as epics, milestones, or parent tasks. The system:
+**Issue Container Handling** automatically manages organizational issues that contain subtasks but don't have their own implementation work. An **issue container** is an epic, milestone, or parent task that groups related work items together.
 
-- **Detects containers** using multi-factor analysis (type, children, description, structure)
+The system:
+
+- **Detects issue containers** using multi-factor analysis (type, children, description, structure)
 - **Applies policies** based on hierarchy depth (level 1 epics, level 2 sub-epics, etc.)
 - **Handles closure** automatically or with human/AI validation
 - **Orders tasks** intelligently using dependency and hierarchy information
+
+## What is an Issue Container?
+
+An **issue container** is an organizational issue that:
+
+- **Groups related work**: Contains subtasks that represent actual implementation work
+- **Has no direct function**: The container itself doesn't require implementation work
+- **Tracks progress**: Represents completion of grouped subtasks
+- **Common types**: Epics, milestones, phases, or parent tasks
+
+**Example:**
+```
+EPIC-123 (Issue Container)
+  ├── TASK-123.1 (Implementation task)
+  ├── TASK-123.2 (Implementation task)
+  └── TASK-123.3 (Implementation task)
+```
+
+The **EPIC-123** issue container doesn't require coding work itself - it's complete when all its subtasks (TASK-123.1, 123.2, 123.3) are completed.
+
+**Note:** This is **not** related to Docker containers or software containers. "Container" refers to an issue that contains (wraps) other issues.
 
 ## Quick Start
 
@@ -28,7 +51,7 @@ container_handling:
     strategy: hybrid
 ```
 
-### Enable Container Handling
+### Enable Issue Container Handling
 
 The system is disabled by default. Set `enabled: true` to activate:
 
@@ -53,7 +76,7 @@ container_handling:
   default_mode: auto-close  # "auto-close" | "hitl" | "validate"
 ```
 
-The default mode applies to all containers that don't have a level-specific policy override.
+The default mode applies to all issue containers that don't have a level-specific policy override.
 
 ## Handling Modes
 
@@ -73,7 +96,7 @@ container_handling:
 
 **Behavior:**
 1. Detects when all children are closed
-2. Automatically closes the container
+2. Automatically closes the issue container
 3. No human intervention required
 
 ### HITL Mode
@@ -95,7 +118,7 @@ container_handling:
 1. Detects when all children are complete
 2. Sets `ashep-hitl:container-validation` label
 3. Waits for human review
-4. Container only closes after manual approval
+4. Issue container only closes after manual approval
 
 ### Validate Mode
 
@@ -119,9 +142,9 @@ container_handling:
 **Behavior:**
 1. Detects when all children are complete
 2. Uses AI agent with `container-validation` capability
-3. AI evaluates if container is truly complete
+3. AI evaluates if issue container is truly complete
 4. Possible outcomes:
-   - **DONE**: Container closes automatically
+   - **DONE**: Issue container closes automatically
    - **NEEDS_WORK**: Triggers specified workflow on container
    - **UNCLEAR**: Escalates to HITL
 
@@ -264,7 +287,7 @@ ordering:
   dependency_weight: 0.5  # Equal weight for dependency and hierarchy
 ```
 
-## Container Detection
+## Issue Container Detection
 
 Configure how the system identifies containers:
 
@@ -492,7 +515,7 @@ level_policies:
 
 ### Monitor Confidence Scores
 
-If containers are misidentified, adjust detection:
+If issue containers are misidentified, adjust detection:
 
 ```yaml
 container_detection:

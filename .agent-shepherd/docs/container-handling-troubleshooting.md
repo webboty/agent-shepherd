@@ -1,63 +1,74 @@
-# Smart Container Handling - Troubleshooting Guide
-
+# Issue Container Handling - Troubleshooting Guide
 This guide helps you diagnose and resolve common issues with the Smart Container Handling System.
 
 ## Quick Diagnostics
 
+## What is an Issue Container?
+
+An **issue container** is an organizational issue in Beads that:
+
+- **Groups related work items**: Contains subtasks that represent actual implementation work
+- **Has no direct function**: The container itself doesn't require coding or implementation
+- **Tracks progress**: Represents collective completion of grouped subtasks
+- **Common types**: Epics, milestones, phases, or parent tasks
+
+**Important:** This guide refers to "issue containers" - organizational issues in Beads that contain subtasks. This is **not** related to Docker containers or software containerization.
+
+
 ### Check Container Handling Status
 
 ```bash
-# Verify container handling is enabled
+# Verify issue container handling is enabled
 grep -A 3 "container_handling:" .agent-shepherd/config/config.yaml
 
 # Check config validity
 ashep validate-config
 
-# View worker logs for container handling
+# View worker logs for issue container handling
 tail -f .agent-shepherd/data/logs/worker.log | grep -i container
 ```
 
-### Inspect a Specific Container
+### Inspect a Specific Issue Container
 
 ```bash
-# View container details
+# View issue container details
 bd show EPIC-123
 
-# Check container labels
+# Check issue container labels
 bd show EPIC-123 | grep ashep
 
-# View container children
+# View issue container children
 bd dep list EPIC-123
 
-# Check if container is managed
+# Check if issue container is managed
 ashep list-active | grep EPIC-123
 ```
 
 ## Common Issues
 
-### Issue: Containers Not Detected
+### Issue: Issue Containers Not Detected
 
 **Symptoms:**
-- Epics/parent tasks not being handled as containers
+- Epics/parent tasks not being handled as issue containers
 - Auto-close not triggering
-- No container-related labels appearing
+- No issue container-related labels appearing
 
 **Diagnosis:**
 
 ```bash
-# Check if container handling is enabled
+# Check if issue container handling is enabled
 grep "enabled:" .agent-shepherd/config/config.yaml | grep -A 1 "container_handling"
 
 # Check detection configuration
 grep -A 10 "container_detection:" .agent-shepherd/config/config.yaml
 
 # Check worker logs for detection attempts
-grep "Checking container" .agent-shepherd/data/logs/worker.log
+grep "Checking issue container" .agent-shepherd/data/logs/worker.log
 ```
 
 **Possible Causes:**
 
-1. **Container handling disabled**
+1. **Issue container handling disabled**
    - Fix: Set `enabled: true` in config
 
 2. **Detection thresholds too high**
@@ -67,12 +78,12 @@ grep "Checking container" .agent-shepherd/data/logs/worker.log
    - Fix: Check issue type is `epic`, `milestone`, `phase`, or `group`
 
 4. **No parent-child dependencies**
-   - Fix: Add parent-child dependencies between container and children
+   - Fix: Add parent-child dependencies between issue container and children
 
 **Solutions:**
 
 ```yaml
-# Solution 1: Enable container handling
+# Solution 1: Enable issue container handling
 container_handling:
   enabled: true
 
@@ -89,10 +100,10 @@ container_handling:
     check_dependencies: true
 ```
 
-### Issue: False Positives - Regular Tasks Detected as Containers
+### Issue: False Positives - Regular Tasks Detected as Issue Containers
 
 **Symptoms:**
-- Regular tasks being treated as containers
+- Regular tasks being treated as issue containers
 - Auto-close triggering unexpectedly
 - Validation being requested for non-containers
 
@@ -103,9 +114,9 @@ container_handling:
 grep "confidence" .agent-shepherd/data/logs/worker.log
 
 # Check issue types being detected
-grep "Container type" .agent-shepherd/data/logs/worker.log
+grep "Issue container type" .agent-shepherd/data/logs/worker.log
 
-# Review container children for false positives
+# Review issue container children for false positives
 bd dep list TASK-456  # Should be empty for non-containers
 ```
 
@@ -139,12 +150,12 @@ container_handling:
     check_dependencies: false  # Only use type and children
 ```
 
-### Issue: Containers Not Closing Automatically
+### Issue: Issue Containers Not Closing Automatically
 
 **Symptoms:**
-- All children closed but container remains open
+- All children closed but issue container remains open
 - No auto-close triggering
-- Container stuck in `open` status
+- Issue container stuck in `open` status
 
 **Diagnosis:**
 
@@ -152,7 +163,7 @@ container_handling:
 # Check children status
 bd dep list EPIC-123
 
-# Check container status
+# Check issue container status
 bd show EPIC-123
 
 # Check worker logs for close attempts
@@ -164,8 +175,8 @@ bd show EPIC-123 | grep ashep-hitl
 
 **Possible Causes:**
 
-1. **Container in HITL mode awaiting review**
-   - Fix: Approve container validation
+1. **Issue container in HITL mode awaiting review**
+   - Fix: Approve issue container validation
 
 2. **Default mode is not `auto-close`**
    - Fix: Set `default_mode: auto-close` or level policy
@@ -182,7 +193,7 @@ bd show EPIC-123 | grep ashep-hitl
 # Solution 1: Approve HITL validation
 bd update EPIC-123 --remove-label "ashep-hitl:container-validation"
 
-# Solution 2: Close container manually
+# Solution 2: Close issue container manually
 bd close EPIC-123
 
 # Solution 3: Verify children are closed
@@ -194,10 +205,10 @@ done
 ps aux | grep "ashep worker"
 ```
 
-### Issue: Containers Stuck in Validation
+### Issue: Issue Containers Stuck in Validation
 
 **Symptoms:**
-- Container has `ashep-hitl:container-validation` label
+- Issue container has `ashep-hitl:container-validation` label
 - No progress despite all children being closed
 - Validation not completing
 
@@ -208,7 +219,7 @@ ps aux | grep "ashep worker"
 bd show EPIC-123 | grep ashep-hitl
 
 # Check worker logs for validation attempts
-grep "Validating container" .agent-shepherd/data/logs/worker.log
+grep "Validating issue container" .agent-shepherd/data/logs/worker.log
 
 # Check for validation errors
 grep "validation" .agent-shepherd/data/logs/worker.log | grep -i error
@@ -261,15 +272,15 @@ worker_assistant:
 ### Issue: Invalid Validation Outcome
 
 **Symptoms:**
-- Worker logs show "Invalid container validation outcome"
+- Worker logs show "Invalid issue container validation outcome"
 - Validation rejected without clear reason
-- Container not proceeding
+- Issue container not proceeding
 
 **Diagnosis:**
 
 ```bash
 # Check validation logs
-grep "Invalid container validation outcome" .agent-shepherd/data/logs/worker.log
+grep "Invalid issue container validation outcome" .agent-shepherd/data/logs/worker.log
 
 # Review recent validation attempts
 grep "validation" .agent-shepherd/data/logs/worker.log | tail -20
@@ -290,8 +301,8 @@ cat .agent-shepherd/config/decision-prompts.yaml | grep -A 20 container
    - Fix: Ensure agent returns one-word outcome
 
 **Valid Outcomes:**
-- `DONE` - Container complete and ready to close
-- `NEEDS_WORK` - Container needs more work
+- `DONE` - Issue container complete and ready to close
+- `NEEDS_WORK` - Issue container needs more work
 - `UNCLEAR` - Cannot determine (triggers HITL)
 
 **Solutions:**
@@ -302,14 +313,14 @@ cat .agent-shepherd/config/decision-prompts.yaml | grep -A 20 container
 prompts:
   container_validation:
     prompt: |
-      You are evaluating whether a container epic is complete.
+      You are evaluating whether an issue container is complete.
 
       Return one word only:
-      - DONE: Container is complete and ready to close
-      - NEEDS_WORK: Container needs more work
+      - DONE: Issue container is complete and ready to close
+      - NEEDS_WORK: Issue container needs more work
       - UNCLEAR: Cannot determine
 
-      Container: {container_id}
+      Issue Container: {container_id}
       Type: {container_type}
       Children: {children_completed}/{total_children}
 ```
@@ -325,7 +336,7 @@ grep "decision-agent" .agent-shepherd/data/logs/worker.log
 ### Issue: Hierarchy Level Calculation Incorrect
 
 **Symptoms:**
-- Wrong level policy applied to containers
+- Wrong level policy applied to issue containers
 - Level 1 epics treated as level 2
 - Unexpected workflow overrides
 
@@ -493,7 +504,7 @@ container_handling:
 
 **Symptoms:**
 - Validation fails but workflow not started
-- Container treated as DONE despite NEEDS_WORK
+- Issue container treated as DONE despite NEEDS_WORK
 - Workflow override configuration ignored
 
 **Diagnosis:**
@@ -596,29 +607,29 @@ container_handling:
 
 ## Debug Commands
 
-### Inspect Container State
+### Inspect Issue Container State
 
 ```bash
-# Show container details including children
+# Show issue container details including children
 ashep inspect-container EPIC-123
 
-# Check if issue is container (manual check)
+# Check if issue is an issue container (manual check)
 bd show EPIC-123
 bd dep list EPIC-123
 
-# View container detection confidence
+# View issue container detection confidence
 grep "EPIC-123.*confidence" .agent-shepherd/data/logs/worker.log
 ```
 
-### Test Container Detection
+### Test Issue Container Detection
 
 ```bash
 # Manually test detection logic
 # (Requires running detection function)
 # See API documentation for details
 
-# Check all detected containers
-grep "identified as container" .agent-shepherd/data/logs/worker.log
+# Check all detected issue containers
+grep "identified as issue container" .agent-shepherd/data/logs/worker.log
 ```
 
 ### Validate Configuration
@@ -627,7 +638,7 @@ grep "identified as container" .agent-shepherd/data/logs/worker.log
 # Validate config file
 ashep validate-config
 
-# Check container handling config
+# Check issue container handling config
 cat .agent-shepherd/config/config.yaml | grep -A 30 "container_handling"
 
 # Validate agents configuration
@@ -649,14 +660,14 @@ grep "Ordered issues in" .agent-shepherd/data/logs/worker.log
 
 ## Log Analysis
 
-### Container Detection Logs
+### Issue Container Detection Logs
 
 ```bash
-# Find all container detection attempts
-grep "Checking container status" .agent-shepherd/data/logs/worker.log
+# Find all issue container detection attempts
+grep "Checking issue container status" .agent-shepherd/data/logs/worker.log
 
-# Filter by container detection results
-grep "identified as container" .agent-shepherd/data/logs/worker.log
+# Filter by issue container detection results
+grep "identified as issue container" .agent-shepherd/data/logs/worker.log
 
 # Check confidence scores
 grep "confidence" .agent-shepherd/data/logs/worker.log | grep container
@@ -666,7 +677,7 @@ grep "confidence" .agent-shepherd/data/logs/worker.log | grep container
 
 ```bash
 # Find all validation attempts
-grep "Validating container" .agent-shepherd/data/logs/worker.log
+grep "Validating issue container" .agent-shepherd/data/logs/worker.log
 
 # Check validation outcomes
 grep "Validation result:" .agent-shepherd/data/logs/worker.log
@@ -789,7 +800,7 @@ tar -czf container-handling-debug.tar.gz \
   .agent-shepherd/data/logs/worker.log \
   .agent-shepherd/data/decisions.jsonl
 
-# Get container details
+# Get issue container details
 bd show EPIC-123 > epic-123-details.txt
 bd dep list EPIC-123 > epic-123-dependencies.txt
 ```
@@ -814,7 +825,7 @@ When reporting issues, include:
 
 ### Before Troubleshooting
 
-- [ ] Container handling enabled in config
+- [ ] Issue container handling enabled in config
 - [ ] Worker engine running
 - [ ] Config file validated
 - [ ] Logs reviewed for errors
@@ -822,7 +833,7 @@ When reporting issues, include:
 
 ### Common Fixes Checklist
 
-- [ ] Enable container handling
+- [ ] Enable issue container handling
 - [ ] Adjust detection thresholds
 - [ ] Add parent-child dependencies
 - [ ] Configure validation agent
