@@ -79,6 +79,34 @@ export interface SessionContinuationConfig {
   default_threshold: number;
 }
 
+export type ContainerHandlingMode = "auto-close" | "hitl" | "validate";
+
+export interface LevelPolicy {
+  mode: ContainerHandlingMode;
+  workflow_override?: string;
+}
+
+export interface ContainerOrderingConfig {
+  strategy: "dependency" | "hierarchy" | "hybrid";
+  prefer_depth: number;
+  dependency_weight: number;
+}
+
+export interface ContainerDetectionConfig {
+  check_children: boolean;
+  check_description: boolean;
+  check_dependencies: boolean;
+  min_children: number;
+}
+
+export interface ContainerHandlingConfig {
+  enabled: boolean;
+  default_mode: ContainerHandlingMode;
+  level_policies?: Record<string, LevelPolicy>;
+  ordering?: ContainerOrderingConfig;
+  container_detection?: ContainerDetectionConfig;
+}
+
 export interface AgentShepherdConfig {
   version: string;
   worker?: {
@@ -106,6 +134,7 @@ export interface AgentShepherdConfig {
   retention?: RetentionConfig;
   worker_assistant?: WorkerAssistantConfig;
   session_continuation?: SessionContinuationConfig;
+  container_handling?: ContainerHandlingConfig;
 }
 
 /**
@@ -217,6 +246,45 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
       } : {
         default_max_context_tokens: 130000,
         default_threshold: 0.8
+      },
+      container_handling: config.container_handling ? {
+        enabled: config.container_handling.enabled ?? true,
+        default_mode: config.container_handling.default_mode ?? "auto-close",
+        level_policies: config.container_handling.level_policies,
+        ordering: config.container_handling.ordering ? {
+          strategy: config.container_handling.ordering.strategy ?? "hybrid",
+          prefer_depth: config.container_handling.ordering.prefer_depth ?? 1,
+          dependency_weight: config.container_handling.ordering.dependency_weight ?? 0.7
+        } : {
+          strategy: "hybrid",
+          prefer_depth: 1,
+          dependency_weight: 0.7
+        },
+        container_detection: config.container_handling.container_detection ? {
+          check_children: config.container_handling.container_detection.check_children ?? true,
+          check_description: config.container_handling.container_detection.check_description ?? true,
+          check_dependencies: config.container_handling.container_detection.check_dependencies ?? true,
+          min_children: config.container_handling.container_detection.min_children ?? 2
+        } : {
+          check_children: true,
+          check_description: true,
+          check_dependencies: true,
+          min_children: 2
+        }
+      } : {
+        enabled: true,
+        default_mode: "auto-close",
+        ordering: {
+          strategy: "hybrid",
+          prefer_depth: 1,
+          dependency_weight: 0.7
+        },
+        container_detection: {
+          check_children: true,
+          check_description: true,
+          check_dependencies: true,
+          min_children: 2
+        }
       }
     };
   } catch (error) {

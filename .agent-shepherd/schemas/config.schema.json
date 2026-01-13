@@ -453,6 +453,99 @@
         }
       },
       "additionalProperties": false
+    },
+    "container_handling": {
+      "type": "object",
+      "description": "Smart container handling configuration for epics and parent tasks",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master switch for container handling system"
+        },
+        "default_mode": {
+          "type": "string",
+          "enum": ["auto-close", "hitl", "validate"],
+          "default": "auto-close",
+          "description": "Default handling mode for containers: auto-close (close when all subtasks complete), hitl (require human validation), validate (AI validation with potential workflow triggering)"
+        },
+        "level_policies": {
+          "type": "object",
+          "description": "Per-level handling policies keyed by hierarchy depth (1 = top-level epics, 2 = sub-epics, etc.)",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["auto-close", "hitl", "validate"],
+                "description": "Handling mode for this level"
+              },
+              "workflow_override": {
+                "type": "string",
+                "description": "Specific workflow to trigger for containers at this level (only used with 'validate' mode)"
+              }
+            },
+            "required": ["mode"],
+            "additionalProperties": false
+          }
+        },
+        "ordering": {
+          "type": "object",
+          "description": "Smart ordering configuration for container handling",
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": ["dependency", "hierarchy", "hybrid"],
+              "default": "hybrid",
+              "description": "Ordering strategy: dependency (topological sort), hierarchy (depth-based), hybrid (dependency with hierarchy fallback)"
+            },
+            "prefer_depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "default": 1,
+              "description": "Prefer deeper issues when breaking ties (higher value = more preference for depth)"
+            },
+            "dependency_weight": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.7,
+              "description": "Weight for dependency ordering in hybrid mode (0 = hierarchy only, 1 = dependency only)"
+            }
+          },
+          "additionalProperties": false
+        },
+        "container_detection": {
+          "type": "object",
+          "description": "Configuration for container detection heuristics",
+          "properties": {
+            "check_children": {
+              "type": "boolean",
+              "default": true,
+              "description": "Use child count in container detection"
+            },
+            "check_description": {
+              "type": "boolean",
+              "default": true,
+              "description": "Use description pattern matching in container detection"
+            },
+            "check_dependencies": {
+              "type": "boolean",
+              "default": true,
+              "description": "Use dependency patterns in container detection"
+            },
+            "min_children": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 2,
+              "description": "Minimum number of children to consider as container"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -539,6 +632,30 @@
         "archive_on_startup": false,
         "delete_on_startup": false,
         "schedule_interval_hours": 24
+      },
+      "container_handling": {
+        "enabled": true,
+        "default_mode": "auto-close",
+        "level_policies": {
+          "1": {
+            "mode": "validate",
+            "workflow_override": "epic-review"
+          },
+          "2": {
+            "mode": "auto-close"
+          }
+        },
+        "ordering": {
+          "strategy": "hybrid",
+          "prefer_depth": 1,
+          "dependency_weight": 0.7
+        },
+        "container_detection": {
+          "check_children": true,
+          "check_description": true,
+          "check_dependencies": true,
+          "min_children": 2
+        }
       }
     }
   ]
