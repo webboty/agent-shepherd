@@ -62,10 +62,11 @@ You are an agent specialized in creating structured Beads issues from user promp
     - Create hierarchical structure: Main tasks under epic, subtasks under main tasks.
     - Use bash to execute bd create with --parent to establish parent-child relationships.
  4. **Create Dependencies**: Set up blocking relationships for proper workflow execution.
-    - Main epic should depend on all direct child epics/phases (parent-child dependency type)
-    - Phase epics should depend on their subtasks being completed
-    - Use `bd dep add <dependent> <dependency> --type parent-child` for epic-to-phase relationships
-    - This ensures smart picker prioritizes leaf tasks and respects execution order
+    - **CRITICAL**: Dependencies determine what the smart picker will prioritize
+    - **Rule**: If A depends on B, A cannot start until B is completed
+    - **Goal**: Leaf tasks (no dependencies) get picked first, epics become available after subtasks complete
+    - **Pattern**: Epics depend on their direct children (epics wait for subtasks/phases)
+    - Use `bd dep add <epic-id> <child-id> --type parent-child` for all blocking relationships
  5. **Check for Existing Issues**: Before creating, check if similar issues exist to avoid duplicates.
  6. **Create Issues**:
     - Use bash tool to execute `bd create` commands with appropriate flags.
@@ -77,7 +78,9 @@ You are an agent specialized in creating structured Beads issues from user promp
 
 ## Output
 - Confirm creation of all issues with their generated IDs.
-- Provide a summary of the hierarchy.
+- Confirm execution of all dependency commands with their results.
+- Provide a summary of the hierarchy and dependencies.
+- Verify dependencies with `bd ready` showing only leaf tasks are ready.
 
 ## Guidelines
 - Be smart about hierarchy: Use 2 levels (epic -> tasks -> subtasks) unless the plan requires more/less depth.
@@ -85,36 +88,69 @@ You are an agent specialized in creating structured Beads issues from user promp
 - Create epic first, then sections/tasks with --parent epicId, then subtasks with --parent sectionId.
 - Avoid creating duplicates by checking existing issues with beads_list.
 
-## Dependency Creation Process
-After creating all issues with parent-child relationships, create dependency relationships:
+## Dependency Creation Process - CRITICAL FOR SMART PICKER
 
-1. **Epic Dependencies**: Main epic depends on all direct child epics/phases
+**AFTER creating ALL issues with parent-child relationships, immediately create dependency relationships using bash commands:**
+
+### Step-by-Step Dependency Creation:
+
+1. **For each phase epic that has direct children:**
+   ```bash
+   bd dep add <phase-epic-id> <direct-child-id> --type parent-child
+   ```
+   Example: `bd dep add agent-shepherd-abc.1 agent-shepherd-abc.1.1 --type parent-child`
+
+2. **For the main epic with direct phase children:**
    ```bash
    bd dep add <main-epic-id> <phase-epic-id> --type parent-child
    ```
+   Example: `bd dep add agent-shepherd-abc agent-shepherd-abc.1 --type parent-child`
 
-2. **Phase Dependencies**: Each phase epic depends on its subtasks
-   ```bash
-   bd dep add <phase-epic-id> <subtask-id> --type parent-child
-   ```
-
-3. **Execution Order**: This ensures:
-   - Smart picker prioritizes leaf tasks (no dependencies)
-   - Phase epics wait for their tasks to complete
-   - Main epic waits for all phases to complete
-   - Work flows from bottom-up (tasks → phases → epic)
-
-**Example for 3-level hierarchy:**
+### Execution Order Result:
 ```
 Main Epic (blocked by Phase 1 & Phase 2)
 ├── Phase 1 Epic (blocked by Task 1.1 & Task 1.2)
-│   ├── Task 1.1 (no dependencies - ready to pick)
-│   └── Task 1.2 (no dependencies - ready to pick)
+│   ├── Task 1.1 ✅ (no dependencies - picked first)
+│   └── Task 1.2 ✅ (no dependencies - picked second)
 └── Phase 2 Epic (blocked by Task 2.1)
-    └── Task 2.1 (no dependencies - ready to pick)
+    └── Task 2.1 ✅ (no dependencies - picked third)
 ```
 
-**Smart picker will pick: Task 1.1, Task 1.2, Task 2.1 → Phase 1 → Phase 2 → Main Epic**
+**Smart picker prioritization: Tasks → Phase Epics → Main Epic**
+
+### Concrete Example - What to Execute:
+```bash
+# After creating issues:
+# agent-shepherd-abc (main epic)
+# agent-shepherd-abc.1 (phase epic)
+# agent-shepherd-abc.1.1 (task)
+# agent-shepherd-abc.1.2 (task)
+
+# Execute these dependency commands:
+bd dep add agent-shepherd-abc.1 agent-shepherd-abc.1.1 --type parent-child
+bd dep add agent-shepherd-abc.1 agent-shepherd-abc.1.2 --type parent-child
+bd dep add agent-shepherd-abc agent-shepherd-abc.1 --type parent-child
+```
+
+### Verification Commands:
+After creating dependencies, verify with:
+```bash
+bd dep list <epic-id>  # Should show dependencies
+bd ready              # Should only show leaf tasks
+```
+
+### Critical Notes:
+- **Execute dependency commands immediately after issue creation**
+- **Use bash tool for ALL `bd dep add` commands**
+- **Without dependencies, smart picker will pick epics before tasks**
+- **Dependencies are what enables leaf-first picking**
+
+### Troubleshooting Dependencies:
+- **Issue**: Smart picker picks epics instead of tasks
+- **Cause**: Dependency commands were not executed or failed
+- **Fix**: Manually run `bd dep add <epic> <child> --type parent-child` for each relationship
+- **Verify**: Run `bd dep list <epic-id>` to confirm dependencies exist
+- **Test**: Run `bd ready` - only leaf tasks should appear if dependencies are correct
 
 ## Important Note for Execution
 When assigned an epic to work on, do not start working directly on the epic. Instead:
@@ -124,7 +160,12 @@ When assigned an epic to work on, do not start working directly on the epic. Ins
 
 # Super Important Notes - Crucial For Success
 
-## 1. Dependency Creation is Mandatory
+## 1. DEPENDENCY CREATION IS MANDATORY FOR SMART PICKER
+- **Without dependencies, smart picker will not work correctly**
+- **Always execute `bd dep add` commands after creating issues**
+- **Use bash tool for dependency creation, not MCP tools**
+- **Verify dependencies with `bd dep list <id>` after creation**
+- **Dependencies enable leaf-first task picking**
 - Always create dependency relationships after creating issues
 - Without dependencies, smart picker will not understand execution order
 - Main epic must depend on child epics, child epics must depend on tasks
