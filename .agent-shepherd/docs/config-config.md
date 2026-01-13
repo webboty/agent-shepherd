@@ -890,4 +890,183 @@ When a policy requires a capability:
 4. Checks if fallback agent exists and is active
 5. Logs which fallback agent is being used
 
+## Container Handling Configuration
+
+The Smart Container Handling System provides intelligent management of epics and parent tasks with automatic detection, hierarchy-based policies, and smart ordering.
+
+### `container_handling` (object)
+**Required**: No
+**Purpose**: Manage epics and parent tasks automatically
+**Impact**: Containers closed automatically or with validation
+
+**Note**: For comprehensive documentation on container handling, see:
+- [Container Handling User Guide](./container-handling-user-guide.md) - User-facing guide with examples
+- [Container Handling API Documentation](./container-handling-api.md) - Technical implementation details
+- [Container Handling Troubleshooting Guide](./container-handling-troubleshooting.md) - Debug and fix issues
+
+#### `enabled` (boolean)
+**Required**: No (default: false)
+**Purpose**: Master switch for container handling system
+**Impact**: When false, all container handling features are disabled
+
+**Values**: true/false
+
+**Examples**:
+```yaml
+container_handling:
+  enabled: true  # Enable container handling
+```
+
+#### `default_mode` (string)
+**Required**: No (default: "auto-close")
+**Purpose**: Default handling mode for containers
+**Impact**: Controls how containers are processed when all children complete
+
+**Values**:
+- `auto-close` - Automatically close containers when all subtasks complete
+- `hitl` - Require human validation before closing
+- `validate` - Use AI validation with potential workflow triggering
+
+**Examples**:
+```yaml
+container_handling:
+  default_mode: auto-close  # Simple auto-closing
+```
+
+```yaml
+container_handling:
+  default_mode: hitl  # Require human review
+```
+
+```yaml
+container_handling:
+  default_mode: validate  # AI-powered validation
+```
+
+#### `level_policies` (object)
+**Required**: No
+**Purpose**: Per-level handling policies keyed by hierarchy depth
+**Impact**: Different containers can have different handling based on depth
+
+**Structure**:
+- Keys: Hierarchy level as string ("1", "2", "3", etc.)
+- Values: Policy object with `mode` and optional `workflow_override`
+
+**Hierarchy Levels**:
+- Level 1: Top-level epics (EPIC-1)
+- Level 2: Sub-epics (EPIC-1.1)
+- Level 3: Sub-subtasks (EPIC-1.1.1)
+
+**Examples**:
+```yaml
+container_handling:
+  default_mode: auto-close
+  level_policies:
+    "1":
+      mode: validate  # Top-level epics need AI validation
+      workflow_override: epic-review
+    "2":
+      mode: hitl  # Sub-epics need human review
+    "3":
+      mode: auto-close  # Deep tasks auto-close
+```
+
+#### `ordering` (object)
+**Required**: No
+**Purpose**: Smart ordering configuration for container handling
+**Impact**: Controls how issues within containers are ordered
+
+**Properties**:
+- `strategy` (string): Ordering strategy - "dependency", "hierarchy", or "hybrid"
+- `prefer_depth` (number): Depth preference for tie-breaking (1-10)
+- `dependency_weight` (number): Weight for dependency ordering in hybrid mode (0.0-1.0)
+
+**Ordering Strategies**:
+- `dependency` - Topological sort based on dependencies only
+- `hierarchy` - Depth-based ordering ignoring dependencies
+- `hybrid` (recommended) - Dependency primary, hierarchy fallback
+
+**Examples**:
+```yaml
+container_handling:
+  ordering:
+    strategy: hybrid  # Best for production
+    prefer_depth: 1
+    dependency_weight: 0.7  # 70% dependency, 30% hierarchy
+```
+
+```yaml
+container_handling:
+  ordering:
+    strategy: dependency  # Strict dependency ordering
+```
+
+```yaml
+container_handling:
+  ordering:
+    strategy: hierarchy  # Fast depth-based ordering
+    prefer_depth: 3  # Strong preference for deeper issues
+```
+
+#### `container_detection` (object)
+**Required**: No
+**Purpose**: Configuration for container detection heuristics
+**Impact**: Controls how the system identifies containers
+
+**Properties**:
+- `check_children` (boolean): Use child count in container detection
+- `check_description` (boolean): Use description pattern matching
+- `check_dependencies` (boolean): Use dependency patterns
+- `min_children` (number): Minimum number of children to consider as container
+
+**Detection Factors**:
+1. **Container Type** (40% confidence) - Issue type: epic, milestone, phase, group
+2. **Children Count** (30% confidence) - Must meet `min_children` threshold
+3. **Description Language** (20% confidence) - Patterns: "subtasks", "tasks", "includes"
+4. **Dependency Structure** (10% confidence) - Parent-child dependency patterns
+
+**Threshold**: Container if confidence >= 0.5
+
+**Examples**:
+```yaml
+container_handling:
+  container_detection:
+    check_children: true
+    check_description: true
+    check_dependencies: true
+    min_children: 2  # Require at least 2 children
+```
+
+```yaml
+container_handling:
+  container_detection:
+    min_children: 5  # Higher threshold reduces false positives
+    check_description: false  # Disable pattern matching
+```
+
+### Complete Container Handling Example
+
+```yaml
+container_handling:
+  enabled: true
+  default_mode: auto-close
+  level_policies:
+    "1":
+      mode: validate
+      workflow_override: strategic-epic-review
+    "2":
+      mode: hitl
+    "3":
+      mode: auto-close
+  ordering:
+    strategy: hybrid
+    prefer_depth: 1
+    dependency_weight: 0.7
+  container_detection:
+    check_children: true
+    check_description: true
+    check_dependencies: true
+    min_children: 2
+```
+
 ### Troubleshooting
