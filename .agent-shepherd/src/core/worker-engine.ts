@@ -442,72 +442,165 @@ export class WorkerEngine {
   }
 
    /**
-     * Check if an issue is a container epic and should be handled accordingly
-     */
-   private async isContainerEpic(issue: BeadsIssue): Promise<{
-     is_container: boolean;
-     mode: ContainerHandlingMode;
-     workflow_override?: string;
-     confidence: number;
-   }> {
-     const config = loadConfig();
-     const containerConfig = config.container_handling;
+      * Check if an issue is a container epic and should be handled accordingly
+      */
+    private async isContainerEpic(issue: BeadsIssue): Promise<{
+      is_container: boolean;
+      mode: ContainerHandlingMode;
+      workflow_override?: string;
+      confidence: number;
+      ready_to_close: boolean;
+    }> {
+      const config = loadConfig();
+      const containerConfig = config.container_handling;
 
-     if (!containerConfig?.enabled) {
-       return {
-         is_container: false,
-         mode: "auto-close",
-         confidence: 0
-      };
+      if (!containerConfig?.enabled) {
+        return {
+          is_container: false,
+          mode: "auto-close",
+          confidence: 0,
+          ready_to_close: false
+       };
       }
 
-      // Check if this is a container using multi-factor analysis
-      // For backward compatibility, create a simplified check
+      // Multi-factor container detection
       const hasChildren = await this.hasContainerChildren(issue);
-      const allChildrenComplete = await this.areAllChildrenComplete(issue);
+      const hasContainerType = this.isContainerType(issue);
       const hasContainerLanguage = this.hasContainerLanguage(issue);
+      const hasContainerStructure = await this.hasContainerStructure(issue);
 
-     const isContainer = hasChildren && allChildrenComplete && hasContainerLanguage;
+      // Calculate confidence score based on factor matches
+      const confidence = this.calculateContainerConfidence(
+        hasChildren,
+        hasContainerType,
+        hasContainerLanguage,
+        hasContainerStructure
+      );
 
-     // Get policy based on hierarchy level
-     const level = this.calculateHierarchicalLevel(issue.id);
-     let policy: LevelPolicy | undefined;
-     if (containerConfig.level_policies) {
-       policy = containerConfig.level_policies[level.toString()];
-     }
+      const isContainer = confidence >= 0.5;
 
-     const mode: ContainerHandlingMode = policy?.mode || containerConfig.default_mode || "auto-close";
+      // Check if container is ready to close (all children complete)
+      const readyToClose = isContainer && await this.areAllChildrenComplete(issue);
 
-     return {
-       is_container: isContainer,
-       mode,
-       workflow_override: policy?.workflow_override,
-       confidence: isContainer ? 1.0 : 0.0
-     };
-   }
+      // Get policy based on hierarchy level
+      const level = this.calculateHierarchicalLevel(issue.id);
+      let policy: LevelPolicy | undefined;
+      if (containerConfig.level_policies) {
+        policy = containerConfig.level_policies[level.toString()];
+      }
+
+      const mode: ContainerHandlingMode = policy?.mode || containerConfig.default_mode || "auto-close";
+
+      return {
+        is_container: isContainer,
+        mode,
+        workflow_override: policy?.workflow_override,
+        confidence,
+        ready_to_close: readyToClose
+      };
+    }
 
    /**
-     * Check if issue has container children (parent-child dependencies)
-     */
-   private async hasContainerChildren(issue: BeadsIssue): Promise<boolean> {
-     try {
-       const { execBeadsCommand } = await import("./beads.ts");
-       const output = await execBeadsCommand(["dep", "list", issue.id, "--json"]);
-       const deps = JSON.parse(output);
+      * Check if issue has container children (parent-child dependencies)
+      */
+    private async hasContainerChildren(issue: BeadsIssue): Promise<boolean> {
+      try {
+        const { execBeadsCommand } = await import("./beads.ts");
+        const output = await execBeadsCommand(["dep", "list", issue.id, "--json"]);
+        const deps = JSON.parse(output);
 
-       if (!Array.isArray(deps)) {
-         return false;
-       }
+        if (!Array.isArray(deps)) {
+          return false;
+        }
 
-       const minChildren = loadConfig().container_handling?.container_detection?.min_children || 2;
-       const childCount = deps.filter((dep: any) => dep.dependency_type === "parent-child").length;
+        const minChildren = loadConfig().container_handling?.container_detection?.min_children || 2;
+        const childCount = deps.filter((dep: any) => dep.dependency_type === "parent-child").length;
 
-       return childCount >= minChildren;
-     } catch (error) {
-       console.warn(`Failed to check container children for ${issue.id}: ${error}`);
-       return false;
-     }
-   }
+        return childCount >= minChildren;
+      } catch (error) {
+        console.warn(`Failed to check container children for ${issue.id}: ${error}`);
+        return false;
+      }
+    }
+
+   /**
+      * Check if issue type indicates a container
+      */
+    private isContainerType(issue: BeadsIssue): boolean {
+      const containerTypes = ["epic", "milestone", "phase", "group"];
+      return containerTypes.includes(issue.issue_type?.toLowerCase() || "");
+    }
+
+   /**
+      * Check if issue has container-like structure (dependencies pattern)
+      */
+    private async hasContainerStructure(issue: BeadsIssue): Promise<boolean> {
+      try {
+        const { execBeadsCommand } = await import("./beads.ts");
+        const output = await execBeadsCommand(["dep", "list", issue.id, "--json"]);
+        const deps = JSON.parse(output);
+
+        if (!Array.isArray(deps)) {
+          return false;
+        }
+
+        // Check for mix of parent-child and other dependency types
+        const hasParentChild = deps.some((dep: any) => dep.dependency_type === "parent-child");
+
+        // Container epics typically have parent-child dependencies
+        return hasParentChild;
+      } catch (error) {
+        console.warn(`Failed to check container structure for ${issue.id}: ${error}`);
+        return false;
+      }
+    }
+
+   /**
+      * Calculate confidence score for container detection
+      */
+    private calculateContainerConfidence(
+      hasChildren: boolean,
+      hasContainerType: boolean,
+      hasContainerLanguage: boolean,
+      hasContainerStructure: boolean
+    ): number {
+      let score = 0;
+      let factors = 0;
+
+      // Factor 1: Container type (strong indicator)
+      if (hasContainerType) {
+        score += 0.4;
+        factors++;
+      }
+
+      // Factor 2: Has children (strong indicator)
+      if (hasChildren) {
+        score += 0.3;
+        factors++;
+      }
+
+      // Factor 3: Container language (medium indicator)
+      if (hasContainerLanguage) {
+        score += 0.2;
+        factors++;
+      }
+
+      // Factor 4: Container structure (medium indicator)
+      if (hasContainerStructure) {
+        score += 0.1;
+        factors++;
+      }
+
+      // Adjust based on factor count
+      // If multiple factors agree, boost confidence
+      if (factors >= 3) {
+        score = Math.min(1.0, score + 0.2);
+      } else if (factors === 2) {
+        score = Math.min(1.0, score + 0.1);
+      }
+
+      return Math.round(score * 100) / 100;
+    }
 
    /**
      * Check if all container children are complete
@@ -595,33 +688,33 @@ export class WorkerEngine {
      phase: string,
      policy: string
    ): Promise<{ outcome: RunOutcome; sessionId?: string; metadata?: any }> {
-    const startTimestamp = Date.now();
+     const startTimestamp = Date.now();
 
-      // Check if this is a container epic that should be handled specially
-      const containerCheck = await this.isContainerEpic(issue);
+       // Check if this is a container epic that should be handled specially
+       const containerCheck = await this.isContainerEpic(issue);
 
-      if (containerCheck.is_container && containerCheck.mode === "auto-close") {
-        console.log(
-          `Detected container epic ${issue.id} in auto-close mode - closing since all subtasks are complete`
-        );
-        return {
-          outcome: {
-            success: true,
-            message: "Container epic auto-closed - all subtasks completed",
-            artifacts: [],
-            metrics: {
-              duration_ms: Date.now() - startTimestamp,
-              tokens_used: 0,
-              cost: 0
-            }
-          },
-          metadata: {
-            auto_closed: true,
-            reason: "container_epic_completed",
-            handling_mode: containerCheck.mode
-          }
-        };
-      }
+       if (containerCheck.is_container && containerCheck.ready_to_close && containerCheck.mode === "auto-close") {
+         console.log(
+           `Detected container epic ${issue.id} in auto-close mode - closing since all subtasks are complete`
+         );
+         return {
+           outcome: {
+             success: true,
+             message: "Container epic auto-closed - all subtasks completed",
+             artifacts: [],
+             metrics: {
+               duration_ms: Date.now() - startTimestamp,
+               tokens_used: 0,
+               cost: 0
+             }
+           },
+           metadata: {
+             auto_closed: true,
+             reason: "container_epic_completed",
+             handling_mode: containerCheck.mode
+           }
+         };
+       }
 
      const agent = this.agentRegistry.getAgent(agentId);
      if (!agent) {
