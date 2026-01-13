@@ -43,6 +43,7 @@ agents:
     name: "Display Name"
     description: "Brief description of agent's purpose"
     capabilities: ["capability1", "capability2"]
+    opencode_agent: "OpenCodeAgentName"  # Optional - OpenCode agent name
     provider_id: "provider-name"
     model_id: "model-identifier"
     priority: 10
@@ -114,6 +115,17 @@ agents:
 | `qa` | Quality assurance processes | Testing and validation |
 | `review` | Code and content review | Quality control |
 | `worker-assistant` | AI-powered outcome interpretation | Interprets complex agent outcomes to determine workflow actions |
+
+#### `opencode_agent` (string)
+**Required**: No (defaults to the value of `id`)  
+**Purpose**: OpenCode agent name to use in CLI calls  
+**Impact**: Allows using OpenCode agent names that may require specific capitalization or naming conventions different from the internal `id`  
+**Values**: Any valid OpenCode agent name  
+**Examples**: `Build`, `CodeReviewer`, `PlanningAgent`  
+**Use Cases**:
+- When OpenCode expects agent names with specific capitalization
+- When using predefined OpenCode agents with established names
+- When the internal `id` follows different naming conventions than OpenCode requires
 
 #### `provider_id` (string)
 **Required**: No (uses OpenCode agent default if omitted)  
@@ -220,6 +232,21 @@ When a policy requires specific capabilities, Agent Shepherd:
   metadata:
     agent_type: primary
   # provider_id and model_id omitted - uses OpenCode agent defaults
+  # opencode_agent omitted - uses "build" (value of id)
+```
+
+### Agent with Custom OpenCode Name
+```yaml
+- id: my-builder
+  name: "Custom Build Agent"
+  description: "Uses OpenCode's predefined Build agent"
+  capabilities: ["coding", "refactoring", "building"]
+  opencode_agent: Build  # Uses OpenCode's "Build" agent (with capital B)
+  priority: 15
+  constraints:
+    performance_tier: balanced
+  metadata:
+    agent_type: primary
 ```
 
 ### Specialized Agent with Custom Model
