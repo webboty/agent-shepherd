@@ -454,6 +454,26 @@
       },
       "additionalProperties": false
     },
+    "execution": {
+      "type": "object",
+      "description": "Agent execution mode configuration",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["cli", "sdk"],
+          "default": "sdk",
+          "description": "Execution mode: 'cli' (use OpenCode CLI) or 'sdk' (use OpenCode SDK for reliability)"
+        },
+        "sdk_base_url": {
+          "type": "string",
+          "format": "uri",
+          "default": "http://localhost:4096",
+          "description": "Base URL for OpenCode SDK API server (only used when mode='sdk')"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
     "container_handling": {
       "type": "object",
       "description": "Smart container handling configuration for epics and parent tasks",
@@ -656,6 +676,10 @@
           "check_dependencies": true,
           "min_children": 2
         }
+      },
+      "execution": {
+        "mode": "sdk",
+        "sdk_base_url": "http://localhost:4096"
       }
     }
   ]

@@ -79,6 +79,11 @@ export interface SessionContinuationConfig {
   default_threshold: number;
 }
 
+export interface ExecutionConfig {
+  mode: "cli" | "sdk";
+  sdk_base_url?: string;
+}
+
 export type ContainerHandlingMode = "auto-close" | "hitl" | "validate";
 
 export interface LevelPolicy {
@@ -135,6 +140,7 @@ export interface AgentShepherdConfig {
   worker_assistant?: WorkerAssistantConfig;
   session_continuation?: SessionContinuationConfig;
   container_handling?: ContainerHandlingConfig;
+  execution?: ExecutionConfig;
 }
 
 /**
@@ -246,6 +252,13 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
       } : {
         default_max_context_tokens: 130000,
         default_threshold: 0.8
+      },
+      execution: config.execution ? {
+        mode: config.execution.mode ?? "sdk",
+        sdk_base_url: config.execution.sdk_base_url
+      } : {
+        mode: "sdk",
+        sdk_base_url: undefined
       },
       container_handling: config.container_handling ? {
         enabled: config.container_handling.enabled ?? true,
