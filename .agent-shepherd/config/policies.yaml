@@ -290,5 +290,78 @@ policies:
     timeout_base_ms: 300000
     stall_threshold_ms: 60000
     require_hitl: false
+ 
+  # Container validation workflows for multi-level container handling
+  container-l1:
+    name: Container Level 1 Workflow
+    description: Workflow for level 1 container epics requiring additional work
+    phases:
+      - name: analyze
+        description: Analyze container and identify required work
+        capabilities:
+          - analysis
+          - planning
+        timeout_multiplier: 1.0
+
+      - name: implement
+        description: Implement required work in container
+        capabilities:
+          - coding
+          - planning
+        timeout_multiplier: 2.0
+
+      - name: verify
+        description: Verify container work is complete
+        capabilities:
+          - testing
+          - qa
+        timeout_multiplier: 1.0
+
+    retry:
+      max_attempts: 2
+      backoff_strategy: exponential
+      initial_delay_ms: 5000
+      max_delay_ms: 30000
+
+    timeout_base_ms: 300000
+    stall_threshold_ms: 60000
+    require_hitl: false
+
+  container-l2:
+    name: Container Level 2 Workflow
+    description: Workflow for level 2 container epics requiring additional work
+    phases:
+      - name: decompose
+        description: Decompose higher-level container into actionable tasks
+        capabilities:
+          - planning
+          - architecture
+          - analysis
+        timeout_multiplier: 1.5
+
+      - name: coordinate
+        description: Coordinate work across sub-containers and tasks
+        capabilities:
+          - planning
+          - coding
+          - architecture
+        timeout_multiplier: 2.0
+
+      - name: validate-structure
+        description: Validate container structure and dependencies
+        capabilities:
+          - analysis
+          - validation
+        timeout_multiplier: 1.0
+
+    retry:
+      max_attempts: 3
+      backoff_strategy: exponential
+      initial_delay_ms: 5000
+      max_delay_ms: 60000
+
+    timeout_base_ms: 300000
+    stall_threshold_ms: 60000
+    require_hitl: false
 
 default_policy: simple

@@ -1,7 +1,7 @@
 version: "1.0"
 
 worker_assistant:
-  enabled: false
+  enabled: true
   agentCapability: worker-assistant
   timeoutMs: 10000
   fallbackAction: block
