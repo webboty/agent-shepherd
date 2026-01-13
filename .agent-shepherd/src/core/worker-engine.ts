@@ -497,7 +497,7 @@ export class WorkerEngine {
       result = await this.opencode.runAgentCLI({
         directory: process.cwd(),
         title: `${issue.id}: ${issue.title}`,
-        agent: agentId,
+        agent: agent.opencode_agent || agentId,
         model: modelToUse,
         message: instructions,
         sessionId: sessionIdToUse,
@@ -509,7 +509,7 @@ export class WorkerEngine {
         result = await this.opencode.runAgentCLI({
           directory: process.cwd(),
           title: `${issue.id}: ${issue.title}`,
-          agent: agentId,
+          agent: agent.opencode_agent || agentId,
           model: modelToUse,
           message: instructions,
         });
