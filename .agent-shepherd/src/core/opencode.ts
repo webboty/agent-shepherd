@@ -4,7 +4,7 @@
  */
 
 export interface ProgressCallback {
-  (message: string): void;
+  (_msg: string): void;
 }
 
 export interface SessionConfig {
@@ -217,7 +217,10 @@ export class OpenCodeClient {
    * @returns Run result with success, output, error
    */
   async runAgentSDK(config: SessionConfig, onProgress?: ProgressCallback): Promise<RunResult> {
-    const { getSDKClient } = await import('./opencode_sdk.ts');
+    const sdkModule = await import('./opencode_sdk.ts');
+    const getSDKClient = sdkModule.getSDKClient;
+    const SDKErrorType = sdkModule.SDKErrorType;
+    const SDKError = sdkModule.SDKError;
     const sdkClient = getSDKClient();
 
     try {
@@ -262,10 +265,21 @@ export class OpenCodeClient {
       });
 
       if (!executeResult.success) {
+        // Agent execution failed - handle specific error types
+        const errorType = executeResult.errorType || SDKErrorType.UNKNOWN_ERROR;
+
+        // Map SDK error types to CLI-like error messages
+        let errorMessage = executeResult.error || 'Agent execution failed';
+        if (errorType === SDKErrorType.AGENT_NOT_FOUND) {
+          errorMessage = `Agent not found: ${config.agent || 'default'}. Check agent configuration.`;
+        } else if (errorType === SDKErrorType.SESSION_NOT_FOUND) {
+          errorMessage = `Session not found: ${sessionId}. Session may have been deleted or is invalid.`;
+        }
+
         return {
           success: false,
           output: '',
-          error: executeResult.error,
+          error: errorMessage,
           sessionId,
         };
       }
@@ -279,6 +293,28 @@ export class OpenCodeClient {
         60 * 1000, // 1 minute polling
         progressCallback
       );
+
+      if (!finalResult.success) {
+        // Handle timeout or execution errors
+        let errorMessage = finalResult.error || 'Agent execution failed';
+
+        // Add context for timeouts
+        if (finalResult.errorType === SDKErrorType.EXECUTION_TIMEOUT) {
+          errorMessage = `Agent execution timeout: ${errorMessage}`;
+        }
+
+        // Cleanup session on error (only if it's a new session)
+        if (!config.sessionId) {
+          await sdkClient.cleanupSession(sessionId, false, true); // isTestSession=false, onError=true
+        }
+
+        return {
+          success: false,
+          output: finalResult.output || '',
+          error: errorMessage,
+          sessionId,
+        };
+      }
 
       if (finalResult.success && finalResult.data) {
         // Extract last assistant message for output
@@ -298,10 +334,41 @@ export class OpenCodeClient {
       return finalResult;
     } catch (error) {
       console.error('SDK execution error:', error);
+
+      // Check if this is an SDKError
+      let errorMessage = 'SDK execution error';
+      if (error instanceof SDKError) {
+        // Map SDK error to CLI-like error message
+        switch (error.type) {
+          case SDKErrorType.NETWORK_ERROR:
+            errorMessage = `Cannot connect to OpenCode server. Ensure server is running at ${sdkClient.getBaseUrl()}`;
+            break;
+          case SDKErrorType.AGENT_NOT_FOUND:
+            errorMessage = `Agent not found: ${config.agent || 'default'}`;
+            break;
+          case SDKErrorType.SESSION_NOT_FOUND:
+            errorMessage = `Session not found: ${sessionId}`;
+            break;
+          case SDKErrorType.SESSION_CREATION_FAILED:
+            errorMessage = `Failed to create session: ${error.message}`;
+            break;
+          default:
+            errorMessage = error.message;
+        }
+
+        // Cleanup session on error (only if it's a new session)
+        if (sessionId && !config.sessionId) {
+          await sdkClient.cleanupSession(sessionId, false, true); // isTestSession=false, onError=true
+        }
+      } else {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+
       return {
         success: false,
         output: '',
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
+        sessionId,
       };
     }
   }

@@ -9,7 +9,26 @@
 import { createOpencodeClient } from '@opencode-ai/sdk';
 
 export interface ProgressCallback {
-  (message: string): void;
+  (_msg: string): void;
+}
+
+export interface SessionStatus {
+  exists: boolean;
+  sessionId: string;
+  title?: string;
+  messageCount: number;
+}
+
+// Enum values used in classifyError() and imported by opencode.ts via dynamic import
+// ESLint doesn't detect usage across dynamic imports
+export enum SDKErrorType {
+  NETWORK_ERROR = "NETWORK_ERROR",
+  AGENT_NOT_FOUND = "AGENT_NOT_FOUND",
+  SESSION_NOT_FOUND = "SESSION_NOT_FOUND",
+  SESSION_CREATION_FAILED = "SESSION_CREATION_FAILED",
+  EXECUTION_TIMEOUT = "EXECUTION_TIMEOUT",
+  INVALID_SESSION_ID = "INVALID_SESSION_ID",
+  UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
 
 export interface SessionConfig {
@@ -42,6 +61,32 @@ export interface SessionStatus {
   messageCount: number;
 }
 
+// Enum values used in classifyError() and imported by opencode.ts via dynamic import
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export enum SDKErrorType {
+  NETWORK_ERROR = "NETWORK_ERROR",
+  AGENT_NOT_FOUND = "AGENT_NOT_FOUND",
+  SESSION_NOT_FOUND = "SESSION_NOT_FOUND",
+  SESSION_CREATION_FAILED = "SESSION_CREATION_FAILED",
+  EXECUTION_TIMEOUT = "EXECUTION_TIMEOUT",
+  INVALID_SESSION_ID = "INVALID_SESSION_ID",
+  UNKNOWN_ERROR = "UNKNOWN_ERROR",
+}
+
+// Class used in classifyError() and imported by opencode.ts via dynamic import
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export class SDKError extends Error {
+  public type: SDKErrorType;
+  public originalError?: any;
+
+  constructor(type: SDKErrorType, originalError?: any, message: string = '') {
+    super(message);
+    this.name = "SDKError";
+    this.type = type;
+    this.originalError = originalError;
+  }
+}
+
 /**
  * OpenCode SDK Client for session monitoring
  */
@@ -55,10 +100,81 @@ export class OpenCodeSDKClient {
   }
 
   /**
+   * Classify SDK error into appropriate error type
+   */
+  private classifyError(error: any): SDKError {
+    const errorMessage = error?.message || String(error);
+    const statusCode = error?.response?.status || error?.status;
+
+    if (error?.code === 'ECONNREFUSED' || error?.code === 'ENOTFOUND' || error?.code === 'ETIMEDOUT') {
+      return new SDKError(
+        SDKErrorType.NETWORK_ERROR,
+        error,
+        `Network error: Cannot connect to OpenCode at ${this.baseUrl}`
+      );
+    }
+
+    if (errorMessage.includes('agent not found') || errorMessage.includes('unknown agent') || statusCode === 404) {
+      return new SDKError(
+        SDKErrorType.AGENT_NOT_FOUND,
+        error,
+        `Agent not found: ${errorMessage}`
+      );
+    }
+
+    if (errorMessage.includes('session not found') || errorMessage.includes('invalid session')) {
+      return new SDKError(
+        SDKErrorType.SESSION_NOT_FOUND,
+        error,
+        `Session not found: ${errorMessage}`
+      );
+    }
+
+    if (errorMessage.includes('Failed to create session')) {
+      return new SDKError(
+        SDKErrorType.SESSION_CREATION_FAILED,
+        error,
+        `Failed to create session: ${errorMessage}`
+      );
+    }
+
+    if (errorMessage.includes('timeout') || errorMessage.includes('did not complete')) {
+      return new SDKError(
+        SDKErrorType.EXECUTION_TIMEOUT,
+        error,
+        `Execution timeout: ${errorMessage}`
+      );
+    }
+
+    return new SDKError(
+      SDKErrorType.UNKNOWN_ERROR,
+      error,
+      `SDK error: ${errorMessage}`
+    );
+  }
+
+  /**
+   * Log SDK error with details for debugging
+   */
+  private logError(context: string, error: SDKError | Error | any): void {
+    if (error instanceof SDKError) {
+      console.error(`[SDK Error] ${context}:`);
+      console.error(`  Type: ${error.type}`);
+      console.error(`  Message: ${error.message}`);
+      if (error.originalError) {
+        console.error(`  Original:`, error.originalError);
+      }
+    } else {
+      console.error(`[SDK Error] ${context}:`, error);
+    }
+  }
+
+  /**
    * Create a new OpenCode session
    *
    * @param title - Session title
    * @returns Session ID
+   * @throws SDKError if session creation fails
    */
   async createSession(title: string): Promise<string> {
     try {
@@ -69,14 +185,18 @@ export class OpenCodeSDKClient {
       });
 
       if (!result.data || !result.data.id) {
-        throw new Error('Failed to create session: No session ID returned');
+        throw new SDKError(
+          SDKErrorType.SESSION_CREATION_FAILED,
+          'Failed to create session: No session ID returned'
+        );
       }
 
       console.log(`Created session ${result.data.id} with title: ${title}`);
       return result.data.id;
     } catch (error) {
-      console.error(`Failed to create session:`, error);
-      throw error;
+      const classifiedError = this.classifyError(error);
+      this.logError('createSession', classifiedError);
+      throw classifiedError;
     }
   }
 
@@ -113,10 +233,14 @@ export class OpenCodeSDKClient {
         sessionId,
       };
     } catch (error) {
-      console.error(`Failed to execute agent in session ${sessionId}:`, error);
+      const classifiedError = this.classifyError(error);
+      this.logError(`executeAgentInSession(sessionId: ${sessionId}, agent: ${config.agent})`, classifiedError);
+
+      // Return error result instead of throwing for compatibility
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: classifiedError.message,
+        errorType: classifiedError.type,
         sessionId,
       };
     }
@@ -192,9 +316,10 @@ export class OpenCodeSDKClient {
    *
    * @param sessionId - The session ID
    * @param isTestSession - Whether this is a test session (only delete if true)
+   * @param onError - Whether this cleanup is triggered by an error (affects logging)
    * @returns Success status
    */
-  async cleanupSession(sessionId: string, isTestSession: boolean = false): Promise<boolean> {
+  async cleanupSession(sessionId: string, isTestSession: boolean = false, onError: boolean = false): Promise<boolean> {
     try {
       // Only delete test sessions
       if (!isTestSession) {
@@ -206,10 +331,15 @@ export class OpenCodeSDKClient {
         path: { id: sessionId },
       });
 
-      console.log(`Deleted test session ${sessionId}`);
+      const prefix = onError ? `[Error Cleanup] ` : '';
+      console.log(`${prefix}Deleted test session ${sessionId}`);
       return true;
     } catch (error) {
-      console.error(`Failed to cleanup session ${sessionId}:`, error);
+      const classifiedError = this.classifyError(error);
+      this.logError(`cleanupSession(sessionId: ${sessionId}, isTestSession: ${isTestSession})`, classifiedError);
+
+      // Don't fail the whole operation if cleanup fails, but log it
+      console.error(`Failed to cleanup session ${sessionId}: ${classifiedError.message}`);
       return false;
     }
   }
@@ -231,10 +361,15 @@ export class OpenCodeSDKClient {
     onProgress?: ProgressCallback
   ): Promise<any> {
     const startTime = Date.now();
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 5;
 
     while (Date.now() - startTime < timeoutMs) {
       try {
         const messages = await this.getSessionMessages(sessionId);
+
+        // Reset error counter on successful poll
+        consecutiveErrors = 0;
 
         if (messages.length === 0) {
           // No messages yet, wait and retry
@@ -268,12 +403,23 @@ export class OpenCodeSDKClient {
 
         if (errorMessages.length > 0) {
           const error = errorMessages[errorMessages.length - 1];
+          const errorMessage = error?.info?.error?.message || 'Unknown error';
+
+          // Log session error for debugging
+          console.error(`Session ${sessionId} encountered error:`, errorMessage);
+          this.logError(`waitForCompletion(sessionId: ${sessionId})`, new SDKError(
+            SDKErrorType.UNKNOWN_ERROR,
+            null,
+            errorMessage
+          ));
+
           if (onProgress) {
-            onProgress(`Session error: ${error?.info?.error?.message || 'Unknown error'}`);
+            onProgress(`Session error: ${errorMessage}`);
           }
           return {
             success: false,
-            error: error?.info?.error?.message || 'Session encountered an error',
+            error: errorMessage,
+            errorType: SDKErrorType.UNKNOWN_ERROR,
             sessionId,
           };
         }
@@ -304,22 +450,53 @@ export class OpenCodeSDKClient {
 
         await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
       } catch (error) {
-        console.error(`Error polling session ${sessionId}:`, error);
+        const classifiedError = this.classifyError(error);
+        consecutiveErrors++;
+
+        this.logError(`waitForCompletion(sessionId: ${sessionId}) - Poll error ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}`, classifiedError);
+
         if (onProgress) {
-          onProgress(`Error checking session status: ${error instanceof Error ? error.message : String(error)}`);
+          onProgress(`Error checking session status: ${classifiedError.message}`);
         }
+
+        // If too many consecutive errors, give up
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          const timeoutError = new SDKError(
+            SDKErrorType.EXECUTION_TIMEOUT,
+            `Failed to poll session ${sessionId} after ${MAX_CONSECUTIVE_ERRORS} consecutive errors: ${classifiedError.message}`,
+            error
+          );
+          this.logError(`waitForCompletion - Giving up after ${MAX_CONSECUTIVE_ERRORS} errors`, timeoutError);
+          return {
+            success: false,
+            error: timeoutError.message,
+            errorType: timeoutError.type,
+            sessionId,
+          };
+        }
+
         // Continue polling on error
         await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
       }
     }
 
     // Timeout reached
+    const timeoutMessage = `Session ${sessionId} did not complete within ${timeoutMs}ms`;
+    const timeoutError = new SDKError(
+      SDKErrorType.EXECUTION_TIMEOUT,
+      null,
+      timeoutMessage
+    );
+
+    this.logError(`waitForCompletion - Timeout after ${timeoutMs}ms`, timeoutError);
+
     if (onProgress) {
       onProgress(`Session timeout: did not complete within ${timeoutMs}ms`);
     }
     return {
       success: false,
-      error: `Session ${sessionId} did not complete within ${timeoutMs}ms`,
+      error: timeoutError.message,
+      errorType: timeoutError.type,
       sessionId,
     };
   }
