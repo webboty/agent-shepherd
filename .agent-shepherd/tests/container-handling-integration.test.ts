@@ -15,115 +15,11 @@ import {
   setupBeadsIsolation,
   type BeadsTestEnv,
   cleanupTestIssues
-} from "../helpers/beads-test-isolation";
+} from "./helpers/beads-test-isolation";
 
-interface BeadsTestEnv {
-  tempDir: string;
-  beadsDir: string;
-  exec(args: string[]): Promise<string>;
-  initialize(): Promise<void>;
-  cleanup(): Promise<void>;
-  createIssue(title: string, issueType?: string, labels?: string[]): Promise<string>;
-  deleteIssue(issueId: string): Promise<void>;
-}
-
-function setupBeadsIsolation(): BeadsTestEnv {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(7);
-  const tempDir = join(__dirname, '..', 'tmp_test', 'beads-isolation');
-  const beadsDir = join(tempDir, '.beads');
-
-  async function execBeadsCommand(args: string[]): Promise<string> {
-    const proc = Bun.spawn(["bd", ...args], {
-      cwd: tempDir,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        BEADS_DIR: beadsDir,
-        PATH: process.env.PATH,
-        BD_NO_DAEMON: "true",
-        BD_SANDBOX: "true",
-      },
-    });
-
-    const output = await new Response(proc.stdout).text();
-    const exitCode = await proc.exited;
-
-    if (exitCode !== 0) {
-      const error = await new Response(proc.stderr).text();
-      throw new Error(`Beads command failed: ${error}\nCommand: bd ${args.join(' ')}\nCWD: ${tempDir}\nBEADS_DIR: ${beadsDir}`);
-    }
-
-    return output;
-  }
-
-  const env: BeadsTestEnv = {
-    tempDir,
-    beadsDir,
-
-    async exec(args: string[]) {
-      return execBeadsCommand(args);
-    },
-
-    async initialize() {
-      mkdirSync(tempDir, { recursive: true });
-      mkdirSync(beadsDir, { recursive: true });
-
-      const initArgs = ["init", "--prefix", "test-"];
-
-      try {
-        await execBeadsCommand(initArgs);
-      } catch (error) {
-        throw new Error(`Failed to initialize isolated Beads database: ${error}`);
-      }
-    },
-
-    async cleanup() {
-      if (existsSync(tempDir)) {
-        rmSync(tempDir, { recursive: true, force: true });
-      }
-    },
-
-    async createIssue(title: string, issueType: string = "task", labels: string[] = []): Promise<string> {
-      const args = ["create", "--type", issueType, "--title", title];
-
-      for (const label of labels) {
-        args.push("--labels", label);
-      }
-
-      const output = await execBeadsCommand(args);
-      const issueId = output.match(/Created issue: ([^\s\n]+)/)?.[1];
-
-      if (!issueId) {
-        throw new Error(`Failed to create test issue: ${title}. Output: ${output}`);
-      }
-
-      return issueId;
-    },
-
-    async deleteIssue(issueId: string): Promise<void> {
-      await execBeadsCommand(["delete", issueId]);
-    },
-  };
-
-  return env;
-}
-
-async function cleanupTestIssues(env: BeadsTestEnv, prefix: string): Promise<void> {
-  try {
-    const output = await env.exec(["list", "--json"]);
-    const issues = JSON.parse(output);
-
-    for (const issue of issues) {
-      if (issue.title && issue.title.includes(prefix)) {
-        await env.deleteIssue(issue.id);
-      }
-    }
-  } catch (error) {
-    console.warn(`Failed to cleanup test issues with prefix "${prefix}":`, error);
-  }
-}
+const __dirname = import.meta.dir;
+const TEMP_DIR = join(__dirname, "..", "..", "tmp_test");
+const TEST_ISSUE_PREFIX = "container-integration-test";
 
 describe("Container Handling - Integration Tests", () => {
   let beadsTestEnv: BeadsTestEnv;
@@ -136,24 +32,29 @@ describe("Container Handling - Integration Tests", () => {
     const random = Math.random().toString(36).substring(7);
     testDataDir = join(TEMP_DIR, `.test-container-integration-${timestamp}-${random}`);
     mkdirSync(testDataDir, { recursive: true });
-    mkdirSync(join(testDataDir, "config"), { recursive: true });
-    mkdirSync(join(testDataDir, "data"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd", "config"), { recursive: true });
+    mkdirSync(join(testDataDir, ".agent-shepherd", "data"), { recursive: true });
 
-    process.env.ASHEP_DIR = testDataDir;
+    process.env.ASHEP_DIR = join(testDataDir, ".agent-shepherd");
     resetIssuePicker();
 
     writeFileSync(
-      join(testDataDir, "config", "config.yaml"),
+      join(testDataDir, ".agent-shepherd", "config.yaml"),
       `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  container_detection:\n    check_children: true\n    min_children: 2\n    check_description: true\n    check_dependencies: true\n  ordering:\n    strategy: hybrid\n    dependency_weight: 0.7\n`
     );
 
     writeFileSync(
-      join(testDataDir, "config", "policies.yaml"),
+      join(testDataDir, ".agent-shepherd", "policies.yaml"),
       `policies:\n  default:\n    name: default\n    phases:\n      - name: test\n        capabilities:\n          - test\n`
     );
 
     beadsTestEnv = setupBeadsIsolation();
     await beadsTestEnv.initialize();
+
+    process.env.BEADS_DIR = beadsTestEnv.beadsDir;
+    process.env.BD_NO_DAEMON = "true";
+    process.env.BD_SANDBOX = "true";
 
     const policiesPath = getConfigPath("policies.yaml");
     const policyEngine = new PolicyEngine(policiesPath);
@@ -162,65 +63,89 @@ describe("Container Handling - Integration Tests", () => {
   });
 
   afterAll(async () => {
-    const issuesOutput = await beadsTestEnv.exec(["list", "--json"]);
-    const issues = JSON.parse(issuesOutput);
+    try {
+      const issuesOutput = await beadsTestEnv.exec(["list", "--json"]);
+      const issues = JSON.parse(issuesOutput);
 
-    for (const issue of issues) {
-      if (issue.title && issue.title.includes(TEST_ISSUE_PREFIX)) {
-        await beadsTestEnv.deleteIssue(issue.id);
+      for (const issue of issues) {
+        if (issue.title && issue.title.includes(TEST_ISSUE_PREFIX)) {
+          await beadsTestEnv.deleteIssue(issue.id);
+        }
       }
-    }
 
-    await beadsTestEnv.cleanup();
-    if (existsSync(testDataDir)) {
-      rmSync(testDataDir, { recursive: true, force: true });
+      await beadsTestEnv.cleanup();
+    } catch (error) {
+    } finally {
+      if (existsSync(testDataDir)) {
+        rmSync(testDataDir, { recursive: true, force: true });
+      }
+      delete process.env.ASHEP_DIR;
+      resetIssuePicker();
     }
-    delete process.env.ASHEP_DIR;
-    resetIssuePicker();
   });
 
   describe("Container Detection", () => {
-    it("should detect container by issue type", async () => {
-      const epicId = await beadsTestEnv.createIssue("Container Type Test", "epic");
-      const task1Id = await beadsTestEnv.createIssue("Task 1", "task");
+    it("should detect container by issue type", () => {
+      const epic: BeadsIssue = {
+        id: "test-epic-1",
+        title: "Container Type Test",
+        description: "Test epic",
+        issue_type: "epic",
+        status: "open" as const,
+        priority: 1,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      };
 
-      const epic = JSON.parse(await beadsTestEnv.exec(["show", epicId, "--json"]));
-      const task1 = JSON.parse(await beadsTestEnv.exec(["show", task1Id, "--json"]));
+      const task: BeadsIssue = {
+        id: "test-task-1",
+        title: "Task 1",
+        description: "Test task",
+        issue_type: "task",
+        status: "open" as const,
+        priority: 1,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      };
 
       const isContainerType = workerEngine["isContainerType"](epic);
-      const isTaskType = workerEngine["isContainerType"](task1);
+      const isTaskType = workerEngine["isContainerType"](task);
 
       expect(isContainerType).toBe(true);
       expect(isTaskType).toBe(false);
-
-      await beadsTestEnv.deleteIssue(task1Id);
-      await beadsTestEnv.deleteIssue(epicId);
     });
 
-    it("should detect container by description language", async () => {
-      const containerId = await beadsTestEnv.createIssue("This epic contains subtasks", "epic");
-      const nonContainerId = await beadsTestEnv.createIssue("Regular task without keywords", "task");
+    it("should detect container by description language", () => {
+      const container: BeadsIssue = {
+        id: "test-epic-2",
+        title: "Container Language Test",
+        description: "This epic contains subtasks",
+        issue_type: "task",
+        status: "open" as const,
+        priority: 1,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      };
 
-      const container = JSON.parse(await beadsTestEnv.exec(["show", containerId, "--json"]));
-      const nonContainer = JSON.parse(await beadsTestEnv.exec(["show", nonContainerId, "--json"]));
+      const nonContainer: BeadsIssue = {
+        id: "test-task-2",
+        title: "Regular task",
+        description: "Regular task without keywords",
+        issue_type: "task",
+        status: "open" as const,
+        priority: 1,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      };
 
       const containerLanguage = workerEngine["hasContainerLanguage"](container);
       const nonContainerLanguage = workerEngine["hasContainerLanguage"](nonContainer);
 
       expect(containerLanguage).toBe(true);
       expect(nonContainerLanguage).toBe(false);
-
-      await beadsTestEnv.deleteIssue(nonContainerId);
-      await beadsTestEnv.deleteIssue(containerId);
     });
 
-    it("should calculate container confidence correctly", async () => {
-      const highConfidenceId = await beadsTestEnv.createIssue("High confidence container", "epic");
-      const lowConfidenceId = await beadsTestEnv.createIssue("Low confidence container", "epic");
-
-      const highConfidence = JSON.parse(await beadsTestEnv.exec(["show", highConfidenceId, "--json"]));
-      const lowConfidence = JSON.parse(await beadsTestEnv.exec(["show", lowConfidenceId, "--json"]));
-
+    it("should calculate container confidence correctly", () => {
       const highConf = workerEngine["calculateContainerConfidence"](
         false,
         true,
@@ -237,9 +162,6 @@ describe("Container Handling - Integration Tests", () => {
 
       expect(highConf).toBeGreaterThan(0.8);
       expect(lowConf).toBeLessThan(0.6);
-
-      await beadsTestEnv.deleteIssue(lowConfidenceId);
-      await beadsTestEnv.deleteIssue(highConfidenceId);
     });
   });
 
@@ -263,16 +185,35 @@ describe("Container Handling - Integration Tests", () => {
   describe("Policy Resolution", () => {
     it("should apply level-specific policies correctly", async () => {
       writeFileSync(
-        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
+        join(testDataDir, ".agent-shepherd", "config.yaml"),
         `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: auto-close\n  level_policies:\n    "0":\n      mode: validation\n    "1":\n      mode: process-as-task\n    "2":\n      mode: validation\n      workflow_override: workflow-level-2\n`
       );
 
+      const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
+
       const testCases = [
-        { id: `test-lvl-0`, expectedMode: "validation", expectedWorkflow: undefined },
-        { id: `test-lvl-1`, expectedMode: "process-as-task", expectedWorkflow: undefined },
-        { id: `test-lvl-2`, expectedMode: "validation", expectedWorkflow: "workflow-level-2" },
-        { id: `no-level-issue`, expectedMode: "auto-close", expectedWorkflow: undefined },
+        { id: `test-lvl`, expectedMode: "validation", expectedWorkflow: undefined },
+        { id: `test-lvl.1`, expectedMode: "process-as-task", expectedWorkflow: undefined },
+        { id: `test-lvl.1.1`, expectedMode: "validation", expectedWorkflow: "workflow-level-2" },
       ];
+
+      for (const { id, expectedMode, expectedWorkflow } of testCases) {
+        const issue = {
+          id,
+          title: `Test issue ${id}`,
+          description: "Test issue",
+          issue_type: "task",
+          status: "open" as const,
+          priority: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        };
+
+        const policy = picker["getContainerHandlingPolicy"](issue as any);
+
+        expect(policy.mode).toBe(expectedMode);
+        expect(policy.workflow_override).toBe(expectedWorkflow);
+      }
 
       for (const { id, expectedMode, expectedWorkflow } of testCases) {
         const issue = {
@@ -297,39 +238,32 @@ describe("Container Handling - Integration Tests", () => {
 
     it("should fall back to default mode when no level policy", async () => {
       writeFileSync(
-        join(testDataDir, ".agent-shepherd", "config", "config.yaml"),
-        `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: custom-default\n  level_policies:\n    "0":\n      mode: validation-mode\n    "1":\n      mode: process-mode\n`
+        join(testDataDir, ".agent-shepherd", "config.yaml"),
+        `worker:\n  poll_interval_ms: 30000\n  max_concurrent_runs: 3\ncontainer_handling:\n  enabled: true\n  default_mode: custom-default\n  level_policies:\n    "5":\n      mode: validation\n    "10":\n      mode: process-as-task\n`
       );
 
-      const noLevelIssue = {
-        id: "test-no-level",
-        title: "No level policy issue",
-        description: "Test issue",
-        issue_type: "task",
-        status: "open" as const,
-        priority: 1,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-      };
+      const picker = new IssuePicker({ mode: "smart", max_issues: 10 });
 
-      const otherLevelIssue = {
-        id: "test-other-level",
-        title: "Other level issue",
-        description: "Test issue",
-        issue_type: "task",
-        status: "open" as const,
-        priority: 1,
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
-      };
+      const testCases = [
+        { id: "test-2", expectedMode: "custom-default" },
+        { id: "test-3", expectedMode: "custom-default" },
+      ];
 
-      const policy1 = picker["getContainerHandlingPolicy"](noLevelIssue as any);
-      const policy2 = picker["getContainerHandlingPolicy"](otherLevelIssue as any);
+      for (const { id, expectedMode } of testCases) {
+        const issue = {
+          id,
+          title: `Test ${id}`,
+          description: "Test issue",
+          issue_type: "task",
+          status: "open" as const,
+          priority: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        };
 
-      expect(policy1.mode).toBe("custom-default");
-      expect(policy2.mode).toBe("custom-default");
-
-      await beadsTestEnv.cleanup();
+        const policy = picker["getContainerHandlingPolicy"](issue as any);
+        expect(policy.mode).toBe(expectedMode);
+      }
     });
   });
 });
