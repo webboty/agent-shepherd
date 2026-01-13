@@ -997,35 +997,35 @@ DEBUG=agent-shepherd ashep worker
 ## Documentation
 
 ### Getting Started
-- **[Beads Crash Course](docs/beads-crash-course.md)** - Essential Beads workflow and integration guide
-- **[CLI Reference](docs/cli-reference.md)** - Comprehensive command-line interface documentation
-- **[Architecture Guide](docs/architecture.md)** - Detailed system architecture and design decisions
+- **[Beads Crash Course](.agent-shepherd/docs/beads-crash-course.md)** - Essential Beads workflow and integration guide
+- **[CLI Reference](.agent-shepherd/docs/cli-reference.md)** - Comprehensive command-line interface documentation
+- **[Architecture Guide](.agent-shepherd/docs/architecture.md)** - Detailed system architecture and design decisions
 
 ### Configuration
-- **[Config Reference](docs/config-config.md)** - Main configuration file documentation (worker, monitor, UI settings)
-- **[Policy Configuration](docs/policies-config.md)** - Workflow definitions, phases, capabilities, and agent selection
-- **[Agent Configuration](docs/agents-config.md)** - Agent registry, capabilities, and customization
+- **[Config Reference](.agent-shepherd/docs/config-config.md)** - Main configuration file documentation (worker, monitor, UI settings)
+- **[Policy Configuration](.agent-shepherd/docs/policies-config.md)** - Workflow definitions, phases, capabilities, and agent selection
+- **[Agent Configuration](.agent-shepherd/docs/agents-config.md)** - Agent registry, capabilities, and customization
 
 ### Workflows & Automation
-- **[Phase Transition Flow](docs/phase-transition-flow.md)** - Complete visual guide to Agent Shepherd's workflow orchestration
-- **[Enhanced Transitions](docs/enhanced-transitions.md)** - Advanced workflow routing with AI-based conditional branching
-- **[Decision Agents](docs/decision-agents.md)** - AI-driven decision making and routing system
-- **[Loop Prevention](docs/loop-prevention.md)** - Preventing infinite workflows with phase visit limits and cycle detection
-- **[Phase Messenger](docs/phase-messenger.md)** - Inter-phase communication and data exchange system
+- **[Phase Transition Flow](.agent-shepherd/docs/phase-transition-flow.md)** - Complete visual guide to Agent Shepherd's workflow orchestration
+- **[Enhanced Transitions](.agent-shepherd/docs/enhanced-transitions.md)** - Advanced workflow routing with AI-based conditional branching
+- **[Decision Agents](.agent-shepherd/docs/decision-agents.md)** - AI-driven decision making and routing system
+- **[Loop Prevention](.agent-shepherd/docs/loop-prevention.md)** - Preventing infinite workflows with phase visit limits and cycle detection
+- **[Phase Messenger](.agent-shepherd/docs/phase-messenger.md)** - Inter-phase communication and data exchange system
 
 ### System Management
-- **[Garbage Collection](docs/garbage-collection.md)** - Data lifecycle management and storage cleanup
-- **[Cleanup Architecture](docs/cleanup-architecture.md)** - System cleanup and maintenance patterns
+- **[Garbage Collection](.agent-shepherd/docs/garbage-collection.md)** - Data lifecycle management and storage cleanup
+- **[Cleanup Architecture](.agent-shepherd/docs/cleanup-architecture.md)** - System cleanup and maintenance patterns
 
 ### Integration & Development
-- **[Integration Guides](docs/integration-guides.md)** - Third-party integrations and API usage
-- **[Integration Examples](docs/integration-examples.md)** - Code examples and integration patterns
-- **[API Reference](docs/api-reference.md)** - Programmatic API documentation
-- **[Plugin System](docs/plugin-system.md)** - Extending Agent Shepherd with plugins
-- **[OpenCode CLI JSON Format](docs/opencodel-cli-json-format.md)** - OpenCode CLI integration specifications
+- **[Integration Guides](.agent-shepherd/docs/integration-guides.md)** - Third-party integrations and API usage
+- **[Integration Examples](.agent-shepherd/docs/integration-examples.md)** - Code examples and integration patterns
+- **[API Reference](.agent-shepherd/docs/api-reference.md)** - Programmatic API documentation
+- **[Plugin System](.agent-shepherd/docs/plugin-system.md)** - Extending Agent Shepherd with plugins
+- **[OpenCode CLI JSON Format](.agent-shepherd/docs/opencodel-cli-json-format.md)** - OpenCode CLI integration specifications
 
 ### Troubleshooting
-- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and debugging guide
+- **[Troubleshooting](.agent-shepherd/docs/troubleshooting.md)** - Common issues and debugging guide
 
 ## License
 
