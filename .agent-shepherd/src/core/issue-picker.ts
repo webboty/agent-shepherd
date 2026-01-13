@@ -538,19 +538,27 @@ export class IssuePicker {
          scored.hierarchyScore * (1 - dependencyWeight);
      });
 
-     // Separate into dependency-ordered and hierarchy-ordered groups
-     const fullyAvailable = scoredIssues.filter(s => s.depScore === 1.0);
-     const partiallyAvailable = scoredIssues.filter(s => s.depScore < 1.0);
+      // Separate into dependency-ordered and hierarchy-ordered groups
+      const fullyAvailable = scoredIssues.filter(s => s.depScore === 1.0);
+      const partiallyAvailable = scoredIssues.filter(s => s.depScore < 1.0);
 
-     // Sort fully available by hierarchy
-     fullyAvailable.sort((a, b) => b.hierarchyScore - a.hierarchyScore);
+      // Sort fully available by hierarchy, then by ID as tiebreaker
+      fullyAvailable.sort((a, b) => {
+        if (b.hierarchyScore !== a.hierarchyScore) {
+          return b.hierarchyScore - a.hierarchyScore;
+        }
+        return a.issue.id.localeCompare(b.issue.id);
+      });
 
-     // Sort partially available by dependency score, then hierarchy
-     partiallyAvailable.sort((a, b) => {
-       if (b.depScore !== a.depScore) {
-         return b.depScore - a.depScore;
-       }
-      return b.hierarchyScore - a.hierarchyScore;
+      // Sort partially available by dependency score, then hierarchy, then by ID as tiebreaker
+      partiallyAvailable.sort((a, b) => {
+        if (b.depScore !== a.depScore) {
+          return b.depScore - a.depScore;
+        }
+        if (b.hierarchyScore !== a.hierarchyScore) {
+          return b.hierarchyScore - a.hierarchyScore;
+        }
+        return a.issue.id.localeCompare(b.issue.id);
       });
 
       // Combine: fully available first (topological order), then partially available
