@@ -45,6 +45,16 @@ export interface TemplateContext {
     total_duration_ms: number;
     phase_visit_count: number;
   };
+  container_children?: {
+    child_count: number;
+    completed_count: number;
+    pending_count: number;
+  };
+  container_status?: {
+    all_children_complete: boolean;
+    container_confidence: number;
+    container_mode: string;
+  };
 }
 
 export interface DecisionResponse {
@@ -220,6 +230,24 @@ export class DecisionPromptBuilder {
       result = result.replace(/{{#each outcome\.warnings}}[\s\S]*?{{\/each}}/g, "");
     }
 
+    if (context.container_children) {
+      const childrenSection = `- **Container Children Found**: ${context.container_children.child_count}
+- **Children Completed**: ${context.container_children.completed_count}
+- **Children Pending**: ${context.container_children.pending_count}`;
+      result = result.replace(/{{#container_children}}[\s\S]*?{{\/container_children}}/g, childrenSection);
+    } else {
+      result = result.replace(/{{#container_children}}[\s\S]*?{{\/container_children}}/g, "");
+    }
+
+    if (context.container_status) {
+      const statusSection = `- **All Children Complete**: ${context.container_status.all_children_complete}
+- **Container Confidence**: ${context.container_status.container_confidence}
+- **Current Mode**: ${context.container_status.container_mode}`;
+      result = result.replace(/{{#container_status}}[\s\S]*?{{\/container_status}}/g, statusSection);
+    } else {
+      result = result.replace(/{{#container_status}}[\s\S]*?{{\/container_status}}/g, "");
+    }
+
     if (context.allowed_destinations && context.allowed_destinations.length > 0) {
       const destSection = context.allowed_destinations.map((d) => `- **${d}**`).join("\n");
       result = result.replace(
@@ -357,15 +385,18 @@ export class DecisionPromptBuilder {
     }
 
     if (parsed.decision) {
-      const validActions = ["jump_to_", "advance_to_", "require_approval"];
+      const validActions = ["jump_to_", "advance_to_", "require_approval", "DONE", "NEEDS_WORK", "UNCLEAR"];
       const isValidAction =
         parsed.decision === "require_approval" ||
+        parsed.decision === "DONE" ||
+        parsed.decision === "NEEDS_WORK" ||
+        parsed.decision === "UNCLEAR" ||
         validActions.some((action) => parsed.decision.startsWith(action));
 
       if (!isValidAction) {
         result.valid = false;
         result.errors.push(
-          `Invalid decision action: ${parsed.decision}. Must start with 'jump_to_', 'advance_to_', or be 'require_approval'`
+          `Invalid decision action: ${parsed.decision}. Must be one of 'DONE', 'NEEDS_WORK', 'UNCLEAR', start with 'jump_to_', 'advance_to_', or be 'require_approval'`
         );
       }
 

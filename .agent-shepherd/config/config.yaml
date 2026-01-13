@@ -60,3 +60,23 @@ retention:
 session_continuation:
   default_max_context_tokens: 130000
   default_threshold: 0.8
+
+container_handling:
+  enabled: true
+  default_mode: auto-close  # "auto-close" | "hitl" | "validate"
+  level_policies:
+    "1":
+      mode: auto-close
+      workflow_override: container-l1
+    "2":
+      mode: validate
+      workflow_override: container-l2
+  ordering:
+    strategy: hybrid  # "dependency" | "hierarchy" | "hybrid"
+    prefer_depth: 1
+    dependency_weight: 0.7
+  container_detection:
+    check_children: true
+    check_description: true
+    check_dependencies: true
+    min_children: 2

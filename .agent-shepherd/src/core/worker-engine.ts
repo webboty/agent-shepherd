@@ -48,6 +48,11 @@ export interface ProcessResult {
   success: boolean;
   message?: string;
   next_phase?: string;
+  container_validation?: {
+    outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR";
+    confidence: number;
+    reasoning: string;
+  };
 }
 
 /**
@@ -325,9 +330,72 @@ export class WorkerEngine {
 
     // 6. Determine transition based on outcome
     let transition: PhaseTransition;
+    let containerValidation: {
+      outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR";
+      confidence: number;
+      reasoning: string;
+    } | undefined;
 
-    // Special handling for auto-closed container epics
-    if (isAutoClosed) {
+    // Check if this is a container validation scenario
+    const containerCheck = await this.isContainerEpic(issue);
+    const isContainerValidationPhase = phaseConfig?.capabilities?.includes("container-validation");
+
+    // 6.1. Handle container validation scenarios
+    if (isContainerValidationPhase && containerCheck.is_container) {
+      const validationDecision = await this.executeContainerValidation(issue, outcome, phase);
+
+      containerValidation = {
+        outcome: validationDecision.outcome,
+        confidence: validationDecision.confidence,
+        reasoning: validationDecision.reasoning
+      };
+
+      this.logger.logDecision({
+        run_id: run.id,
+        type: "container_validation",
+        decision: validationDecision.outcome,
+        reasoning: validationDecision.reasoning,
+        metadata: {
+          issue_id: issue.id,
+          phase,
+          container_confidence: containerCheck.confidence,
+          container_mode: containerCheck.mode,
+          validation_confidence: validationDecision.confidence,
+          recommendations: validationDecision.recommendations
+        }
+      });
+
+      switch (validationDecision.outcome) {
+        case "DONE":
+          transition = {
+            type: "close",
+            reason: `Container validation passed: ${validationDecision.reasoning}`
+          };
+          break;
+        case "NEEDS_WORK":
+          transition = {
+            type: "advance",
+            next_phase: "plan",
+            reason: `Container needs work: ${validationDecision.reasoning}. Treating container as regular task.`
+          };
+          break;
+        case "UNCLEAR":
+          transition = {
+            type: "block",
+            reason: `Container validation unclear: ${validationDecision.reasoning}. Human review required.`
+          };
+          break;
+        default:
+          transition = {
+            type: "block",
+            reason: `Invalid container validation outcome: ${validationDecision.outcome}`
+          };
+      }
+
+      await this.handleContainerSubWorkflow(issue, validationDecision, phase, policy);
+    }
+    // 6.2. Special handling for auto-closed container epics (non-validation scenarios)
+    else if (isAutoClosed) {
       transition = {
         type: "close",
         reason: outcome.message || "Container epic auto-closed - all subtasks completed"
@@ -438,6 +506,7 @@ export class WorkerEngine {
       success: outcome.success,
       message: transition.reason,
       next_phase: transition.next_phase,
+      container_validation: containerValidation
     };
   }
 
@@ -1089,6 +1158,207 @@ Previous phases may have sent messages containing context, results, or data for 
   }
   
   /**
+   * Execute container validation decision agent
+   */
+  private async executeContainerValidation(
+    issue: BeadsIssue,
+    outcome: RunOutcome,
+    phase: string
+  ): Promise<{
+    outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR";
+    confidence: number;
+    reasoning: string;
+    recommendations?: string[];
+  }> {
+    const config = loadConfig();
+    
+    if (!config.worker_assistant?.enabled) {
+      console.log(`Worker assistant disabled, returning default container decision: UNCLEAR`);
+      return {
+        outcome: "UNCLEAR",
+        confidence: 0.5,
+        reasoning: "Worker assistant disabled, defaulting to UNCLEAR"
+      };
+    }
+
+    const containerCheck = await this.isContainerEpic(issue);
+    
+    const agent = this.agentRegistry.selectAgent({
+      required_capabilities: ["container-validation", "worker-assistant"]
+    });
+    
+    if (!agent) {
+      console.warn(`No container validation agent found, defaulting to DONE for containers with all children complete`);
+      return {
+        outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+        confidence: 0.8,
+        reasoning: "No validation agent available, using default logic"
+      };
+    }
+
+    const decisionBuilder = await import("./decision-builder.ts").then(m => m.getDecisionPromptBuilder());
+    
+    const containerChildren = await this.getContainerChildrenInfo(issue);
+    
+    const allowedDestinations = ["DONE", "NEEDS_WORK", "UNCLEAR"];
+    
+    const context = {
+      issue,
+      outcome,
+      current_phase: phase,
+      custom_instructions: "Evaluate if this container epic is complete or requires further work.",
+      allowed_destinations: allowedDestinations,
+      container_children: {
+        child_count: containerChildren.total,
+        completed_count: containerChildren.completed,
+        pending_count: containerChildren.total - containerChildren.completed
+      },
+      container_status: {
+        all_children_complete: containerCheck.ready_to_close,
+        container_confidence: containerCheck.confidence,
+        container_mode: containerCheck.mode
+      }
+    };
+
+    const promptData = decisionBuilder.buildPrompt("container-validation", context);
+
+    if (!promptData) {
+      console.warn(`Failed to build container validation prompt, using fallback`);
+      return {
+        outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+        confidence: 0.7,
+        reasoning: "Failed to build validation prompt, using fallback logic"
+      };
+    }
+
+    const prompt = `${promptData.system_prompt}\n\n${promptData.user_prompt}`;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Container validation timeout")), config.worker_assistant?.timeoutMs || 10000);
+    });
+
+    try {
+      const result = await Promise.race([
+        this.opencode.runAgentCLI({
+          directory: process.cwd(),
+          title: `Container Validation: ${issue.id}`,
+          agent: agent.id,
+          message: prompt
+        }),
+        timeoutPromise
+      ]) as any;
+
+      if (!result.success) {
+        console.warn(`Container validation execution failed: ${result.error}`);
+        return {
+          outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+          confidence: 0.6,
+          reasoning: `Validation agent failed: ${result.error}`
+        };
+      }
+
+      const validation = this.parseContainerValidationResponse(result.output);
+      
+      console.log(`Container validation decision: ${validation.outcome} (confidence: ${validation.confidence})`);
+      
+      return validation;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`Container validation error: ${errorMsg}`);
+      return {
+        outcome: containerCheck.ready_to_close ? "DONE" : "NEEDS_WORK",
+        confidence: 0.5,
+        reasoning: `Validation error: ${errorMsg}`
+      };
+    }
+  }
+
+  /**
+   * Get container children information
+   */
+  private async getContainerChildrenInfo(issue: BeadsIssue): Promise<{
+    total: number;
+    completed: number;
+  }> {
+    try {
+      const { execBeadsCommand } = await import("./beads.ts");
+      const output = await execBeadsCommand(["dep", "list", issue.id, "--json"]);
+      const deps = JSON.parse(output);
+
+      if (!Array.isArray(deps)) {
+        return { total: 0, completed: 0 };
+      }
+
+      const children = deps.filter((dep: any) => dep.dependency_type === "parent-child");
+      let completed = 0;
+
+      for (const dep of children) {
+        try {
+          const childOutput = await execBeadsCommand(["show", dep.id, "--json"]);
+          const childIssue = JSON.parse(childOutput);
+
+          if (childIssue.status === "closed") {
+            completed++;
+          }
+        } catch (error) {
+          console.warn(`Failed to get child status for ${dep.id}: ${error}`);
+        }
+      }
+
+      return { total: children.length, completed };
+    } catch (error) {
+      console.warn(`Failed to get container children info for ${issue.id}: ${error}`);
+      return { total: 0, completed: 0 };
+    }
+  }
+
+  /**
+   * Parse container validation response
+   */
+  private parseContainerValidationResponse(response: string): {
+    outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR";
+    confidence: number;
+    reasoning: string;
+    recommendations?: string[];
+  } {
+    let sanitized = response.trim();
+    sanitized = sanitized.replace(/^```json\s*/, "");
+    sanitized = sanitized.replace(/^```\s*/, "");
+    sanitized = sanitized.replace(/\s*```$/, "");
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(sanitized);
+    } catch (error) {
+      console.warn(`Failed to parse container validation response: ${error}`);
+      return {
+        outcome: "UNCLEAR",
+        confidence: 0.3,
+        reasoning: "Failed to parse validation response"
+      };
+    }
+
+    const outcome = parsed.decision || "UNCLEAR";
+    const validOutcomes = ["DONE", "NEEDS_WORK", "UNCLEAR"];
+
+    if (!validOutcomes.includes(outcome)) {
+      console.warn(`Invalid container validation outcome: ${outcome}`);
+      return {
+        outcome: "UNCLEAR",
+        confidence: 0.3,
+        reasoning: `Invalid outcome in response: ${outcome}`
+      };
+    }
+
+    return {
+      outcome: outcome as "DONE" | "NEEDS_WORK" | "UNCLEAR",
+      confidence: parsed.confidence || 0.5,
+      reasoning: parsed.reasoning || "No reasoning provided",
+      recommendations: parsed.recommendations
+    };
+  }
+
+  /**
    * Execute worker assistant to determine next action
    */
   private async executeWorkerAssistant(
@@ -1212,6 +1482,101 @@ Respond with ONLY one word: ADVANCE, RETRY, or BLOCK
     console.warn(`Could not parse worker assistant response: ${response}`);
     const config = loadConfig();
     return config.worker_assistant?.fallbackAction || "block";
+  }
+
+  /**
+   * Handle sub-workflow triggering for containers
+   */
+  private async handleContainerSubWorkflow(
+    issue: BeadsIssue,
+    validationDecision: {
+      outcome: "DONE" | "NEEDS_WORK" | "UNCLEAR";
+      confidence: number;
+      reasoning: string;
+    },
+    phase: string,
+    policy: string
+  ): Promise<void> {
+    if (validationDecision.outcome !== "NEEDS_WORK") {
+      return;
+    }
+
+    const containerCheck = await this.isContainerEpic(issue);
+
+    if (!containerCheck.workflow_override) {
+      console.log(`Container ${issue.id} needs work but no workflow override configured, using default policy`);
+      return;
+    }
+
+    console.log(`Triggering sub-workflow '${containerCheck.workflow_override}' for container ${issue.id}`);
+
+    this.logger.logDecision({
+      run_id: this.currentRunId || "",
+      type: "sub_workflow_trigger",
+      decision: containerCheck.workflow_override,
+      reasoning: `Container validation returned NEEDS_WORK, triggering configured sub-workflow`,
+      metadata: {
+        issue_id: issue.id,
+        phase,
+        policy,
+        workflow_override: containerCheck.workflow_override,
+        validation_outcome: validationDecision.outcome
+      }
+    });
+
+    await this.startSubWorkflow(issue, containerCheck.workflow_override);
+  }
+
+  /**
+   * Start a sub-workflow on a container
+   */
+  private async startSubWorkflow(issue: BeadsIssue, workflowName: string): Promise<void> {
+    try {
+      const { setPhaseLabel, hasAshepManagedLabel, updateIssue, setAshepManagedLabel } = await import("./beads.ts");
+
+      const phases = this.policyEngine.getPhaseSequence(workflowName);
+      if (!phases || phases.length === 0) {
+        console.warn(`Workflow '${workflowName}' has no phases defined`);
+        return;
+      }
+
+      const firstPhase = phases[0];
+      
+      await setPhaseLabel(issue.id, firstPhase);
+      
+      if (!await hasAshepManagedLabel(issue.id)) {
+        await setAshepManagedLabel(issue.id);
+      }
+
+      await updateIssue(issue.id, { status: "open" });
+
+      console.log(`Started sub-workflow '${workflowName}' on container ${issue.id} with phase '${firstPhase}'`);
+
+      this.logger.logDecision({
+        run_id: this.currentRunId || "",
+        type: "sub_workflow_started",
+        decision: firstPhase,
+        reasoning: `Sub-workflow '${workflowName}' started, advancing to first phase`,
+        metadata: {
+          issue_id: issue.id,
+          workflow: workflowName,
+          first_phase: firstPhase
+        }
+      });
+    } catch (error) {
+      console.error(`Failed to start sub-workflow '${workflowName}' on container ${issue.id}: ${error}`);
+      this.logger.logDecision({
+        run_id: this.currentRunId || "",
+        type: "sub_workflow_failed",
+        decision: "failed",
+        reasoning: `Failed to start sub-workflow: ${error instanceof Error ? error.message : String(error)}`,
+        metadata: {
+          issue_id: issue.id,
+          workflow: workflowName,
+          error: error instanceof Error ? error.message : String(error)
+        }
+      });
+    }
   }
 
   /**

@@ -77,7 +77,7 @@ export interface DecisionRecord {
   id: string;
   run_id: string;
   timestamp: number;
-  type: "agent_selection" | "phase_transition" | "retry" | "hitl" | "timeout" | "dynamic_decision" | "message_receipt" | "message_send" | "worker_assistant";
+  type: "agent_selection" | "phase_transition" | "retry" | "hitl" | "timeout" | "dynamic_decision" | "message_receipt" | "message_send" | "worker_assistant" | "container_validation" | "sub_workflow_trigger" | "sub_workflow_started" | "sub_workflow_failed";
   decision: string;
   reasoning?: string;
   metadata?: {

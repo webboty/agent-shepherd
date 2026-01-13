@@ -237,6 +237,96 @@ templates:
       - **Risk management**: Does this minimize potential issues?
       - **Time efficiency**: Does this optimize workflow progression?
 
+  container-validation:
+    name: "Container Validation"
+    description: "Determine if container epic validation passes, needs work, or is unclear"
+    system_prompt: |
+      You are a container epic validation agent.
+      Your role is to evaluate whether a container epic (epic, milestone, phase, or group) has been properly completed and requires no further work.
+    prompt_template: |
+      # CONTAINER VALIDATION TASK
+      
+      ## Issue Context:
+      - **Title**: {{issue.title}}
+      - **Description**: {{issue.description}}
+      - **Type**: {{issue.issue_type}}
+      - **Priority**: P{{issue.priority}}
+      - **Current Status**: {{issue.status}}
+      
+      ## Container Information:
+      {{#container_children}}
+      - **Container Children Found**: {{child_count}}
+      - **Children Completed**: {{completed_count}}
+      - **Children Pending**: {{pending_count}}
+      {{/container_children}}
+      
+      ## Container Status:
+      {{#container_status}}
+      - **All Children Complete**: {{all_children_complete}}
+      - **Container Confidence**: {{container_confidence}}
+      - **Current Mode**: {{container_mode}}
+      {{/container_status}}
+      
+      ## Validation Phase Results:
+      - **Outcome**: {{outcome.success}}
+      - **Message**: {{outcome.message}}
+      - **Duration**: {{outcome.metrics.duration_ms}}ms
+      - **Error**: {{outcome.error || 'None'}}
+      {{#outcome.warnings}}
+      - **Warnings**: 
+      {{#each outcome.warnings}}
+        - {{this}}
+      {{/each}}
+      {{/outcome.warnings}}
+      
+      {{#recent_decisions}}
+      ## Recent Container Validations:
+      {{#each recent_decisions}}
+      - {{timestamp}}: {{decision}} ({{reasoning}})
+      {{/each}}
+      {{/recent_decisions}}
+      
+      ## Decision Instructions:
+      {{custom_instructions}}
+      
+      ## Response Format:
+      ```json
+      {
+        "decision": "DONE" | "NEEDS_WORK" | "UNCLEAR",
+        "reasoning": "Brief explanation of validation logic",
+        "confidence": 0.0-1.0,
+        "recommendations": ["Optional suggestions for next steps"]
+      }
+      ```
+      
+      Make your decision based on the container validation results above.
+      
+      ## Decision Criteria:
+      
+      ### DONE (0.9-1.0 confidence recommended)
+      - All child tasks are completed and closed
+      - Container description clearly indicates work is done
+      - No pending work or incomplete subtasks
+      - Container is ready to be closed
+      
+      ### NEEDS_WORK (0.7-0.9 confidence recommended)
+      - Container has incomplete child tasks
+      - Additional work needed based on description
+      - Container should be treated as regular task for further work
+      - Clear path forward exists for completing work
+      
+      ### UNCLEAR (0.0-0.5 confidence recommended)
+      - Cannot determine if container is complete
+      - Contradictory or ambiguous information
+      - Requires human review and decision
+      - Complex dependencies or unclear ownership
+      
+      ## Confidence Guidelines:
+      - **0.9-1.0**: Clear, unambiguous decision with strong evidence
+      - **0.7-0.9**: Good confidence with minor uncertainties
+      - **0.5-0.7**: Moderate confidence, some ambiguity present
+      - **0.0-0.5**: Low confidence, significant uncertainty or unclear situation
+      
   fallback-template:
     name: "Fallback Decision Template"
     description: "Basic template used when specific templates are not available"
