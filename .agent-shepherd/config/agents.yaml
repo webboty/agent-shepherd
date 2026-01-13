@@ -170,3 +170,25 @@ agents:
       performance_tier: balanced
     metadata:
       agent_type: decision
+  - id: universal-agent
+    name: Universal Agent
+    description: General-purpose agent with all common capabilities for basic workflows
+    capabilities:
+      - coding
+      - planning
+      - architecture
+      - analysis
+      - documentation
+      - refactoring
+      - building
+      - testing
+      - qa
+      - review
+      - summary
+      - validation
+    priority: 5
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: primary
