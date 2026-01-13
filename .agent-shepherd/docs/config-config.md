@@ -131,11 +131,86 @@ fallback:
 - **API limits**: Must stay within provider rate limits
 - **System stability**: Too high can cause resource exhaustion
 
-**Values**: 1-10  
+**Values**: 1-10
 **Examples**:
 - `1`: Sequential processing (safest)
 - `3`: Balanced parallelism (recommended)
 - `5-10`: High throughput (requires strong system)
+
+#### `picking` (object)
+**Required**: No (defaults shown below)
+**Purpose**: Controls how the worker selects issues to process
+**Impact**: Determines issue selection strategy and coordination behavior
+
+##### `mode` (string)
+**Required**: No (default: "simple")
+**Purpose**: Issue selection algorithm
+**Impact**: Critical for multi-worker coordination and dependency handling
+**Values**:
+- `"simple"`: Priority-based selection (ignores dependencies)
+- `"smart"`: Dependency-aware selection with epic affinity
+**Examples**:
+```yaml
+# Simple mode - basic priority sorting
+picking:
+  mode: simple
+
+# Smart mode - dependency-aware with coordination
+picking:
+  mode: smart
+  max_issues: 3
+  prefer_epic_affinity: true
+```
+
+##### `max_issues` (number)
+**Required**: No (default: 3, smart mode only)
+**Purpose**: Maximum issues to pick per selection cycle
+**Impact**: Controls batch size and resource allocation
+**Values**: 1-10
+**Use Cases**:
+- **Small values** (1-2): Conservative resource usage
+- **Medium values** (3-5): Balanced throughput
+- **Large values** (6-10): High throughput scenarios
+
+##### `prefer_epic_affinity` (boolean)
+**Required**: No (default: true, smart mode only)
+**Purpose**: Maintain ownership of epic subtrees
+**Impact**: Ensures related issues stay with same worker
+**Values**: `true` | `false`
+**Benefits**:
+- **Context preservation**: Worker maintains domain knowledge
+- **Reduced handoffs**: Fewer context switches between workers
+- **Consistency**: Related issues processed by same agent
+
+#### Task Picker Mode Comparison
+
+**Simple Mode** (`mode: simple`):
+- **Selection**: Priority-based only
+- **Dependencies**: Ignored
+- **Coordination**: None - multiple workers can pick same issue type
+- **Performance**: Fast, low overhead
+- **Use Case**: Single worker, simple workflows, testing
+
+**Smart Mode** (`mode: smart`):
+- **Selection**: Dependency-aware with epic affinity
+- **Dependencies**: Respects issue relationships
+- **Coordination**: Prevents conflicts, maintains ownership
+- **Performance**: Higher overhead, more sophisticated
+- **Use Case**: Multi-worker environments, complex dependency chains
+
+**When to Use Each Mode:**
+
+- **Use Simple Mode**:
+  - Single worker deployment
+  - No issue dependencies
+  - High-throughput requirements
+  - Simple priority-based workflows
+
+- **Use Smart Mode**:
+  - Multiple concurrent workers
+  - Epic-based development (subtasks)
+  - Complex dependency relationships
+  - Need for consistent ownership
 
 ### `monitor` (object)
 **Required**: Yes  
