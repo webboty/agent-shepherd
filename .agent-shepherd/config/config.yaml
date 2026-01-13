@@ -17,6 +17,8 @@ worker:
     heartbeat_threshold_ms: 300000  # 5 minutes default
     lease_duration_ms: 1800000  # 30 minutes default
     fallback_to_lease: true
+  execution:
+    mode: sdk  # "cli" | "sdk"
 
 monitor:
   poll_interval_ms: 10000

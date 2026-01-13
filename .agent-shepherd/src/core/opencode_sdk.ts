@@ -1,12 +1,25 @@
 /**
  * OpenCode SDK Module
- * Dedicated SDK functions for session monitoring
- * 
- * This module provides a clean abstraction over the OpenCode SDK for
- * monitoring session activity and detecting heartbeats.
+ * Dedicated SDK functions for session monitoring and execution
+ *
+ * This module provides a clean abstraction over OpenCode SDK for
+ * monitoring session activity, detecting heartbeats, and executing agents.
  */
 
 import { createOpencodeClient } from '@opencode-ai/sdk';
+
+export interface ProgressCallback {
+  (message: string): void;
+}
+
+export interface SessionConfig {
+  directory?: string;
+  title?: string;
+  agent?: string;
+  model?: string;
+  message?: string;
+  sessionId?: string;
+}
 
 export interface SessionActivity {
   sessionId: string;
@@ -22,6 +35,13 @@ export interface HeartbeatCheckResult {
   stale: boolean;
 }
 
+export interface SessionStatus {
+  exists: boolean;
+  sessionId: string;
+  title?: string;
+  messageCount: number;
+}
+
 /**
  * OpenCode SDK Client for session monitoring
  */
@@ -35,9 +55,279 @@ export class OpenCodeSDKClient {
   }
 
   /**
+   * Create a new OpenCode session
+   *
+   * @param title - Session title
+   * @returns Session ID
+   */
+  async createSession(title: string): Promise<string> {
+    try {
+      const result = await this.client.session.create({
+        body: {
+          title,
+        },
+      });
+
+      if (!result.data || !result.data.id) {
+        throw new Error('Failed to create session: No session ID returned');
+      }
+
+      console.log(`Created session ${result.data.id} with title: ${title}`);
+      return result.data.id;
+    } catch (error) {
+      console.error(`Failed to create session:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute an agent in a session
+   *
+   * @param sessionId - The session ID
+   * @param config - Session configuration including agent and message
+   * @returns Run result with success, output, error
+   */
+  async executeAgentInSession(
+    sessionId: string,
+    config: SessionConfig
+  ): Promise<any> {
+    try {
+      const body: any = {
+        agent: config.agent || 'default',
+      };
+
+      if (config.message) {
+        body.messageID = config.message;
+      }
+
+      const promptResult = await this.client.session.prompt({
+        path: { id: sessionId },
+        body,
+      });
+
+      // The SDK prompt method returns immediately, we need to wait for completion
+      // For now, return success - completion will be handled by waitForCompletion
+      return {
+        success: true,
+        data: promptResult.data,
+        sessionId,
+      };
+    } catch (error) {
+      console.error(`Failed to execute agent in session ${sessionId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        sessionId,
+      };
+    }
+  }
+
+  /**
+   * Get messages from a session
+   *
+   * @param sessionId - The session ID
+   * @returns Array of session messages
+   */
+  async getSessionMessages(sessionId: string): Promise<any[]> {
+    try {
+      const result = await this.client.session.messages({
+        path: { id: sessionId },
+      });
+
+      if (!result.data) {
+        return [];
+      }
+
+      return result.data as any[];
+    } catch (error) {
+      console.error(`Failed to get messages for session ${sessionId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get session status
+   *
+   * @param sessionId - The session ID
+   * @returns Session status information
+   */
+  async getSessionStatus(sessionId: string): Promise<SessionStatus> {
+    try {
+      const result = await this.client.session.messages({
+        path: { id: sessionId },
+      });
+
+      if (!result.data || result.data.length === 0) {
+        return {
+          exists: false,
+          sessionId,
+          messageCount: 0,
+        };
+      }
+
+      const messages = result.data as any[];
+
+      // Get session info from first message if available
+      const firstMessage = messages[0];
+      const title = firstMessage?.info?.sessionTitle;
+
+      return {
+        exists: true,
+        sessionId,
+        title,
+        messageCount: messages.length,
+      };
+    } catch (error) {
+      console.error(`Failed to get session status for ${sessionId}:`, error);
+      return {
+        exists: false,
+        sessionId,
+        messageCount: 0,
+      };
+    }
+  }
+
+  /**
+   * Cleanup a session (SELECTIVE - only for explicitly marked test sessions)
+   *
+   * @param sessionId - The session ID
+   * @param isTestSession - Whether this is a test session (only delete if true)
+   * @returns Success status
+   */
+  async cleanupSession(sessionId: string, isTestSession: boolean = false): Promise<boolean> {
+    try {
+      // Only delete test sessions
+      if (!isTestSession) {
+        console.log(`Skipping cleanup for non-test session ${sessionId} (preserved for debugging)`);
+        return true;
+      }
+
+      await this.client.session.delete({
+        path: { id: sessionId },
+      });
+
+      console.log(`Deleted test session ${sessionId}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to cleanup session ${sessionId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Wait for session completion
+   * Polls session messages until completion or timeout
+   *
+   * @param sessionId - The session ID
+   * @param timeoutMs - Timeout in milliseconds (default: 10 minutes)
+   * @param pollIntervalMs - Polling interval in milliseconds (default: 1 minute)
+   * @param onProgress - Optional callback for progress updates
+   * @returns Final run result
+   */
+  async waitForCompletion(
+    sessionId: string,
+    timeoutMs: number = 10 * 60 * 1000,
+    pollIntervalMs: number = 60 * 1000,
+    onProgress?: ProgressCallback
+  ): Promise<any> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const messages = await this.getSessionMessages(sessionId);
+
+        if (messages.length === 0) {
+          // No messages yet, wait and retry
+          if (onProgress) {
+            onProgress(`Waiting for session to start...`);
+          }
+          await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+          continue;
+        }
+
+        // Check if there's a completed assistant message
+        const lastMessage = messages[messages.length - 1];
+
+        if (lastMessage?.info?.role === 'assistant' && lastMessage?.info?.time?.completed) {
+          // Session is complete
+          if (onProgress) {
+            onProgress(`Session completed successfully`);
+          }
+          console.log(`Session ${sessionId} completed`);
+          return {
+            success: true,
+            data: messages,
+            sessionId,
+          };
+        }
+
+        // Check for errors
+        const errorMessages = messages.filter((msg: any) =>
+          msg?.info?.error
+        );
+
+        if (errorMessages.length > 0) {
+          const error = errorMessages[errorMessages.length - 1];
+          if (onProgress) {
+            onProgress(`Session error: ${error?.info?.error?.message || 'Unknown error'}`);
+          }
+          return {
+            success: false,
+            error: error?.info?.error?.message || 'Session encountered an error',
+            sessionId,
+          };
+        }
+
+        // Session still running, provide progress and wait
+        const assistantMessages = messages.filter((msg: any) => msg?.info?.role === 'assistant');
+        if (assistantMessages.length > 0) {
+          const lastAssistant = assistantMessages[assistantMessages.length - 1];
+          const textParts = lastAssistant?.parts?.filter((p: any) => p?.type === 'text');
+          if (textParts && textParts.length > 0) {
+            const textContent = textParts.map((p: any) => p?.text || '').join('\n');
+            if (onProgress && textContent) {
+              // Show truncated preview of last message
+              const preview = textContent.substring(0, 100);
+              onProgress(`Agent working... last message: "${preview}${textContent.length > 100 ? '...' : ''}"`);
+            }
+          } else {
+            // Agent is working on tool calls
+            const toolParts = lastAssistant?.parts?.filter((p: any) => p?.type === 'tool');
+            if (toolParts && toolParts.length > 0) {
+              const lastTool = toolParts[toolParts.length - 1];
+              if (onProgress) {
+                onProgress(`Agent working... last action: ${lastTool?.tool || 'unknown tool'}`);
+              }
+            }
+          }
+        }
+
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+      } catch (error) {
+        console.error(`Error polling session ${sessionId}:`, error);
+        if (onProgress) {
+          onProgress(`Error checking session status: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        // Continue polling on error
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+      }
+    }
+
+    // Timeout reached
+    if (onProgress) {
+      onProgress(`Session timeout: did not complete within ${timeoutMs}ms`);
+    }
+    return {
+      success: false,
+      error: `Session ${sessionId} did not complete within ${timeoutMs}ms`,
+      sessionId,
+    };
+  }
+
+  /**
    * Get last activity timestamp from a session
-   * Returns the timestamp of the most recent message in the session
-   * 
+   * Returns timestamp of most recent message in session
+   *
    * @param sessionId - The OpenCode session ID
    * @returns Last activity timestamp in milliseconds since epoch, or null if no messages
    */
@@ -63,7 +353,7 @@ export class OpenCodeSDKClient {
         return null;
       }
 
-      // Find the message with the most recent timestamp
+      // Find message with most recent timestamp
       let lastTimestamp: number | null = null;
       for (const msg of messages) {
         const timestamp = msg.info?.time?.created || 0;
@@ -84,7 +374,7 @@ export class OpenCodeSDKClient {
 
   /**
    * Get detailed activity information for a session
-   * 
+   *
    * @param sessionId - The OpenCode session ID
    * @returns Session activity information
    */
@@ -93,7 +383,7 @@ export class OpenCodeSDKClient {
       const lastTimestamp = await this.getLastSessionActivity(sessionId);
       const now = Date.now();
 
-      // Session is considered active if there was activity within the last 10 minutes
+      // Session is considered active if there was activity within last 10 minutes
       const ACTIVITY_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 
       return {
@@ -116,7 +406,7 @@ export class OpenCodeSDKClient {
   /**
    * Check if a session heartbeat is active
    * A session is considered alive if it has recent activity
-   * 
+   *
    * @param sessionId - The OpenCode session ID
    * @param staleThreshold - Threshold in ms to consider a heartbeat stale (default: 5 minutes)
    * @returns Heartbeat check result
@@ -156,7 +446,7 @@ export class OpenCodeSDKClient {
   }
 
   /**
-   * Get the base URL
+   * Get base URL
    */
   getBaseUrl(): string {
     return this.baseUrl;

@@ -846,26 +846,57 @@ export class WorkerEngine {
 
     // Execute agent with or without session reuse
     let result;
+    const config = loadConfig();
+    const executionMode = config.execution?.mode || "cli";
+
     try {
-      result = await this.opencode.runAgentCLI({
-        directory: process.cwd(),
-        title: `${issue.id}: ${issue.title}`,
-        agent: agent.opencode_agent || agentId,
-        model: modelToUse,
-        message: instructions,
-        sessionId: sessionIdToUse,
-      });
-    } catch (error) {
-      // Fallback to new session if reuse fails
-      if (sessionIdToUse) {
-        console.warn(`Session reuse failed, falling back to new session: ${error}`);
+      if (executionMode === "sdk") {
+        console.log(`Executing agent using SDK mode`);
+        result = await this.opencode.runAgentSDK({
+          directory: process.cwd(),
+          title: `${issue.id}: ${issue.title}`,
+          agent: agent.opencode_agent || agentId,
+          model: modelToUse,
+          message: instructions,
+          sessionId: sessionIdToUse,
+        }, (message) => {
+          console.log(`[SDK Progress] ${message}`);
+        });
+      } else {
+        console.log(`Executing agent using CLI mode`);
         result = await this.opencode.runAgentCLI({
           directory: process.cwd(),
           title: `${issue.id}: ${issue.title}`,
           agent: agent.opencode_agent || agentId,
           model: modelToUse,
           message: instructions,
+          sessionId: sessionIdToUse,
         });
+      }
+    } catch (error) {
+      // Fallback to new session if reuse fails
+      if (sessionIdToUse) {
+        console.warn(`Session reuse failed, falling back to new session: ${error}`);
+        
+        if (executionMode === "sdk") {
+          result = await this.opencode.runAgentSDK({
+            directory: process.cwd(),
+            title: `${issue.id}: ${issue.title}`,
+            agent: agent.opencode_agent || agentId,
+            model: modelToUse,
+            message: instructions,
+          }, (message) => {
+            console.log(`[SDK Progress] ${message}`);
+          });
+        } else {
+          result = await this.opencode.runAgentCLI({
+            directory: process.cwd(),
+            title: `${issue.id}: ${issue.title}`,
+            agent: agent.opencode_agent || agentId,
+            model: modelToUse,
+            message: instructions,
+          });
+        }
       } else {
         throw error;
       }

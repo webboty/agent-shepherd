@@ -3,6 +3,10 @@
  * Uses CLI to start server and direct HTTP calls for API access
  */
 
+export interface ProgressCallback {
+  (message: string): void;
+}
+
 export interface SessionConfig {
   directory?: string;
   title?: string;
@@ -202,6 +206,104 @@ export class OpenCodeClient {
    */
   async runAgent(config: SessionConfig): Promise<RunResult> {
     return this.runAgentCLI(config);
+  }
+
+  /**
+   * Run agent using OpenCode SDK
+   * Provides session-based execution with better control
+   *
+   * @param config - Session configuration
+   * @param onProgress - Optional callback for progress updates
+   * @returns Run result with success, output, error
+   */
+  async runAgentSDK(config: SessionConfig, onProgress?: ProgressCallback): Promise<RunResult> {
+    const { getSDKClient } = await import('./opencode_sdk.ts');
+    const sdkClient = getSDKClient();
+
+    try {
+      // Create or reuse session
+      let sessionId: string;
+
+      if (config.sessionId) {
+        sessionId = config.sessionId;
+        console.log(`Reusing existing session ${sessionId}`);
+      } else {
+        sessionId = await sdkClient.createSession(config.title || 'Agent Shepherd Run');
+        console.log(`Created new session ${sessionId}`);
+      }
+
+      // Handle model parameter
+      const body: any = {
+        agent: config.agent || 'default',
+        message: config.message || '',
+      };
+
+      if (config.model) {
+        // Parse model format "provider/model"
+        const [providerID, modelID] = config.model.split('/');
+        if (providerID && modelID) {
+          body.providerID = providerID;
+          body.modelID = modelID;
+        } else {
+          // Assume it's just a model ID
+          body.modelID = config.model;
+        }
+      }
+
+      // Execute agent
+      console.log(`Executing agent in session ${sessionId}...`);
+      const progressCallback = onProgress || ((msg: string) => {
+        console.log(`[Progress] ${msg}`);
+      });
+
+      const executeResult = await sdkClient.executeAgentInSession(sessionId, {
+        agent: config.agent,
+        message: config.message,
+      });
+
+      if (!executeResult.success) {
+        return {
+          success: false,
+          output: '',
+          error: executeResult.error,
+          sessionId,
+        };
+      }
+
+      // Wait for completion with progress feedback
+      progressCallback('Agent started working...');
+
+      const finalResult = await sdkClient.waitForCompletion(
+        sessionId,
+        10 * 60 * 1000, // 10 minute timeout
+        60 * 1000, // 1 minute polling
+        progressCallback
+      );
+
+      if (finalResult.success && finalResult.data) {
+        // Extract last assistant message for output
+        const messages = finalResult.data;
+
+        // Extract last assistant message for output
+        const assistantMessages = messages.filter((msg: any) => msg?.info?.role === 'assistant');
+        if (assistantMessages.length > 0) {
+          const lastAssistant = assistantMessages[assistantMessages.length - 1];
+          const textParts = lastAssistant?.parts?.filter((p: any) => p?.type === 'text');
+          if (textParts && textParts.length > 0) {
+            finalResult.output = textParts.map((p: any) => p?.text || '').join('\n');
+          }
+        }
+      }
+
+      return finalResult;
+    } catch (error) {
+      console.error('SDK execution error:', error);
+      return {
+        success: false,
+        output: '',
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   /**
