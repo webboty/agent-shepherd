@@ -11,10 +11,11 @@ import { IssuePicker, resetIssuePicker } from "../src/core/issue-picker";
 import { loadConfig } from "../src/core/config";
 import { getConfigPath } from "../src/core/path-utils";
 import { PolicyEngine } from "../src/core/policy";
-
-const __dirname = import.meta.dir;
-const TEMP_DIR = join(__dirname, "..", "..", "tmp_test");
-const TEST_ISSUE_PREFIX = "container-handling-integration-test";
+import {
+  setupBeadsIsolation,
+  type BeadsTestEnv,
+  cleanupTestIssues
+} from "../helpers/beads-test-isolation";
 
 interface BeadsTestEnv {
   tempDir: string;
@@ -29,7 +30,7 @@ interface BeadsTestEnv {
 function setupBeadsIsolation(): BeadsTestEnv {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(7);
-  const tempDir = join(TEMP_DIR, `beads-test-${timestamp}-${random}`);
+  const tempDir = join(__dirname, '..', 'tmp_test', 'beads-isolation');
   const beadsDir = join(tempDir, '.beads');
 
   async function execBeadsCommand(args: string[]): Promise<string> {
@@ -107,6 +108,21 @@ function setupBeadsIsolation(): BeadsTestEnv {
   };
 
   return env;
+}
+
+async function cleanupTestIssues(env: BeadsTestEnv, prefix: string): Promise<void> {
+  try {
+    const output = await env.exec(["list", "--json"]);
+    const issues = JSON.parse(output);
+
+    for (const issue of issues) {
+      if (issue.title && issue.title.includes(prefix)) {
+        await env.deleteIssue(issue.id);
+      }
+    }
+  } catch (error) {
+    console.warn(`Failed to cleanup test issues with prefix "${prefix}":`, error);
+  }
 }
 
 describe("Container Handling - Integration Tests", () => {
