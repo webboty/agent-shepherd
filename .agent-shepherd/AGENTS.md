@@ -443,7 +443,7 @@ ashep init              # Initialize configuration
 ashep quickstart        # One-command onboarding
 ashep worker            # Start autonomous worker
 ashep monitor           # Start monitoring engine
-ashep work <issue-id>   # Process specific issue
+ashep work [issue-id]   # Process an issue (auto-picks if none specified)
 ashep ui                # Start UI server
 ashep sync-agents       # Sync agents from OpenCode
 ashep validate-policy-chain    # Validate relationships

@@ -95,33 +95,73 @@ Detected stall in session-def456 (60s elapsed)
 Escalating to human approval required
 ```
 
-### `ashep work <issue-id>`
+### `ashep work [issue-id]`
 
-Manually process a specific issue, bypassing the autonomous worker.
+Process an issue, optionally auto-picking the next ready issue if none specified.
 
 **Usage:**
 ```bash
+# Auto-pick next ready issue (uses config: simple/smart)
+ashep work
+# Process specific issue
 ashep work ISSUE-123
-ashep work --phase implement ISSUE-456
+# Process entire epic subtree
+ashep work --epic EPIC-123
 ```
 
 **Options:**
+- `--epic <epic-id>`: Process all ready issues in epic subtree
 - `--phase <phase>`: Start at specific phase instead of first phase
 
 **Behavior:**
-- Validates issue exists in Beads
-- Processes through complete workflow
-- Returns detailed result status
+- **Without arguments**: Uses configured picker (simple/smart) to select next ready issue
+  - Respects `worker.picking.mode` from config.yaml
+  - Shows which issue was picked and picker mode used
+  - Shows "No ready issues found" message if no issues available
+- **With issue ID**: Validates issue exists in Beads and processes through complete workflow
+- **With --epic**: Processes all ready issues in epic subtree
 - **Note**: Custom prompts configured in policies.yaml are automatically applied per phase and support variable substitution (e.g., `{{issue.title}}`, `{{phase}}`, `{{capabilities}}`)
 
 **Output:**
 ```
-Processing issue: ISSUE-123 - Implement user authentication
+Auto-picking next issue using configured picker...
+Picked issue: TASK-123 - Implement feature
+Picker mode: simple | Available issues: 3
+Processing issue: TASK-123 - Implement feature
 
 Result:
-  Success: true
-  Run ID: run-789
-  Next Phase: implement
+   Success: true
+   Run ID: run-789
+   Next Phase: implement
+```
+
+**Configuration:**
+The auto-pick behavior is controlled by:
+```yaml
+worker:
+  picking:
+    mode: simple  # "simple" (default) | "smart"
+    max_issues: 3
+    prefer_epic_affinity: true
+```
+
+- **simple**: Priority-based selection (sorts by priority, picks top N)
+- **smart**: Dependency-aware with epic affinity (builds dependency graph, respects epic ownership)
+
+**Examples:**
+```bash
+# Quick manual work using auto-pick
+ashep work
+# Output:
+# Auto-picking next issue using configured picker...
+# Picked issue: TASK-123 - Implement feature
+# Picker mode: simple | Available issues: 3
+
+# Target specific issue
+ashep work ISSUE-456
+
+# Target epic for multi-issue work
+ashep work --epic EPIC-789
 ```
 
 ### `ashep ui`

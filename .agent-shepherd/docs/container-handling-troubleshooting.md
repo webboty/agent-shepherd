@@ -324,10 +324,11 @@ prompts:
       Type: {container_type}
       Children: {children_completed}/{total_children}
 ```
-
 ```bash
+
 # Solution 2: Test validation manually
-ashep work EPIC-123  # Start manual validation
+ashep work              # Auto-pick next issue
+ashep work EPIC-123      # Or test specific epic
 
 # Solution 3: Review decision agent logs
 grep "decision-agent" .agent-shepherd/data/logs/worker.log

@@ -634,8 +634,23 @@ ashep worker
 # Start monitoring in another terminal
 ashep monitor
 
-# Process a specific issue
-ashep work ISSUE-123
+# Process a specific issue (auto-picks if none specified)
+ashep work                    # Auto-pick next ready issue (uses config: simple/smart)
+ashep work ISSUE-123           # Process specific issue
+ashep work --epic EPIC-123     # Process entire epic subtree
+
+The auto-pick behavior uses your configured picker mode:
+- simple (default): Priority-based selection
+- smart: Dependency-aware with epic affinity
+
+Configure picker mode in .agent-shepherd/config/config.yaml:
+```yaml
+worker:
+  picking:
+    mode: smart  # or "simple"
+    max_issues: 3
+    prefer_epic_affinity: true
+```
 
 # View workflow visualization
 ashep ui
@@ -852,7 +867,7 @@ For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.m
 
 - **`ashep worker`** - Start autonomous issue processing
 - **`ashep monitor`** - Start supervision and monitoring
-- **`ashep work <issue-id>`** - Process specific issue
+- **`ashep work [issue-id]`** - Process an issue (auto-picks if none specified)
 - **`ashep ui`** - Start flow visualization server
 
 ### Management Commands

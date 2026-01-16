@@ -9,19 +9,27 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { Logger } from '../src/core/logging.ts';
 import { OpenCodeClient } from '../src/core/opencode.ts';
+import { setupBeadsIsolation, type BeadsTestEnv } from './helpers/beads-test-isolation.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
 // Run CLI command by spawning the built binary
-async function runCLICommand(command: string, args: string[] = [], testDir?: string, stdinInput?: string): Promise<string[]> {
+async function runCLICommand(command: string, args: string[] = [], testDir?: string, stdinInput?: string, beadsDir?: string): Promise<string[]> {
   const cliPath = join(__dirname, '..', 'bin', 'ashep');
   const workingDir = testDir || process.cwd();
-  console.log(`DEBUG: Spawning CLI with ASHEP_DIR=${workingDir}`);
+  console.log(`DEBUG: Spawning CLI with ASHEP_DIR=${workingDir}, BEADS_DIR=${beadsDir}`);
   const proc = spawn(cliPath, [command, ...args], {
     cwd: workingDir,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, NODE_ENV: 'test', ASHEP_DIR: workingDir }
+    env: { 
+      ...process.env, 
+      NODE_ENV: 'test', 
+      ASHEP_DIR: workingDir,
+      ...(beadsDir && { BEADS_DIR: beadsDir }),
+      BD_NO_DAEMON: 'true',
+      BD_SANDBOX: 'true'
+    }
   });
 
   if (stdinInput) {
@@ -180,11 +188,300 @@ worker:
   });
 
   describe('Work Command', () => {
-    it('should require issue ID', async () => {
-      const outputs = await runCLICommand('work');
-      const output = outputs.join(' ');
+    it('should auto-pick issue when no ID provided', async () => {
+      // Set up isolated Beads database with a ready issue
+      const beadsEnv = setupBeadsIsolation();
+      await beadsEnv.initialize();
 
-      expect(output).toContain('Error: Issue ID or Epic ID required');
+      // Create a ready issue with ashep-managed label
+      const testIssueId = await beadsEnv.createIssue(
+        'Test ready issue for auto-pick',
+        'task',
+        ['ashep-managed']
+      );
+
+      try {
+        // Create test directory structure
+        const testDir = join(testDataDir, 'work-test');
+        const configDir = join(testDir, '.agent-shepherd', 'config');
+        mkdirSync(configDir, { recursive: true });
+
+        // Create minimal config files
+        const testConfig = `
+version: "1.0"
+worker:
+  poll_interval_ms: 1000
+  max_concurrent_runs: 1
+        `.trim();
+        writeFileSync(join(configDir, 'config.yaml'), testConfig);
+
+        const testPolicies = `
+policies:
+  simple:
+    name: simple
+    description: Simple test policy
+    phases:
+      - name: implement
+        description: Implement
+        capabilities:
+          - coding
+    retry:
+      max_attempts: 1
+      backoff_strategy: exponential
+      initial_delay_ms: 1000
+      max_delay_ms: 5000
+    timeout_base_ms: 30000
+    stall_threshold_ms: 10000
+    require_hitl: false
+default_policy: simple
+        `.trim();
+        writeFileSync(join(configDir, 'policies.yaml'), testPolicies);
+
+        const testAgents = `
+version: "1.0"
+agents:
+  - id: test-agent
+    name: Test Agent
+    capabilities:
+      - coding
+    provider_id: test
+    model_id: test-model
+    priority: 10
+    constraints:
+      performance_tier: balanced
+        `.trim();
+        writeFileSync(join(configDir, 'agents.yaml'), testAgents);
+
+        // Run CLI work command without arguments with isolated Beads database
+        const outputs = await runCLICommand('work', [], testDir, undefined, beadsEnv.beadsDir);
+        const output = outputs.join(' ');
+
+        // Should show auto-pick message instead of error
+        expect(output).toContain('Auto-picking next issue');
+        expect(output).toContain('Picked issue:');
+        expect(output).not.toContain('Error: Issue ID or Epic ID required');
+      } finally {
+        await beadsEnv.cleanup();
+      }
+    });
+
+    it('should show message when no ready issues available', async () => {
+      // Set up isolated Beads database with issues but none are ready
+      const beadsEnv = setupBeadsIsolation();
+      await beadsEnv.initialize();
+
+      // Create issues but exclude them all
+      await beadsEnv.createIssue('Excluded issue 1', 'task', ['ashep-excluded']);
+      await beadsEnv.createIssue('Excluded issue 2', 'task', ['ashep-excluded']);
+
+      try {
+        // Create config for test
+        const testDir = join(testDataDir, 'work-no-ready');
+        const configDir = join(testDir, '.agent-shepherd', 'config');
+        mkdirSync(configDir, { recursive: true });
+
+        const testConfig = `
+version: "1.0"
+worker:
+  poll_interval_ms: 1000
+  max_concurrent_runs: 1
+        `.trim();
+        writeFileSync(join(configDir, 'config.yaml'), testConfig);
+
+        const testPolicies = `
+policies:
+  simple:
+    name: simple
+    description: Simple test policy
+    phases:
+      - name: implement
+        description: Implement
+        capabilities:
+          - coding
+    retry:
+      max_attempts: 1
+      backoff_strategy: exponential
+      initial_delay_ms: 1000
+      max_delay_ms: 5000
+    timeout_base_ms: 30000
+    stall_threshold_ms: 10000
+    require_hitl: false
+default_policy: simple
+        `.trim();
+        writeFileSync(join(configDir, 'policies.yaml'), testPolicies);
+
+        const testAgents = `
+version: "1.0"
+agents:
+  - id: test-agent
+    name: Test Agent
+    capabilities:
+      - coding
+    provider_id: test
+    model_id: test-model
+    priority: 10
+    constraints:
+      performance_tier: balanced
+        `.trim();
+        writeFileSync(join(configDir, 'agents.yaml'), testAgents);
+
+        // Run CLI work command without arguments with isolated Beads database
+        const outputs = await runCLICommand('work', [], testDir, undefined, beadsEnv.beadsDir);
+        const output = outputs.join(' ');
+
+        // Should show helpful message when no ready issues
+        expect(output).toContain('No ready issues found');
+        expect(output).toContain('Use \'ashep list-ready\' to see available work');
+      } finally {
+        await beadsEnv.cleanup();
+      }
+    });
+
+    it('should respect picker mode from config (simple)', async () => {
+      // Set up isolated Beads database with multiple ready issues
+      const beadsEnv = setupBeadsIsolation();
+      await beadsEnv.initialize();
+
+      // Create multiple ready issues
+      await beadsEnv.createIssue('Low priority test issue', 'task', ['ashep-managed', 'ashep-excluded']);
+      await beadsEnv.createIssue('High priority test issue', 'task', ['ashep-managed']);
+
+      try {
+        // Create config with simple picker mode
+        const testDir = join(testDataDir, 'work-simple-mode');
+        const configDir = join(testDir, '.agent-shepherd', 'config');
+        mkdirSync(configDir, { recursive: true });
+
+        const testConfig = `
+version: "1.0"
+worker:
+  poll_interval_ms: 1000
+  max_concurrent_runs: 1
+  picking:
+    mode: simple
+        `.trim();
+        writeFileSync(join(configDir, 'config.yaml'), testConfig);
+
+        const testPolicies = `
+policies:
+  simple:
+    name: simple
+    description: Simple test policy
+    phases:
+      - name: implement
+        description: Implement
+        capabilities:
+          - coding
+    retry:
+      max_attempts: 1
+      backoff_strategy: exponential
+      initial_delay_ms: 1000
+      max_delay_ms: 5000
+    timeout_base_ms: 30000
+    stall_threshold_ms: 10000
+    require_hitl: false
+default_policy: simple
+        `.trim();
+        writeFileSync(join(configDir, 'policies.yaml'), testPolicies);
+
+        const testAgents = `
+version: "1.0"
+agents:
+  - id: test-agent
+    name: Test Agent
+    capabilities:
+      - coding
+    provider_id: test
+    model_id: test-model
+    priority: 10
+    constraints:
+      performance_tier: balanced
+        `.trim();
+        writeFileSync(join(configDir, 'agents.yaml'), testAgents);
+
+        // Run CLI work command with isolated Beads database
+        const outputs = await runCLICommand('work', [], testDir, undefined, beadsEnv.beadsDir);
+        const output = outputs.join(' ');
+
+        // Should show simple picker mode in output
+        expect(output).toContain('Auto-picking next issue');
+        expect(output).toContain('Picker mode: simple');
+      } finally {
+        await beadsEnv.cleanup();
+      }
+    });
+
+    it('should respect picker mode from config (smart)', async () => {
+      // Set up isolated Beads database
+      const beadsEnv = setupBeadsIsolation();
+      await beadsEnv.initialize();
+
+      // Create ready issue
+      await beadsEnv.createIssue('Test issue for smart picker', 'task', ['ashep-managed']);
+
+      try {
+        // Create config with smart picker mode
+        const testDir = join(testDataDir, 'work-smart-mode');
+        const configDir = join(testDir, '.agent-shepherd', 'config');
+        mkdirSync(configDir, { recursive: true });
+
+        const testConfig = `
+version: "1.0"
+worker:
+  poll_interval_ms: 1000
+  max_concurrent_runs: 1
+  picking:
+    mode: smart
+        `.trim();
+        writeFileSync(join(configDir, 'config.yaml'), testConfig);
+
+        const testPolicies = `
+policies:
+  simple:
+    name: simple
+    description: Simple test policy
+    phases:
+      - name: implement
+        description: Implement
+        capabilities:
+          - coding
+    retry:
+      max_attempts: 1
+      backoff_strategy: exponential
+      initial_delay_ms: 1000
+      max_delay_ms: 5000
+    timeout_base_ms: 30000
+    stall_threshold_ms: 10000
+    require_hitl: false
+default_policy: simple
+        `.trim();
+        writeFileSync(join(configDir, 'policies.yaml'), testPolicies);
+
+        const testAgents = `
+version: "1.0"
+agents:
+  - id: test-agent
+    name: Test Agent
+    capabilities:
+      - coding
+    provider_id: test
+    model_id: test-model
+    priority: 10
+    constraints:
+      performance_tier: balanced
+        `.trim();
+        writeFileSync(join(configDir, 'agents.yaml'), testAgents);
+
+        // Run CLI work command with isolated Beads database
+        const outputs = await runCLICommand('work', [], testDir, undefined, beadsEnv.beadsDir);
+        const output = outputs.join(' ');
+
+        // Should show smart picker mode in output
+        expect(output).toContain('Auto-picking next issue');
+        expect(output).toContain('Picker mode: smart');
+      } finally {
+        await beadsEnv.cleanup();
+      }
     });
   });
 

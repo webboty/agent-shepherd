@@ -11012,7 +11012,7 @@ class OpenCodeSDKClient {
       throw classifiedError;
     }
   }
-  async executeAgentInSession(sessionId2, config) {
+  async executeAgentInSession(sessionId, config) {
     try {
       const body = {
         agent: config.agent || "default"
@@ -11021,48 +11021,48 @@ class OpenCodeSDKClient {
         body.messageID = config.message;
       }
       const promptResult = await this.client.session.prompt({
-        path: { id: sessionId2 },
+        path: { id: sessionId },
         body
       });
       return {
         success: true,
         data: promptResult.data,
-        sessionId: sessionId2
+        sessionId
       };
     } catch (error) {
       const classifiedError = this.classifyError(error);
-      this.logError(`executeAgentInSession(sessionId: ${sessionId2}, agent: ${config.agent})`, classifiedError);
+      this.logError(`executeAgentInSession(sessionId: ${sessionId}, agent: ${config.agent})`, classifiedError);
       return {
         success: false,
         error: classifiedError.message,
         errorType: classifiedError.type,
-        sessionId: sessionId2
+        sessionId
       };
     }
   }
-  async getSessionMessages(sessionId2) {
+  async getSessionMessages(sessionId) {
     try {
       const result = await this.client.session.messages({
-        path: { id: sessionId2 }
+        path: { id: sessionId }
       });
       if (!result.data) {
         return [];
       }
       return result.data;
     } catch (error) {
-      console.error(`Failed to get messages for session ${sessionId2}:`, error);
+      console.error(`Failed to get messages for session ${sessionId}:`, error);
       return [];
     }
   }
-  async getSessionStatus(sessionId2) {
+  async getSessionStatus(sessionId) {
     try {
       const result = await this.client.session.messages({
-        path: { id: sessionId2 }
+        path: { id: sessionId }
       });
       if (!result.data || result.data.length === 0) {
         return {
           exists: false,
-          sessionId: sessionId2,
+          sessionId,
           messageCount: 0
         };
       }
@@ -11071,45 +11071,45 @@ class OpenCodeSDKClient {
       const title = firstMessage?.info?.sessionTitle;
       return {
         exists: true,
-        sessionId: sessionId2,
+        sessionId,
         title,
         messageCount: messages.length
       };
     } catch (error) {
-      console.error(`Failed to get session status for ${sessionId2}:`, error);
+      console.error(`Failed to get session status for ${sessionId}:`, error);
       return {
         exists: false,
-        sessionId: sessionId2,
+        sessionId,
         messageCount: 0
       };
     }
   }
-  async cleanupSession(sessionId2, isTestSession = false, onError = false) {
+  async cleanupSession(sessionId, isTestSession = false, onError = false) {
     try {
       if (!isTestSession) {
-        console.log(`Skipping cleanup for non-test session ${sessionId2} (preserved for debugging)`);
+        console.log(`Skipping cleanup for non-test session ${sessionId} (preserved for debugging)`);
         return true;
       }
       await this.client.session.delete({
-        path: { id: sessionId2 }
+        path: { id: sessionId }
       });
       const prefix = onError ? `[Error Cleanup] ` : "";
-      console.log(`${prefix}Deleted test session ${sessionId2}`);
+      console.log(`${prefix}Deleted test session ${sessionId}`);
       return true;
     } catch (error) {
       const classifiedError = this.classifyError(error);
-      this.logError(`cleanupSession(sessionId: ${sessionId2}, isTestSession: ${isTestSession})`, classifiedError);
-      console.error(`Failed to cleanup session ${sessionId2}: ${classifiedError.message}`);
+      this.logError(`cleanupSession(sessionId: ${sessionId}, isTestSession: ${isTestSession})`, classifiedError);
+      console.error(`Failed to cleanup session ${sessionId}: ${classifiedError.message}`);
       return false;
     }
   }
-  async waitForCompletion(sessionId2, timeoutMs = 10 * 60 * 1000, pollIntervalMs = 60 * 1000, onProgress) {
+  async waitForCompletion(sessionId, timeoutMs = 10 * 60 * 1000, pollIntervalMs = 60 * 1000, onProgress) {
     const startTime = Date.now();
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 5;
     while (Date.now() - startTime < timeoutMs) {
       try {
-        const messages = await this.getSessionMessages(sessionId2);
+        const messages = await this.getSessionMessages(sessionId);
         consecutiveErrors = 0;
         if (messages.length === 0) {
           if (onProgress) {
@@ -11123,19 +11123,19 @@ class OpenCodeSDKClient {
           if (onProgress) {
             onProgress(`Session completed successfully`);
           }
-          console.log(`Session ${sessionId2} completed`);
+          console.log(`Session ${sessionId} completed`);
           return {
             success: true,
             data: messages,
-            sessionId: sessionId2
+            sessionId
           };
         }
         const errorMessages = messages.filter((msg) => msg?.info?.error);
         if (errorMessages.length > 0) {
           const error = errorMessages[errorMessages.length - 1];
           const errorMessage = error?.info?.error?.message || "Unknown error";
-          console.error(`Session ${sessionId2} encountered error:`, errorMessage);
-          this.logError(`waitForCompletion(sessionId: ${sessionId2})`, new SDKError("UNKNOWN_ERROR" /* UNKNOWN_ERROR */, null, errorMessage));
+          console.error(`Session ${sessionId} encountered error:`, errorMessage);
+          this.logError(`waitForCompletion(sessionId: ${sessionId})`, new SDKError("UNKNOWN_ERROR" /* UNKNOWN_ERROR */, null, errorMessage));
           if (onProgress) {
             onProgress(`Session error: ${errorMessage}`);
           }
@@ -11143,7 +11143,7 @@ class OpenCodeSDKClient {
             success: false,
             error: errorMessage,
             errorType: "UNKNOWN_ERROR" /* UNKNOWN_ERROR */,
-            sessionId: sessionId2
+            sessionId
           };
         }
         const assistantMessages = messages.filter((msg) => msg?.info?.role === "assistant");
@@ -11171,24 +11171,24 @@ class OpenCodeSDKClient {
       } catch (error) {
         const classifiedError = this.classifyError(error);
         consecutiveErrors++;
-        this.logError(`waitForCompletion(sessionId: ${sessionId2}) - Poll error ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}`, classifiedError);
+        this.logError(`waitForCompletion(sessionId: ${sessionId}) - Poll error ${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}`, classifiedError);
         if (onProgress) {
           onProgress(`Error checking session status: ${classifiedError.message}`);
         }
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          const timeoutError2 = new SDKError("EXECUTION_TIMEOUT" /* EXECUTION_TIMEOUT */, `Failed to poll session ${sessionId2} after ${MAX_CONSECUTIVE_ERRORS} consecutive errors: ${classifiedError.message}`, error);
+          const timeoutError2 = new SDKError("EXECUTION_TIMEOUT" /* EXECUTION_TIMEOUT */, `Failed to poll session ${sessionId} after ${MAX_CONSECUTIVE_ERRORS} consecutive errors: ${classifiedError.message}`, error);
           this.logError(`waitForCompletion - Giving up after ${MAX_CONSECUTIVE_ERRORS} errors`, timeoutError2);
           return {
             success: false,
             error: timeoutError2.message,
             errorType: timeoutError2.type,
-            sessionId: sessionId2
+            sessionId
           };
         }
         await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
       }
     }
-    const timeoutMessage = `Session ${sessionId2} did not complete within ${timeoutMs}ms`;
+    const timeoutMessage = `Session ${sessionId} did not complete within ${timeoutMs}ms`;
     const timeoutError = new SDKError("EXECUTION_TIMEOUT" /* EXECUTION_TIMEOUT */, null, timeoutMessage);
     this.logError(`waitForCompletion - Timeout after ${timeoutMs}ms`, timeoutError);
     if (onProgress) {
@@ -11198,13 +11198,13 @@ class OpenCodeSDKClient {
       success: false,
       error: timeoutError.message,
       errorType: timeoutError.type,
-      sessionId: sessionId2
+      sessionId
     };
   }
-  async getLastSessionActivity(sessionId2) {
+  async getLastSessionActivity(sessionId) {
     try {
       const result = await this.client.session.messages({
-        path: { id: sessionId2 }
+        path: { id: sessionId }
       });
       if (!result.data) {
         return null;
@@ -11224,33 +11224,33 @@ class OpenCodeSDKClient {
       }
       return lastTimestamp;
     } catch (error) {
-      console.error(`Failed to get session activity for ${sessionId2}:`, error);
+      console.error(`Failed to get session activity for ${sessionId}:`, error);
       return null;
     }
   }
-  async getSessionActivity(sessionId2) {
+  async getSessionActivity(sessionId) {
     try {
-      const lastTimestamp = await this.getLastSessionActivity(sessionId2);
+      const lastTimestamp = await this.getLastSessionActivity(sessionId);
       const now = Date.now();
       const ACTIVITY_THRESHOLD_MS = 10 * 60 * 1000;
       return {
-        sessionId: sessionId2,
+        sessionId,
         lastActivityTimestamp: lastTimestamp,
         messageCount: 0,
         isActive: lastTimestamp !== null && now - lastTimestamp < ACTIVITY_THRESHOLD_MS
       };
     } catch (error) {
-      console.error(`Failed to get session activity for ${sessionId2}:`, error);
+      console.error(`Failed to get session activity for ${sessionId}:`, error);
       return {
-        sessionId: sessionId2,
+        sessionId,
         lastActivityTimestamp: null,
         messageCount: 0,
         isActive: false
       };
     }
   }
-  async checkSessionHeartbeat(sessionId2, staleThreshold = 5 * 60 * 1000) {
-    const lastActivity = await this.getLastSessionActivity(sessionId2);
+  async checkSessionHeartbeat(sessionId, staleThreshold = 5 * 60 * 1000) {
+    const lastActivity = await this.getLastSessionActivity(sessionId);
     const now = Date.now();
     if (lastActivity === null) {
       return {
@@ -11407,14 +11407,15 @@ class OpenCodeClient {
     const SDKErrorType2 = sdkModule.SDKErrorType;
     const SDKError2 = sdkModule.SDKError;
     const sdkClient = getSDKClient2();
+    let sessionId;
+    const isSessionReused = !!config.sessionId;
     try {
-      let sessionId2;
       if (config.sessionId) {
-        sessionId2 = config.sessionId;
-        console.log(`Reusing existing session ${sessionId2}`);
+        sessionId = config.sessionId;
+        console.log(`Reusing existing session ${sessionId}`);
       } else {
-        sessionId2 = await sdkClient.createSession(config.title || "Agent Shepherd Run");
-        console.log(`Created new session ${sessionId2}`);
+        sessionId = await sdkClient.createSession(config.title || "Agent Shepherd Run");
+        console.log(`Created new session ${sessionId}`);
       }
       const body = {
         agent: config.agent || "default",
@@ -11429,11 +11430,11 @@ class OpenCodeClient {
           body.modelID = config.model;
         }
       }
-      console.log(`Executing agent in session ${sessionId2}...`);
+      console.log(`Executing agent in session ${sessionId}...`);
       const progressCallback = onProgress || ((msg) => {
         console.log(`[Progress] ${msg}`);
       });
-      const executeResult = await sdkClient.executeAgentInSession(sessionId2, {
+      const executeResult = await sdkClient.executeAgentInSession(sessionId, {
         agent: config.agent,
         message: config.message
       });
@@ -11443,30 +11444,30 @@ class OpenCodeClient {
         if (errorType === SDKErrorType2.AGENT_NOT_FOUND) {
           errorMessage = `Agent not found: ${config.agent || "default"}. Check agent configuration.`;
         } else if (errorType === SDKErrorType2.SESSION_NOT_FOUND) {
-          errorMessage = `Session not found: ${sessionId2}. Session may have been deleted or is invalid.`;
+          errorMessage = `Session not found: ${sessionId}. Session may have been deleted or is invalid.`;
         }
         return {
           success: false,
           output: "",
           error: errorMessage,
-          sessionId: sessionId2
+          sessionId
         };
       }
       progressCallback("Agent started working...");
-      const finalResult = await sdkClient.waitForCompletion(sessionId2, 600000, 60000, progressCallback);
+      const finalResult = await sdkClient.waitForCompletion(sessionId, 600000, 60000, progressCallback);
       if (!finalResult.success) {
         let errorMessage = finalResult.error || "Agent execution failed";
         if (finalResult.errorType === SDKErrorType2.EXECUTION_TIMEOUT) {
           errorMessage = `Agent execution timeout: ${errorMessage}`;
         }
-        if (!config.sessionId) {
-          await sdkClient.cleanupSession(sessionId2, false, true);
+        if (!isSessionReused) {
+          await sdkClient.cleanupSession(sessionId, false, true);
         }
         return {
           success: false,
           output: finalResult.output || "",
           error: errorMessage,
-          sessionId: sessionId2
+          sessionId
         };
       }
       if (finalResult.success && finalResult.data) {
@@ -11494,7 +11495,7 @@ class OpenCodeClient {
             errorMessage = `Agent not found: ${config.agent || "default"}`;
             break;
           case SDKErrorType2.SESSION_NOT_FOUND:
-            errorMessage = `Session not found: ${sessionId}`;
+            errorMessage = `Session not found: ${sessionId || "unknown"}`;
             break;
           case SDKErrorType2.SESSION_CREATION_FAILED:
             errorMessage = `Failed to create session: ${error.message}`;
@@ -11502,7 +11503,7 @@ class OpenCodeClient {
           default:
             errorMessage = error.message;
         }
-        if (sessionId && !config.sessionId) {
+        if (sessionId && !isSessionReused) {
           await sdkClient.cleanupSession(sessionId, false, true);
         }
       } else {
@@ -11793,14 +11794,14 @@ class OpenCodeClient {
     const runs = logger.queryRuns({ issue_id: issueId });
     const sessionMap = new Map;
     for (const run of runs) {
-      const sessionId2 = run.session_id;
-      const existing = sessionMap.get(sessionId2);
+      const sessionId = run.session_id;
+      const existing = sessionMap.get(sessionId);
       const runTokens = run.outcome?.metrics?.tokens_used || 0;
       if (existing) {
         existing.tokens += runTokens;
       } else {
-        sessionMap.set(sessionId2, {
-          sessionId: sessionId2,
+        sessionMap.set(sessionId, {
+          sessionId,
           title: `${issueId}: ${run.phase}`,
           phase: run.phase,
           tokens: runTokens,
@@ -43973,12 +43974,12 @@ class WorkerEngine {
       console.debug(`Phase messenger not available: ${error}`);
     }
     let outcome;
-    let sessionId2;
+    let sessionId;
     let isAutoClosed = false;
     try {
       const launchResult = await this.launchAgent(run.id, issue, agent.id, phase, policy);
       outcome = launchResult.outcome;
-      sessionId2 = launchResult.sessionId;
+      sessionId = launchResult.sessionId;
       isAutoClosed = launchResult.metadata?.auto_closed === true;
       const updateData = {
         status: outcome.success ? "completed" : "failed",
@@ -43987,10 +43988,10 @@ class WorkerEngine {
       };
       const currentPhaseTotal = run.metadata?.phase_total_duration_ms || 0;
       const currentDuration = outcome.metrics?.duration_ms || 0;
-      if (sessionId2) {
+      if (sessionId) {
         updateData.metadata = {
           ...run.metadata,
-          session_id: sessionId2,
+          session_id: sessionId,
           phase_total_duration_ms: currentPhaseTotal + currentDuration,
           ...launchResult.metadata
         };
@@ -44389,7 +44390,7 @@ class WorkerEngine {
     }
     let result;
     const config = loadConfig();
-    const executionMode = config.execution?.mode || "cli";
+    const executionMode = config.execution?.mode || "sdk";
     try {
       if (executionMode === "sdk") {
         console.log(`Executing agent using SDK mode`);
@@ -45280,21 +45281,21 @@ To override this HITL decision, remove the \`ashep-hitl:container-validation\` l
     if (runs.length === 0) {
       return { sessionId: null, shouldReuse: false };
     }
-    const sessionId2 = runs[0].session_id;
-    if (!sessionId2) {
+    const sessionId = runs[0].session_id;
+    if (!sessionId) {
       return { sessionId: null, shouldReuse: false };
     }
-    const totalTokens = this.sumTokensForSession(sessionId2, issueId);
+    const totalTokens = this.sumTokensForSession(sessionId, issueId);
     const maxTokens = this.getMaxTokens();
     const threshold = this.getThreshold();
     const shouldReuse = totalTokens < maxTokens * threshold;
-    return { sessionId: sessionId2, shouldReuse };
+    return { sessionId, shouldReuse };
   }
-  sumTokensForSession(sessionId2, issueId) {
+  sumTokensForSession(sessionId, issueId) {
     const runs = this.logger.queryRuns({ issue_id: issueId });
     let totalTokens = 0;
     for (const run of runs) {
-      if (run.session_id === sessionId2 && run.outcome?.metrics?.tokens_used) {
+      if (run.session_id === sessionId && run.outcome?.metrics?.tokens_used) {
         totalTokens += run.outcome.metrics.tokens_used;
       }
     }
@@ -45496,6 +45497,7 @@ function getMonitorEngine(config) {
 
 // src/cli/index.ts
 init_path_utils();
+init_config();
 init_policy_capability_validator();
 import { existsSync as existsSync11, mkdirSync as mkdirSync5, writeFileSync as writeFileSync3, readdirSync, readFileSync as readFileSync10, cpSync, rmSync } from "fs";
 import { join as join12 } from "path";
@@ -46936,7 +46938,7 @@ function getSizeMonitor(config) {
 var COMMANDS = {
   worker: "Start the autonomous worker loop",
   monitor: "Start the supervision loop",
-  work: "Manually process a specific issue",
+  work: "Process an issue (auto-picks if none specified)",
   init: "Initialize .agent-shepherd configuration",
   install: "Check and install dependencies",
   "sync-agents": "Sync agent registry with OpenCode",
@@ -47034,7 +47036,9 @@ ${Object.entries(COMMANDS).map(([cmd, desc]) => `  ${cmd.padEnd(15)} ${desc}`).j
     ashep quickstart          # One-command onboarding
     ashep init                # Initialize configuration
     ashep worker              # Start autonomous worker
+    ashep work                # Auto-pick and process issue (uses config: simple/smart)
     ashep work ISSUE-123      # Process specific issue
+    ashep work --epic EPIC-123  # Process all issues in epic subtree
     ashep ui                  # Start visualization UI
     ashep list-sessions ISSUE-123  # List sessions for an issue
     ashep validate-policy-chain  # Validate policy relationships
@@ -47080,13 +47084,16 @@ Stopping monitor...`);
   await monitor.start();
 }
 async function cmdWork(issueIdOrEpic, epicMode = false) {
-  if (!issueIdOrEpic) {
-    console.error("Error: Issue ID or Epic ID required");
-    console.log("Usage: ashep work <issue-id>");
-    console.log("       ashep work --epic <epic-id>");
-    process.exit(1);
+  if (!epicMode && !issueIdOrEpic) {
+    await cmdWorkIssue(undefined);
+    return;
   }
   if (epicMode) {
+    if (!issueIdOrEpic) {
+      console.error("Error: Epic ID required");
+      console.log("Usage: ashep work --epic <epic-id>");
+      process.exit(1);
+    }
     await cmdWorkEpic(issueIdOrEpic);
   } else {
     await cmdWorkIssue(issueIdOrEpic);
@@ -47094,9 +47101,23 @@ async function cmdWork(issueIdOrEpic, epicMode = false) {
 }
 async function cmdWorkIssue(issueId) {
   if (!issueId) {
-    console.error("Error: Issue ID required");
-    console.log("Usage: ashep work <issue-id>");
-    process.exit(1);
+    console.log("Auto-picking next issue using configured picker...");
+    const config = loadConfig();
+    const pickingConfig = {
+      mode: config.worker?.picking?.mode || "simple",
+      max_issues: config.worker?.picking?.max_issues || 3,
+      prefer_epic_affinity: config.worker?.picking?.prefer_epic_affinity || true,
+      crash_detection: config.worker?.crash_detection
+    };
+    const issuePicker = getIssuePicker(pickingConfig);
+    const readyIssues = await issuePicker.pickNextIssues();
+    if (readyIssues.length === 0) {
+      console.log("No ready issues found. Use 'ashep list-ready' to see available work.");
+      return;
+    }
+    issueId = readyIssues[0].id;
+    console.log(`Picked issue: ${issueId} - ${readyIssues[0].title}`);
+    console.log(`Picker mode: ${pickingConfig.mode} | Available issues: ${readyIssues.length}`);
   }
   console.log(`Processing issue: ${issueId}`);
   const issue = await getIssue(issueId);
@@ -48370,10 +48391,10 @@ Sessions for issue ${issueId} (${sessions.length}):`);
       console.log("\u2502 Session ID                            \u2502 Title                                     \u2502 Phase        \u2502 Tokens   \u2502");
       console.log("\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524");
       for (const session of sessions) {
-        const sessionId2 = session.sessionId.substring(0, 38) + (session.sessionId.length > 38 ? "..." : "");
+        const sessionId = session.sessionId.substring(0, 38) + (session.sessionId.length > 38 ? "..." : "");
         const title = session.title.substring(0, 42) + (session.title.length > 42 ? "..." : "");
         const phase = session.phase.substring(0, 12) + (session.phase.length > 12 ? "..." : "");
-        console.log(`\u2502 ${sessionId2.padEnd(37)} \u2502 ${title.padEnd(42)} \u2502 ${phase.padEnd(12)} \u2502 ${String(session.tokens).padEnd(8)} \u2502`);
+        console.log(`\u2502 ${sessionId.padEnd(37)} \u2502 ${title.padEnd(42)} \u2502 ${phase.padEnd(12)} \u2502 ${String(session.tokens).padEnd(8)} \u2502`);
       }
       console.log("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
     }

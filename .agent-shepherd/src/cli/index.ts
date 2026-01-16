@@ -9,6 +9,8 @@ import { getMonitorEngine } from "../core/monitor-engine.ts";
 import { getIssue } from "../core/beads.ts";
 import { findAgentShepherdDir, findInstallDir, findLocalAgentShepherdDir, getGlobalInstallDir } from "../core/path-utils.ts";
 import { getAssignedWorker, getLastHeartbeat, getLeaseExpires, listIssues, getReadyIssues } from "../core/beads.ts";
+import { loadConfig } from "../core/config.ts";
+import { getIssuePicker, type PickerConfig } from "../core/issue-picker.ts";
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync, cpSync, rmSync } from "fs";
 import { join } from "path";
 import path from "path";
@@ -23,7 +25,7 @@ import { getHealthChecker, resetHealthChecker } from "../core/cleanup-health-che
 const COMMANDS: Record<string, string> = {
   worker: "Start the autonomous worker loop",
   monitor: "Start the supervision loop",
-  work: "Manually process a specific issue",
+  work: "Process an issue (auto-picks if none specified)",
   init: "Initialize .agent-shepherd configuration",
   install: "Check and install dependencies",
   "sync-agents": "Sync agent registry with OpenCode",
@@ -152,7 +154,9 @@ ${Object.entries(COMMANDS)
     ashep quickstart          # One-command onboarding
     ashep init                # Initialize configuration
     ashep worker              # Start autonomous worker
+    ashep work                # Auto-pick and process issue (uses config: simple/smart)
     ashep work ISSUE-123      # Process specific issue
+    ashep work --epic EPIC-123  # Process all issues in epic subtree
     ashep ui                  # Start visualization UI
     ashep list-sessions ISSUE-123  # List sessions for an issue
     ashep validate-policy-chain  # Validate policy relationships
@@ -225,19 +229,22 @@ async function cmdMonitor(): Promise<void> {
 /**
  * Work command - process specific issue or epic
  */
-async function cmdWork(issueIdOrEpic: string, epicMode: boolean = false): Promise<void> {
-  if (!issueIdOrEpic) {
-    console.error("Error: Issue ID or Epic ID required");
-    console.log("Usage: ashep work <issue-id>");
-    console.log("       ashep work --epic <epic-id>");
-    process.exit(1);
+async function cmdWork(issueIdOrEpic: string | undefined, epicMode: boolean = false): Promise<void> {
+  // If no epic flag and no issue ID, auto-pick
+  if (!epicMode && !issueIdOrEpic) {
+    await cmdWorkIssue(undefined);
+    return;
   }
 
+  // Epic mode always requires epic ID
   if (epicMode) {
-    // Epic-focused processing: get all ready issues in epic subtree
+    if (!issueIdOrEpic) {
+      console.error("Error: Epic ID required");
+      console.log("Usage: ashep work --epic <epic-id>");
+      process.exit(1);
+    }
     await cmdWorkEpic(issueIdOrEpic);
   } else {
-    // Single issue processing
     await cmdWorkIssue(issueIdOrEpic);
   }
 }
@@ -245,13 +252,37 @@ async function cmdWork(issueIdOrEpic: string, epicMode: boolean = false): Promis
 /**
  * Work command - process specific issue
  */
-async function cmdWorkIssue(issueId: string): Promise<void> {
+async function cmdWorkIssue(issueId?: string): Promise<void> {
+  // Auto-pick if no issue ID provided
   if (!issueId) {
-    console.error("Error: Issue ID required");
-    console.log("Usage: ashep work <issue-id>");
-    process.exit(1);
+    console.log("Auto-picking next issue using configured picker...");
+    
+    // Load config to get picker settings
+    const config = loadConfig();
+    
+    // Build picker config from config.yaml
+    const pickingConfig: PickerConfig = {
+      mode: config.worker?.picking?.mode || "simple",
+      max_issues: config.worker?.picking?.max_issues || 3,
+      prefer_epic_affinity: config.worker?.picking?.prefer_epic_affinity || true,
+      crash_detection: config.worker?.crash_detection,
+    };
+    
+    // Get picker and pick next issues
+    const issuePicker = getIssuePicker(pickingConfig);
+    const readyIssues = await issuePicker.pickNextIssues();
+    
+    if (readyIssues.length === 0) {
+      console.log("No ready issues found. Use 'ashep list-ready' to see available work.");
+      return;
+    }
+    
+    // Use the first picked issue
+    issueId = readyIssues[0].id;
+    console.log(`Picked issue: ${issueId} - ${readyIssues[0].title}`);
+    console.log(`Picker mode: ${pickingConfig.mode} | Available issues: ${readyIssues.length}`);
   }
-
+  
   console.log(`Processing issue: ${issueId}`);
 
   const issue = await getIssue(issueId);
