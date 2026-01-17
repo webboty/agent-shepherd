@@ -870,6 +870,11 @@ For detailed CLI documentation, see [docs/cli-reference.md](docs/cli-reference.m
 - **`ashep work [issue-id]`** - Process an issue (auto-picks if none specified)
 - **`ashep ui`** - Start flow visualization server
 
+### Session Management
+- **`ashep session-list`** - List active OpenCode sessions (smart filtered)
+- **`ashep session-stop <id>`** - Abort a specific session manually
+- **`ashep list-sessions <issue-id>`** - List sessions for a specific issue
+
 ### Management Commands
 
 - **`ashep init`** - Initialize configuration directory

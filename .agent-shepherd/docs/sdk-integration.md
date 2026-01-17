@@ -339,7 +339,8 @@ retention:
 
 3. **Monitor Session Usage:**
 ```bash
-ashep list-sessions ISSUE-123  # Check session usage regularly
+ashep session-list           # List globally active sessions
+ashep list-sessions ISSUE-123  # Check session usage for specific issue
 ```
 
 4. **Set Appropriate Heartbeat Thresholds:**

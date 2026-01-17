@@ -540,6 +540,51 @@ Agent execution seems slower in SDK mode
 
 ---
 
+### Issue: Session Starts but Stuck "Waiting..."
+
+**Symptom:**
+```
+[SDK Progress] Waiting for session to start...
+(Repeats indefinitely until timeout)
+```
+
+**Causes:**
+- OpenCode server received empty prompt (payload bug)
+- Model loading taking > 10 minutes
+- Agent name mismatch
+
+**Solutions:**
+
+1. **Update Agent Shepherd:** Ensure you are on the latest version which fixes the SDK payload structure.
+2. **Check OpenCode Logs:** See if the server threw an error processing the prompt.
+3. **Restart OpenCode:** Sometimes the model context gets stuck.
+4. **Use CLI mode temporarily:** If SDK persists in failing, try switching `execution.mode: cli` in config.
+
+---
+
+### Issue: Worker Loops on Same Issue
+
+**Symptom:**
+Worker finishes a phase, then immediately picks up the same issue and restarts the same phase (e.g. `implement` -> `implement`).
+
+**Causes:**
+- Phase transition logic failing to update labels
+- Multiple phase labels present on issue (e.g. `phase:implement` AND `phase:validate`)
+- Concurrency check failing after restart
+
+**Solutions:**
+
+1. **Manual Label Cleanup:**
+   ```bash
+   # Remove old phase labels
+   bd label remove ISSUE-123 ashep-phase:implement
+   ```
+2. **Update Agent Shepherd:** Recent fixes ensure `setPhaseLabel` removes old labels automatically.
+3. **Check Concurrency Strategy:**
+   Ensure `concurrency_strategy` is set to `active_sessions` (default) or `strict_both`.
+
+---
+
 ## Policy Issues
 
 ### Issue: Policy Not Matching Issues

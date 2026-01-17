@@ -418,7 +418,8 @@ Processes issues through workflow phases:
 
 Provides supervision and intervention:
 
-- **Stall Detection**: Identifies hung processes
+- **Stall Detection**: Identifies hung processes via SDK heartbeat checks
+- **Liveness Broadcasting**: Updates Beads `last-heartbeat` state for healthy runs to coordinate with other workers
 - **Timeout Management**: Enforces phase deadlines
 - **HITL Coordination**: Manages human approvals
 - **Recovery**: Resumes interrupted runs
