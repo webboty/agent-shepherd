@@ -118,6 +118,7 @@ export interface AgentShepherdConfig {
     poll_interval_ms?: number;
     max_concurrent_runs?: number;
     worker_id?: string;
+    concurrency_strategy?: "active_sessions" | "beads_status" | "strict_both";
     picking?: {
       mode?: "simple" | "smart";
       max_issues?: number;
@@ -165,6 +166,8 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
       worker: {
         poll_interval_ms: 30000,
         max_concurrent_runs: 3,
+        concurrency_strategy: "active_sessions",
+        worker_id: config.worker?.worker_id,
         picking: {
           mode: "simple",
           max_issues: 3,
