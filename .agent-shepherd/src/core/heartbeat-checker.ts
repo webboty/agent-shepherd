@@ -10,9 +10,9 @@
  */
 
 import { EventEmitter } from "events";
-import { getSDKClient } from "./opencode_sdk.js";
-import { getLogger } from "./logging.js";
-import { execBeadsCommand } from "./beads.js";
+import { getSDKClient } from "./opencode_sdk.ts";
+import { getLogger } from "./logging.ts";
+import { execBeadsCommand } from "./beads.ts";
 
 export interface HeartbeatCheckerConfig {
   pollIntervalMs?: number;

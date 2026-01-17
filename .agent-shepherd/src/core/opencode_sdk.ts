@@ -640,6 +640,26 @@ export class OpenCodeSDKClient {
     const now = Date.now();
 
     if (lastActivity === null) {
+      // No messages yet, consider alive if created recently (within threshold)
+      const sessionInfo = await this.getSessionStatus(sessionId);
+      if (sessionInfo.exists) {
+         // We can't get creation time easily from getSessionStatus without parsing more messages or using another API
+         // But getLastSessionActivity returns null if no messages.
+         // If a session exists but has no messages, it might be just created.
+         // Let's assume it's alive if it exists but hasn't timed out yet?
+         // Safer to treat as "alive" to give it a chance to start, unless we can prove it's old.
+         // However, getSessionStatus implementation fetches messages too.
+         // Let's stick to: No activity = Stale (if we want strictness), or Alive (if optimistic).
+         // Given "Waiting for session to start" timeout is 10 mins, maybe we should be lenient here?
+         // Actually, let's use the provided logic but handle null better.
+         return {
+            alive: true, // Assume alive if empty to prevent killing fresh sessions
+            lastActivity: null,
+            lastActivityAge: null,
+            stale: false,
+         };
+      }
+
       return {
         alive: false,
         lastActivity: null,

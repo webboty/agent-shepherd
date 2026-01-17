@@ -110,88 +110,9 @@ ashep work --epic EPIC-123
 ```
 
 **Options:**
-- `--epic <epic-id>`: Process all ready issues in epic subtree
-- `--phase <phase>`: Start at specific phase instead of first phase
+- `--epic <id>`: Process all issues in an epic's subtree.
 
-**Behavior:**
-- **Without arguments**: Uses configured picker (simple/smart) to select next ready issue
-  - Respects `worker.picking.mode` from config.yaml
-  - Shows which issue was picked and picker mode used
-  - Shows "No ready issues found" message if no issues available
-- **With issue ID**: Validates issue exists in Beads and processes through complete workflow
-- **With --epic**: Processes all ready issues in epic subtree
-- **Note**: Custom prompts configured in policies.yaml are automatically applied per phase and support variable substitution (e.g., `{{issue.title}}`, `{{phase}}`, `{{capabilities}}`)
-
-**Output:**
-```
-Auto-picking next issue using configured picker...
-Picked issue: TASK-123 - Implement feature
-Picker mode: simple | Available issues: 3
-Processing issue: TASK-123 - Implement feature
-
-Result:
-   Success: true
-   Run ID: run-789
-   Next Phase: implement
-```
-
-**Configuration:**
-The auto-pick behavior is controlled by:
-```yaml
-worker:
-  picking:
-    mode: simple  # "simple" (default) | "smart"
-    max_issues: 3
-    prefer_epic_affinity: true
-```
-
-- **simple**: Priority-based selection (sorts by priority, picks top N)
-- **smart**: Dependency-aware with epic affinity (builds dependency graph, respects epic ownership)
-
-**Examples:**
-```bash
-# Quick manual work using auto-pick
-ashep work
-# Output:
-# Auto-picking next issue using configured picker...
-# Picked issue: TASK-123 - Implement feature
-# Picker mode: simple | Available issues: 3
-
-# Target specific issue
-ashep work ISSUE-456
-
-# Target epic for multi-issue work
-ashep work --epic EPIC-789
-```
-
-### `ashep ui`
-
-Start the ReactFlow visualization server.
-
-**Usage:**
-```bash
-ashep ui
-ashep ui --port 8080
-```
-
-**Options:**
-- `--port <port>`: Server port (default: 3000)
-- `--host <host>`: Server host (default: localhost)
-
-**Behavior:**
-- Starts Express server with ReactFlow UI
-- Provides REST API for data access
-- Auto-refreshes every 5 seconds
-- Serves on configurable port/host
-
-**Output:**
-```
-Starting Agent Shepherd UI...
-🚀 Server started: http://localhost:3000
-API available at: http://localhost:3000/api
-```
-
-## Configuration Commands
+**Note:** Manual `work` commands operate outside the automated worker loop and bypass the `max_concurrent_runs` limit configured in `config.yaml`. Running multiple manual commands simultaneously may exceed your system or API limits.
 
 ### `ashep init`
 

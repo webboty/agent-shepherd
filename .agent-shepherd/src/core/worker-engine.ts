@@ -128,11 +128,54 @@ export class WorkerEngine {
    * Process all ready issues
    */
   private async processReadyIssues(): Promise<void> {
-    const issues = await this.getEligibleIssues();
+    const config = loadConfig();
+    const maxConcurrent = this.config.max_concurrent_runs || 1;
+    const strategy = config.worker?.concurrency_strategy || "active_sessions";
+    
+    let activeCount = 0;
 
-    console.log(`Found ${issues.length} eligible issues`);
+    try {
+      if (strategy === "active_sessions" || strategy === "strict_both") {
+        const sdkModule = await import('./opencode_sdk.ts');
+        const sdkClient = sdkModule.getSDKClient();
+        const sessions = await sdkClient.listSessions(true); // true = active only
+        activeCount = sessions.length;
+        
+        if (strategy === "strict_both") {
+           // If using strict both, we will check beads next and take the MAX
+        }
+      }
+      
+      if (strategy === "beads_status" || strategy === "strict_both") {
+        const { listIssues } = await import("./beads.ts");
+        const inProgressIssues = await listIssues({ status: "in_progress" });
+        const beadsCount = inProgressIssues.length;
+        
+        if (strategy === "strict_both") {
+          activeCount = Math.max(activeCount, beadsCount);
+        } else {
+          activeCount = beadsCount;
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to check concurrency (${strategy}): ${error}`);
+      // Fallback to safe assumption (blocked) if check fails? 
+      // Or 0? Let's log and proceed cautiously.
+    }
 
-    // Process each issue (could be parallelized with max_concurrent_runs)
+    if (activeCount >= maxConcurrent) {
+      console.log(`Global concurrency limit reached (${activeCount}/${maxConcurrent} active via ${strategy}). Waiting...`);
+      return;
+    }
+
+    const availableSlots = maxConcurrent - activeCount;
+    
+    // Limit issue picking to available slots
+    const issues = await this.getEligibleIssues(availableSlots);
+
+    console.log(`Found ${issues.length} eligible issues (Available slots: ${availableSlots})`);
+
+    // Process each issue
     for (const issue of issues) {
       try {
         await this.processIssue(issue);
@@ -145,11 +188,11 @@ export class WorkerEngine {
   /**
    * Get eligible issues (ready and not excluded)
    */
-  private async getEligibleIssues(): Promise<BeadsIssue[]> {
+  private async getEligibleIssues(limit?: number): Promise<BeadsIssue[]> {
     const config = loadConfig();
     const pickingConfig: PickerConfig = {
       mode: config.worker?.picking?.mode || "simple",
-      max_issues: config.worker?.picking?.max_issues || this.config.max_concurrent_runs,
+      max_issues: limit || config.worker?.picking?.max_issues || this.config.max_concurrent_runs,
       prefer_epic_affinity: config.worker?.picking?.prefer_epic_affinity || true,
       crash_detection: config.worker?.crash_detection,
     };

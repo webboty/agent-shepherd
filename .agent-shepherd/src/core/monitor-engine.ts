@@ -121,9 +121,32 @@ export class MonitorEngine {
    * Detect if a run has stalled
    */
   // eslint-disable-next-line no-unused-vars
-  private async detectStall(_run: RunRecord): Promise<boolean> {
-    // CLI execution completes synchronously, so runs don't stall
-    return false;
+  private async detectStall(run: RunRecord): Promise<boolean> {
+    if (!run.session_id) {
+      // If no session ID, we can't check activity.
+      // If it's been in "running" state for too long without a session ID, it's definitely stalled/crashed.
+      const now = Date.now();
+      const runDuration = now - run.created_at;
+      // Allow some buffer for session creation (e.g. 5 minutes)
+      return runDuration > 5 * 60 * 1000;
+    }
+
+    try {
+      const { getSDKClient } = await import("./opencode_sdk.ts");
+      const sdkClient = getSDKClient();
+      
+      const threshold = this.config.stall_threshold_ms || 60000;
+      const result = await sdkClient.checkSessionHeartbeat(run.session_id, threshold);
+      
+      if (result.stale) {
+        console.log(`Stall detected for run ${run.id} (session ${run.session_id}): No activity for ${Math.round((result.lastActivityAge || 0) / 1000)}s (threshold: ${threshold}ms)`);
+      }
+      
+      return result.stale;
+    } catch (error) {
+      console.warn(`Failed to check stall status for run ${run.id}: ${error}`);
+      return false; // Fail safe
+    }
   }
 
   /**

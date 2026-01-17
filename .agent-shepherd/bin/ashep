@@ -11284,6 +11284,15 @@ class OpenCodeSDKClient {
     const lastActivity = await this.getLastSessionActivity(sessionId);
     const now = Date.now();
     if (lastActivity === null) {
+      const sessionInfo = await this.getSessionStatus(sessionId);
+      if (sessionInfo.exists) {
+        return {
+          alive: true,
+          lastActivity: null,
+          lastActivityAge: null,
+          stale: false
+        };
+      }
       return {
         alive: false,
         lastActivity: null,
@@ -43953,8 +43962,38 @@ class WorkerEngine {
     console.log("Worker Engine stopped");
   }
   async processReadyIssues() {
-    const issues = await this.getEligibleIssues();
-    console.log(`Found ${issues.length} eligible issues`);
+    const config = loadConfig();
+    const maxConcurrent = this.config.max_concurrent_runs || 1;
+    const strategy = config.worker?.concurrency_strategy || "active_sessions";
+    let activeCount = 0;
+    try {
+      if (strategy === "active_sessions" || strategy === "strict_both") {
+        const sdkModule = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
+        const sdkClient = sdkModule.getSDKClient();
+        const sessions = await sdkClient.listSessions(true);
+        activeCount = sessions.length;
+        if (strategy === "strict_both") {}
+      }
+      if (strategy === "beads_status" || strategy === "strict_both") {
+        const { listIssues: listIssues2 } = await Promise.resolve().then(() => exports_beads);
+        const inProgressIssues = await listIssues2({ status: "in_progress" });
+        const beadsCount = inProgressIssues.length;
+        if (strategy === "strict_both") {
+          activeCount = Math.max(activeCount, beadsCount);
+        } else {
+          activeCount = beadsCount;
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to check concurrency (${strategy}): ${error}`);
+    }
+    if (activeCount >= maxConcurrent) {
+      console.log(`Global concurrency limit reached (${activeCount}/${maxConcurrent} active via ${strategy}). Waiting...`);
+      return;
+    }
+    const availableSlots = maxConcurrent - activeCount;
+    const issues = await this.getEligibleIssues(availableSlots);
+    console.log(`Found ${issues.length} eligible issues (Available slots: ${availableSlots})`);
     for (const issue of issues) {
       try {
         await this.processIssue(issue);
@@ -43963,11 +44002,11 @@ class WorkerEngine {
       }
     }
   }
-  async getEligibleIssues() {
+  async getEligibleIssues(limit) {
     const config = loadConfig();
     const pickingConfig = {
       mode: config.worker?.picking?.mode || "simple",
-      max_issues: config.worker?.picking?.max_issues || this.config.max_concurrent_runs,
+      max_issues: limit || config.worker?.picking?.max_issues || this.config.max_concurrent_runs,
       prefer_epic_affinity: config.worker?.picking?.prefer_epic_affinity || true,
       crash_detection: config.worker?.crash_detection
     };
@@ -45493,8 +45532,25 @@ class MonitorEngine {
       return;
     }
   }
-  async detectStall(_run) {
-    return false;
+  async detectStall(run) {
+    if (!run.session_id) {
+      const now = Date.now();
+      const runDuration = now - run.created_at;
+      return runDuration > 5 * 60 * 1000;
+    }
+    try {
+      const { getSDKClient: getSDKClient2 } = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
+      const sdkClient = getSDKClient2();
+      const threshold = this.config.stall_threshold_ms || 60000;
+      const result = await sdkClient.checkSessionHeartbeat(run.session_id, threshold);
+      if (result.stale) {
+        console.log(`Stall detected for run ${run.id} (session ${run.session_id}): No activity for ${Math.round((result.lastActivityAge || 0) / 1000)}s (threshold: ${threshold}ms)`);
+      }
+      return result.stale;
+    } catch (error) {
+      console.warn(`Failed to check stall status for run ${run.id}: ${error}`);
+      return false;
+    }
   }
   async detectTimeout(run) {
     const now = Date.now();

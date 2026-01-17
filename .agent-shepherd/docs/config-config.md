@@ -137,6 +137,14 @@ fallback:
 - `3`: Balanced parallelism (recommended)
 - `5-10`: High throughput (requires strong system)
 
+#### `concurrency_strategy` (string)
+**Required**: No (default: "active_sessions")
+**Purpose**: How to count currently running tasks for concurrency enforcement
+**Values**:
+- `"active_sessions"`: Queries OpenCode SDK for active sessions. (Best for detecting real compute usage, ignores zombie beads issues).
+- `"beads_status"`: Counts issues with `in_progress` status in Beads. (Strict adherence to issue state, but requires reliable monitoring/cleanup of crashed workers).
+- `"strict_both"`: Uses the higher of the two values. (Safest, most conservative).
+
 #### `picking` (object)
 **Required**: No (defaults shown below)
 **Purpose**: Controls how the worker selects issues to process
