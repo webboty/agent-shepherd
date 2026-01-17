@@ -202,6 +202,7 @@ async function removeIssueLabel(issueId, label) {
   await execBeadsCommand(["label", "remove", issueId, label]);
 }
 async function setPhaseLabel(issueId, phaseName) {
+  await removePhaseLabels(issueId);
   const label = `ashep-phase:${phaseName}`;
   await addIssueLabel(issueId, label);
 }
@@ -11015,18 +11016,44 @@ class OpenCodeSDKClient {
   async executeAgentInSession(sessionId, config) {
     try {
       const body = {
-        agent: config.agent || "default"
+        agent: config.agent || "default",
+        parts: []
       };
       if (config.message) {
-        body.messageID = config.message;
+        body.parts.push({
+          type: "text",
+          text: config.message
+        });
       }
-      const promptResult = await this.client.session.prompt({
-        path: { id: sessionId },
-        body
-      });
+      console.log(`Sending prompt to session ${sessionId} with ${body.parts.length} part(s)...`);
+      const maxRetries = 3;
+      let promptResult;
+      for (let attempt = 1;attempt <= maxRetries; attempt++) {
+        try {
+          promptResult = await this.client.session.prompt({
+            path: { id: sessionId },
+            body
+          });
+          if (!promptResult.error) {
+            break;
+          }
+          console.warn(`Prompt attempt ${attempt}/${maxRetries} failed:`, promptResult.error);
+        } catch (error) {
+          console.warn(`Prompt attempt ${attempt}/${maxRetries} threw exception:`, error);
+          if (attempt === maxRetries)
+            throw error;
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+        }
+      }
+      if (promptResult?.error) {
+        console.error(`Prompt failed with error after retries:`, promptResult.error);
+        throw new Error(`Prompt failed: ${JSON.stringify(promptResult.error)}`);
+      }
       return {
         success: true,
-        data: promptResult.data,
+        data: promptResult?.data,
         sessionId
       };
     } catch (error) {
@@ -11119,6 +11146,10 @@ class OpenCodeSDKClient {
           continue;
         }
         const lastMessage = messages[messages.length - 1];
+        const content = lastMessage?.content || "";
+        if (content.includes("<|channel|>") || content.includes("<|message|>")) {
+          console.warn(`[Warning] Raw protocol detected in output: ${content.substring(0, 100)}...`);
+        }
         if (lastMessage?.info?.role === "assistant" && lastMessage?.info?.time?.completed) {
           if (onProgress) {
             onProgress(`Session completed successfully`);
@@ -11268,6 +11299,58 @@ class OpenCodeSDKClient {
       lastActivityAge: age,
       stale: isStale
     };
+  }
+  async abortSession(sessionId) {
+    try {
+      await this.client.session.abort({
+        path: { id: sessionId }
+      });
+      console.log(`Aborted session ${sessionId}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to abort session ${sessionId}:`, error);
+      return false;
+    }
+  }
+  async listSessions(activeOnly = false) {
+    try {
+      const result = await this.client.session.list({});
+      if (!result.data) {
+        return [];
+      }
+      let sessions = result.data;
+      if (activeOnly) {
+        try {
+          const statusResult = await this.client.session.status({});
+          if (statusResult.data) {
+            const statusMap = statusResult.data;
+            sessions = sessions.filter((session) => {
+              const status = statusMap[session.id];
+              return status && (status.type === "busy" || status.type === "retry");
+            });
+          } else {
+            const now = Date.now();
+            const ACTIVE_THRESHOLD = 5 * 60 * 1000;
+            sessions = sessions.filter((session) => {
+              const timestamp = session.time?.updated || session.time?.created || 0;
+              return now - timestamp < ACTIVE_THRESHOLD;
+            });
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch session statuses, falling back to timestamp check: ${error}`);
+          const now = Date.now();
+          const ACTIVE_THRESHOLD = 5 * 60 * 1000;
+          sessions = sessions.filter((session) => {
+            const timestamp = session.time?.updated || session.time?.created || 0;
+            return now - timestamp < ACTIVE_THRESHOLD;
+          });
+        }
+      }
+      return sessions;
+    } catch (error) {
+      console.error(`Failed to list sessions:`, error);
+      return [];
+    }
   }
   getClient() {
     return this.client;
@@ -11434,24 +11517,28 @@ class OpenCodeClient {
       const progressCallback = onProgress || ((msg) => {
         console.log(`[Progress] ${msg}`);
       });
-      const executeResult = await sdkClient.executeAgentInSession(sessionId, {
-        agent: config.agent,
-        message: config.message
-      });
-      if (!executeResult.success) {
-        const errorType = executeResult.errorType || SDKErrorType2.UNKNOWN_ERROR;
-        let errorMessage = executeResult.error || "Agent execution failed";
-        if (errorType === SDKErrorType2.AGENT_NOT_FOUND) {
-          errorMessage = `Agent not found: ${config.agent || "default"}. Check agent configuration.`;
-        } else if (errorType === SDKErrorType2.SESSION_NOT_FOUND) {
-          errorMessage = `Session not found: ${sessionId}. Session may have been deleted or is invalid.`;
+      if (!config.skipPrompt) {
+        const executeResult = await sdkClient.executeAgentInSession(sessionId, {
+          agent: config.agent,
+          message: config.message
+        });
+        if (!executeResult.success) {
+          const errorType = executeResult.errorType || SDKErrorType2.UNKNOWN_ERROR;
+          let errorMessage = executeResult.error || "Agent execution failed";
+          if (errorType === SDKErrorType2.AGENT_NOT_FOUND) {
+            errorMessage = `Agent not found: ${config.agent || "default"}. Check agent configuration.`;
+          } else if (errorType === SDKErrorType2.SESSION_NOT_FOUND) {
+            errorMessage = `Session not found: ${sessionId}. Session may have been deleted or is invalid.`;
+          }
+          return {
+            success: false,
+            output: "",
+            error: errorMessage,
+            sessionId
+          };
         }
-        return {
-          success: false,
-          output: "",
-          error: errorMessage,
-          sessionId
-        };
+      } else {
+        console.log(`Skipping prompt submission (reattaching to running session)`);
       }
       progressCallback("Agent started working...");
       const finalResult = await sdkClient.waitForCompletion(sessionId, 600000, 60000, progressCallback);
@@ -43382,10 +43469,11 @@ class IssuePicker {
   }
   async pickNextIssues() {
     const allReadyIssues = await getReadyIssues();
+    const openReadyIssues = allReadyIssues.filter((issue) => issue.status === "open");
     if (this.config.mode === "simple") {
-      return this.simplePick(allReadyIssues);
+      return this.simplePick(openReadyIssues);
     }
-    return this.smartPick(allReadyIssues);
+    return this.smartPick(openReadyIssues);
   }
   async isContainer(issue) {
     const config = loadConfig();
@@ -44374,7 +44462,6 @@ class WorkerEngine {
     }
     const instructions = this.buildInstructions(issue, phase, policy);
     const initialPrompt = instructions;
-    console.log(`Running agent ${agentId} with OpenCode CLI...`);
     let sessionIdToUse;
     if (phaseConfig?.reuse_session_from_phase && policyConfig) {
       const resolvedTarget = this.resolveReuseTarget(phase, phaseConfig.reuse_session_from_phase, policyConfig);
@@ -44391,16 +44478,35 @@ class WorkerEngine {
     let result;
     const config = loadConfig();
     const executionMode = config.execution?.mode || "sdk";
+    let skipPrompt = false;
+    if (!sessionIdToUse && executionMode === "sdk") {
+      try {
+        const sessionList = await this.opencode.listSessionsForIssue(issue.id);
+        const activeSession = sessionList.reverse().find((s) => s.phase === phase);
+        if (activeSession) {
+          const sdkModule = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
+          const sdkClient = sdkModule.getSDKClient();
+          const activity = await sdkClient.getSessionActivity(activeSession.sessionId);
+          if (activity && activity.isActive) {
+            console.log(`Found active background session ${activeSession.sessionId} for phase '${phase}'. Attaching...`);
+            sessionIdToUse = activeSession.sessionId;
+            skipPrompt = true;
+          }
+        }
+      } catch (error) {
+        console.warn(`Failed to check for active background sessions: ${error}`);
+      }
+    }
     try {
       if (executionMode === "sdk") {
-        console.log(`Executing agent using SDK mode`);
         result = await this.opencode.runAgentSDK({
           directory: process.cwd(),
           title: `${issue.id}: ${issue.title}`,
           agent: agent.opencode_agent || agentId,
           model: modelToUse,
           message: instructions,
-          sessionId: sessionIdToUse
+          sessionId: sessionIdToUse,
+          skipPrompt
         }, (message) => {
           console.log(`[SDK Progress] ${message}`);
         });
@@ -46949,7 +47055,8 @@ var COMMANDS = {
   "list-hitl": "List issues requiring human-in-the-loop intervention",
   "list-ready": "List issues ready to be worked on (no blockers)",
   "list-struggle": "List blocked issues that need attention",
-  "list-sessions": "List OpenCode sessions for an issue",
+  "session-list": "List active OpenCode sessions",
+  "session-stop": "Stop/Abort an active OpenCode session",
   "get-messages": "Get phase messages for an issue",
   heartbeat: "Show heartbeat-checker status and active heartbeats",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
@@ -48403,6 +48510,67 @@ Sessions for issue ${issueId} (${sessions.length}):`);
     process.exit(1);
   }
 }
+async function cmdSessionList(showAll = false) {
+  try {
+    const { getOpenCodeClient: getOpenCodeClient2 } = await Promise.resolve().then(() => exports_opencode);
+    const { getSDKClient: getSDKClient2 } = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
+    const sdkClient = getSDKClient2();
+    console.log(`Fetching ${showAll ? "all" : "active"} sessions...`);
+    const sessions = await sdkClient.listSessions(!showAll);
+    if (sessions.length === 0) {
+      console.log(`No ${showAll ? "" : "active "}sessions found.`);
+      return;
+    }
+    console.log(`
+${showAll ? "All" : "Active"} Sessions (${sessions.length}):`);
+    console.log("\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510");
+    console.log("\u2502 Session ID                            \u2502 Title                                         \u2502 Updated              \u2502 Status      \u2502");
+    console.log("\u251C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524");
+    for (const session of sessions) {
+      const sessionId = (session.id || "").substring(0, 37) + ((session.id || "").length > 37 ? "..." : "");
+      const title = (session.title || "Untitled").substring(0, 45) + ((session.title || "Untitled").length > 45 ? "..." : "");
+      let updatedTime = "Unknown";
+      if (session.time && session.time.updated) {
+        updatedTime = new Date(session.time.updated).toLocaleString();
+      } else if (session.time && session.time.created) {
+        updatedTime = new Date(session.time.created).toLocaleString();
+      }
+      const status = "Active";
+      console.log(`\u2502 ${sessionId.padEnd(37)} \u2502 ${title.padEnd(45)} \u2502 ${updatedTime.padEnd(20)} \u2502 ${status.padEnd(11)} \u2502`);
+    }
+    console.log("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
+    if (!showAll) {
+      console.log(`
+Tip: Use 'ashep session-list --all' to see history.`);
+    }
+    console.log("To stop a session run: ashep session-stop <session-id>");
+  } catch (error) {
+    console.error("\u274C Failed to list sessions:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdSessionStop(sessionId) {
+  if (!sessionId) {
+    console.error("Error: Session ID is required");
+    console.log("Usage: ashep session-stop <session-id>");
+    process.exit(1);
+  }
+  try {
+    const { getSDKClient: getSDKClient2 } = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
+    const sdkClient = getSDKClient2();
+    console.log(`Aborting session ${sessionId}...`);
+    const success = await sdkClient.abortSession(sessionId);
+    if (success) {
+      console.log(`\u2705 Session ${sessionId} aborted successfully`);
+    } else {
+      console.log(`\u274C Failed to abort session ${sessionId}`);
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error("\u274C Error aborting session:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 async function promptForIssueId() {
   return new Promise((resolve2) => {
     process.stdout.write("Enter issue ID: ");
@@ -48520,6 +48688,12 @@ async function main() {
       await cmdListStruggle(hours);
       break;
     }
+    case "session-list":
+      await cmdSessionList(args.includes("--all"));
+      break;
+    case "session-stop":
+      await cmdSessionStop(args[1]);
+      break;
     case "get-messages": {
       let phase;
       let unreadOnly = false;

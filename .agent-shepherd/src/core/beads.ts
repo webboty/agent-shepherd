@@ -218,8 +218,12 @@ export async function removeIssueLabel(issueId: string, label: string): Promise<
 
 /**
  * Set phase label for an issue (ashep-phase:<phase-name>)
+ * Removes any existing phase labels first to ensure only one phase is active
  */
 export async function setPhaseLabel(issueId: string, phaseName: string): Promise<void> {
+  // Remove existing phase labels first
+  await removePhaseLabels(issueId);
+  
   const label = `ashep-phase:${phaseName}`;
   await addIssueLabel(issueId, label);
 }

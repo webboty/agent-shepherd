@@ -214,22 +214,54 @@ export class OpenCodeSDKClient {
     try {
       const body: any = {
         agent: config.agent || 'default',
+        parts: []
       };
 
       if (config.message) {
-        body.messageID = config.message;
+        body.parts.push({
+          type: "text",
+          text: config.message
+        });
       }
 
-      const promptResult = await this.client.session.prompt({
-        path: { id: sessionId },
-        body,
-      });
+      console.log(`Sending prompt to session ${sessionId} with ${body.parts.length} part(s)...`);
+
+      // Add retry logic for prompt sending
+      const maxRetries = 3;
+      let promptResult;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          promptResult = await this.client.session.prompt({
+            path: { id: sessionId },
+            body,
+          });
+          
+          if (!promptResult.error) {
+            break; // Success
+          }
+          
+          console.warn(`Prompt attempt ${attempt}/${maxRetries} failed:`, promptResult.error);
+        } catch (error) {
+          console.warn(`Prompt attempt ${attempt}/${maxRetries} threw exception:`, error);
+          if (attempt === maxRetries) throw error;
+        }
+        
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 1000 * attempt));
+        }
+      }
+
+      if (promptResult?.error) {
+        console.error(`Prompt failed with error after retries:`, promptResult.error);
+        throw new Error(`Prompt failed: ${JSON.stringify(promptResult.error)}`);
+      }
 
       // The SDK prompt method returns immediately, we need to wait for completion
       // For now, return success - completion will be handled by waitForCompletion
       return {
         success: true,
-        data: promptResult.data,
+        data: promptResult?.data,
         sessionId,
       };
     } catch (error) {
@@ -382,6 +414,18 @@ export class OpenCodeSDKClient {
 
         // Check if there's a completed assistant message
         const lastMessage = messages[messages.length - 1];
+
+        // NEW: Check for raw tool output leak (the "Weird Output" bug)
+        // If the content contains raw protocol markers like <|channel|>, it means the model is hallucinating
+        // or the parser failed. We should treat this as a potential error or try to recover.
+        const content = lastMessage?.content || "";
+        if (content.includes("<|channel|>") || content.includes("<|message|>")) {
+             console.warn(`[Warning] Raw protocol detected in output: ${content.substring(0, 100)}...`);
+             // We don't fail immediately, but we log it. 
+             // If the session is STUCK on this message for too long without completion, the timeout will catch it.
+             // However, if the server considers this a "completed" message (because it stopped generating),
+             // but it didn't execute the tool, the loop might be restarting because the worker sees "success" but no artifacts.
+        }
 
         if (lastMessage?.info?.role === 'assistant' && lastMessage?.info?.time?.completed) {
           // Session is complete
@@ -613,6 +657,83 @@ export class OpenCodeSDKClient {
       lastActivityAge: age,
       stale: isStale,
     };
+  }
+
+  /**
+   * Abort an ongoing session
+   * 
+   * @param sessionId - The session ID to abort
+   * @returns Success status
+   */
+  async abortSession(sessionId: string): Promise<boolean> {
+    try {
+      await this.client.session.abort({
+        path: { id: sessionId }
+      });
+      console.log(`Aborted session ${sessionId}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to abort session ${sessionId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * List active sessions
+   * 
+   * @param activeOnly - If true, filter for only active/running sessions
+   * @returns Array of session objects
+   */
+  async listSessions(activeOnly: boolean = false): Promise<any[]> {
+    try {
+      // Get all sessions first
+      const result = await this.client.session.list({});
+      if (!result.data) {
+        return [];
+      }
+      
+      let sessions = result.data;
+      
+      // Filter by active status if requested
+      if (activeOnly) {
+        try {
+          // Get status for all sessions to determine which are truly active
+          const statusResult = await this.client.session.status({});
+          if (statusResult.data) {
+            const statusMap = statusResult.data as Record<string, any>;
+            
+            sessions = sessions.filter((session: any) => {
+              const status = statusMap[session.id];
+              // Consider active if status is busy or retry
+              return status && (status.type === 'busy' || status.type === 'retry');
+            });
+          } else {
+            // Fallback to timestamp check if status API not available or empty
+          const now = Date.now();
+          const ACTIVE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+          sessions = sessions.filter((session: any) => {
+            // Check updated first, then created, default to 0
+            const timestamp = session.time?.updated || session.time?.created || 0;
+            return (now - timestamp) < ACTIVE_THRESHOLD;
+          });
+        }
+      } catch (error) {
+        console.warn(`Failed to fetch session statuses, falling back to timestamp check: ${error}`);
+        // Fallback logic
+        const now = Date.now();
+        const ACTIVE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+        sessions = sessions.filter((session: any) => {
+          const timestamp = session.time?.updated || session.time?.created || 0;
+          return (now - timestamp) < ACTIVE_THRESHOLD;
+        });
+      }
+    }
+      
+      return sessions;
+    } catch (error) {
+      console.error(`Failed to list sessions:`, error);
+      return [];
+    }
   }
 
   /**

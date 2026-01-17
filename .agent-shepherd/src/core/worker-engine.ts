@@ -821,8 +821,6 @@ export class WorkerEngine {
 
     const initialPrompt = instructions;
 
-    console.log(`Running agent ${agentId} with OpenCode CLI...`);
-
     // Check for session reuse
     let sessionIdToUse: string | undefined;
     if (phaseConfig?.reuse_session_from_phase && policyConfig) {
@@ -849,9 +847,35 @@ export class WorkerEngine {
     const config = loadConfig();
     const executionMode = config.execution?.mode || "sdk";
 
+    // Check for existing active session for this issue/phase to prevent duplicates
+    let skipPrompt = false;
+    if (!sessionIdToUse && executionMode === "sdk") {
+      try {
+        const sessionList = await this.opencode.listSessionsForIssue(issue.id);
+        // listSessionsForIssue returns sorted by created time (oldest to newest)
+        
+        // Find the most recent session for this phase
+        const activeSession = sessionList.reverse().find(s => s.phase === phase);
+        
+        if (activeSession) {
+          // Check if session is actually active in OpenCode (not just in our DB)
+          const sdkModule = await import('./opencode_sdk.ts');
+          const sdkClient = sdkModule.getSDKClient();
+          const activity = await sdkClient.getSessionActivity(activeSession.sessionId);
+          
+          if (activity && activity.isActive) {
+            console.log(`Found active background session ${activeSession.sessionId} for phase '${phase}'. Attaching...`);
+            sessionIdToUse = activeSession.sessionId;
+            skipPrompt = true;
+          }
+        }
+      } catch (error) {
+        console.warn(`Failed to check for active background sessions: ${error}`);
+      }
+    }
+
     try {
       if (executionMode === "sdk") {
-        console.log(`Executing agent using SDK mode`);
         result = await this.opencode.runAgentSDK({
           directory: process.cwd(),
           title: `${issue.id}: ${issue.title}`,
@@ -859,6 +883,7 @@ export class WorkerEngine {
           model: modelToUse,
           message: instructions,
           sessionId: sessionIdToUse,
+          skipPrompt,
         }, (message) => {
           console.log(`[SDK Progress] ${message}`);
         });

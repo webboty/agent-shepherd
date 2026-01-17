@@ -14,6 +14,7 @@ export interface SessionConfig {
   model?: string;
   message?: string;
   sessionId?: string;
+  skipPrompt?: boolean;
 }
 
 export interface RunResult {
@@ -260,29 +261,33 @@ export class OpenCodeClient {
         console.log(`[Progress] ${msg}`);
       });
 
-      const executeResult = await sdkClient.executeAgentInSession(sessionId, {
-        agent: config.agent,
-        message: config.message,
-      });
+      if (!config.skipPrompt) {
+        const executeResult = await sdkClient.executeAgentInSession(sessionId, {
+          agent: config.agent,
+          message: config.message,
+        });
 
-      if (!executeResult.success) {
-        // Agent execution failed - handle specific error types
-        const errorType = executeResult.errorType || SDKErrorType.UNKNOWN_ERROR;
+        if (!executeResult.success) {
+          // Agent execution failed - handle specific error types
+          const errorType = executeResult.errorType || SDKErrorType.UNKNOWN_ERROR;
 
-        // Map SDK error types to CLI-like error messages
-        let errorMessage = executeResult.error || 'Agent execution failed';
-        if (errorType === SDKErrorType.AGENT_NOT_FOUND) {
-          errorMessage = `Agent not found: ${config.agent || 'default'}. Check agent configuration.`;
-        } else if (errorType === SDKErrorType.SESSION_NOT_FOUND) {
-          errorMessage = `Session not found: ${sessionId}. Session may have been deleted or is invalid.`;
+          // Map SDK error types to CLI-like error messages
+          let errorMessage = executeResult.error || 'Agent execution failed';
+          if (errorType === SDKErrorType.AGENT_NOT_FOUND) {
+            errorMessage = `Agent not found: ${config.agent || 'default'}. Check agent configuration.`;
+          } else if (errorType === SDKErrorType.SESSION_NOT_FOUND) {
+            errorMessage = `Session not found: ${sessionId}. Session may have been deleted or is invalid.`;
+          }
+
+          return {
+            success: false,
+            output: '',
+            error: errorMessage,
+            sessionId,
+          };
         }
-
-        return {
-          success: false,
-          output: '',
-          error: errorMessage,
-          sessionId,
-        };
+      } else {
+        console.log(`Skipping prompt submission (reattaching to running session)`);
       }
 
       // Wait for completion with progress feedback

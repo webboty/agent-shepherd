@@ -36,7 +36,8 @@ const COMMANDS: Record<string, string> = {
   "list-hitl": "List issues requiring human-in-the-loop intervention",
   "list-ready": "List issues ready to be worked on (no blockers)",
   "list-struggle": "List blocked issues that need attention",
-  "list-sessions": "List OpenCode sessions for an issue",
+  "session-list": "List active OpenCode sessions",
+  "session-stop": "Stop/Abort an active OpenCode session",
   "get-messages": "Get phase messages for an issue",
   "heartbeat": "Show heartbeat-checker status and active heartbeats",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
@@ -1924,6 +1925,88 @@ async function cmdListSessions(issueId?: string): Promise<void> {
 }
 
 /**
+ * Session list command - list all active OpenCode sessions
+ */
+async function cmdSessionList(showAll: boolean = false): Promise<void> {
+  try {
+    const { getOpenCodeClient } = await import("../core/opencode.ts");
+    const { getSDKClient } = await import("../core/opencode_sdk.ts");
+    
+    // We need the SDK client for this
+    const sdkClient = getSDKClient();
+    
+    console.log(`Fetching ${showAll ? "all" : "active"} sessions...`);
+    const sessions = await sdkClient.listSessions(!showAll);
+    
+    if (sessions.length === 0) {
+      console.log(`No ${showAll ? "" : "active "}sessions found.`);
+      return;
+    }
+    
+    console.log(`\n${showAll ? "All" : "Active"} Sessions (${sessions.length}):`);
+    console.log("┌───────────────────────────────────────┬───────────────────────────────────────────────┬──────────────────────┬─────────────┐");
+    console.log("│ Session ID                            │ Title                                         │ Updated              │ Status      │");
+    console.log("├───────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────┼─────────────┤");
+    
+    for (const session of sessions) {
+      const sessionId = (session.id || "").substring(0, 37) + ((session.id || "").length > 37 ? "..." : "");
+      const title = (session.title || "Untitled").substring(0, 45) + ((session.title || "Untitled").length > 45 ? "..." : "");
+      
+      let updatedTime = "Unknown";
+      if (session.time && session.time.updated) {
+        updatedTime = new Date(session.time.updated).toLocaleString();
+      } else if (session.time && session.time.created) {
+        updatedTime = new Date(session.time.created).toLocaleString();
+      }
+      
+      // Basic status inference if real status unavailable
+      const status = "Active"; // We filtered for active
+      
+      console.log(`│ ${sessionId.padEnd(37)} │ ${title.padEnd(45)} │ ${updatedTime.padEnd(20)} │ ${status.padEnd(11)} │`);
+    }
+    
+    console.log("└───────────────────────────────────────┴───────────────────────────────────────────────┴──────────────────────┴─────────────┘");
+    if (!showAll) {
+      console.log("\nTip: Use 'ashep session-list --all' to see history.");
+    }
+    console.log("To stop a session run: ashep session-stop <session-id>");
+    
+  } catch (error) {
+    console.error("❌ Failed to list sessions:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Session stop command - abort an active session
+ */
+async function cmdSessionStop(sessionId: string): Promise<void> {
+  if (!sessionId) {
+    console.error("Error: Session ID is required");
+    console.log("Usage: ashep session-stop <session-id>");
+    process.exit(1);
+  }
+  
+  try {
+    const { getSDKClient } = await import("../core/opencode_sdk.ts");
+    const sdkClient = getSDKClient();
+    
+    console.log(`Aborting session ${sessionId}...`);
+    const success = await sdkClient.abortSession(sessionId);
+    
+    if (success) {
+      console.log(`✅ Session ${sessionId} aborted successfully`);
+    } else {
+      console.log(`❌ Failed to abort session ${sessionId}`);
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error("❌ Error aborting session:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
  * Simple prompt for issue ID using Bun's built-in readline
  */
 async function promptForIssueId(): Promise<string> {
@@ -2082,6 +2165,14 @@ async function main(): Promise<void> {
       await cmdListStruggle(hours);
       break;
     }
+
+    case "session-list":
+      await cmdSessionList(args.includes("--all"));
+      break;
+
+    case "session-stop":
+      await cmdSessionStop(args[1]);
+      break;
 
     case "get-messages": {
       let phase: string | undefined;

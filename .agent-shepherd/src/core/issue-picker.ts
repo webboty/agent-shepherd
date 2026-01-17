@@ -61,12 +61,17 @@ export class IssuePicker {
     */
    async pickNextIssues(): Promise<BeadsIssue[]> {
      const allReadyIssues = await getReadyIssues();
+     
+     // Filter out issues that are already in progress to prevent double-picking
+     // bd ready returns in_progress issues, but we only want to start new work on open issues
+     // unless we explicitly implement a "resume" logic in the picker (which we don't currently)
+     const openReadyIssues = allReadyIssues.filter(issue => issue.status === "open");
 
      if (this.config.mode === "simple") {
-       return this.simplePick(allReadyIssues);
+       return this.simplePick(openReadyIssues);
      }
 
-     return this.smartPick(allReadyIssues);
+     return this.smartPick(openReadyIssues);
    }
 
    /**
