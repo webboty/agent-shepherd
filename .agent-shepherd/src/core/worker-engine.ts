@@ -76,8 +76,11 @@ export class WorkerEngine {
     const workerConfig = systemConfig.worker || {};
     
     // Initialize OpenCode client with config
+    const sdkUrl = systemConfig.execution?.sdk_base_url || process.env.OPENCODE_URL || 'http://localhost:4321';
+    console.log(`Initializing Worker with OpenCode URL: ${sdkUrl}`);
+    
     this.opencode = getOpenCodeClient({
-      serverUrl: systemConfig.execution?.sdk_base_url
+      serverUrl: sdkUrl
     });
 
     this.config = {
@@ -106,6 +109,7 @@ export class WorkerEngine {
   async start(): Promise<void> {
     this.isRunning = true;
     console.log("Worker Engine started");
+    console.log(`Poll interval: ${this.config.poll_interval_ms}ms`);
 
     while (this.isRunning) {
       try {
@@ -141,10 +145,13 @@ export class WorkerEngine {
 
     try {
       if (strategy === "active_sessions" || strategy === "strict_both") {
+        const sdkUrl = config.execution?.sdk_base_url || process.env.OPENCODE_URL || 'http://localhost:4321';
+        // console.log(`Checking concurrency against ${sdkUrl}...`); 
         const sdkModule = await import('./opencode_sdk.ts');
-        const sdkClient = sdkModule.getSDKClient({ baseUrl: config.execution?.sdk_base_url });
+        const sdkClient = sdkModule.getSDKClient({ baseUrl: sdkUrl });
         const sessions = await sdkClient.listSessions(true); // true = active only
         activeCount = sessions.length;
+        // console.log(`Active sessions: ${activeCount}`);
         
         if (strategy === "strict_both") {
            // If using strict both, we will check beads next and take the MAX

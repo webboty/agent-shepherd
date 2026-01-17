@@ -31,6 +31,20 @@ export enum SDKErrorType {
   UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
 
+// Class used in classifyError() and imported by opencode.ts via dynamic import
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export class SDKError extends Error {
+  public type: SDKErrorType;
+  public originalError?: any;
+
+  constructor(type: SDKErrorType, originalError?: any, message: string = '') {
+    super(message);
+    this.name = "SDKError";
+    this.type = type;
+    this.originalError = originalError;
+  }
+}
+
 export interface SessionConfig {
   directory?: string;
   title?: string;
@@ -54,38 +68,6 @@ export interface HeartbeatCheckResult {
   stale: boolean;
 }
 
-export interface SessionStatus {
-  exists: boolean;
-  sessionId: string;
-  title?: string;
-  messageCount: number;
-}
-
-// Enum values used in classifyError() and imported by opencode.ts via dynamic import
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export enum SDKErrorType {
-  NETWORK_ERROR = "NETWORK_ERROR",
-  AGENT_NOT_FOUND = "AGENT_NOT_FOUND",
-  SESSION_NOT_FOUND = "SESSION_NOT_FOUND",
-  SESSION_CREATION_FAILED = "SESSION_CREATION_FAILED",
-  EXECUTION_TIMEOUT = "EXECUTION_TIMEOUT",
-  INVALID_SESSION_ID = "INVALID_SESSION_ID",
-  UNKNOWN_ERROR = "UNKNOWN_ERROR",
-}
-
-// Class used in classifyError() and imported by opencode.ts via dynamic import
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export class SDKError extends Error {
-  public type: SDKErrorType;
-  public originalError?: any;
-
-  constructor(type: SDKErrorType, originalError?: any, message: string = '') {
-    super(message);
-    this.name = "SDKError";
-    this.type = type;
-    this.originalError = originalError;
-  }
-}
 
 /**
  * OpenCode SDK Client for session monitoring
@@ -95,7 +77,8 @@ export class OpenCodeSDKClient {
   private baseUrl: string;
 
   constructor(config?: { baseUrl?: string }) {
-    this.baseUrl = config?.baseUrl || 'http://localhost:4321';
+    this.baseUrl = config?.baseUrl || process.env.OPENCODE_URL || 'http://localhost:4321';
+    console.log(`[OpenCode SDK] Initializing client with URL: ${this.baseUrl}`);
     this.client = createOpencodeClient({ baseUrl: this.baseUrl });
   }
 
@@ -706,8 +689,17 @@ export class OpenCodeSDKClient {
    */
   async listSessions(activeOnly: boolean = false): Promise<any[]> {
     try {
+      // Add timeout to list sessions call to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Timeout listing sessions")), 5000)
+      );
+
       // Get all sessions first
-      const result = await this.client.session.list({});
+      const result = await Promise.race([
+        this.client.session.list({}),
+        timeoutPromise
+      ]) as any;
+
       if (!result.data) {
         return [];
       }
@@ -778,6 +770,9 @@ let defaultSDKClient: OpenCodeSDKClient | null = null;
 
 export function getSDKClient(config?: { baseUrl?: string }): OpenCodeSDKClient {
   if (!defaultSDKClient) {
+    defaultSDKClient = new OpenCodeSDKClient(config);
+  } else if (config?.baseUrl && defaultSDKClient.getBaseUrl() !== config.baseUrl) {
+    console.log(`[OpenCode SDK] URL mismatch (Current: ${defaultSDKClient.getBaseUrl()}, New: ${config.baseUrl}). Reinitializing client.`);
     defaultSDKClient = new OpenCodeSDKClient(config);
   }
   return defaultSDKClient;
