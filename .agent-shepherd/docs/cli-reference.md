@@ -580,6 +580,49 @@ No sessions found for issue ISSUE-456
 - **Audit session continuity**: Ensure multi-phase workflows maintain context
 - **Optimize workflows**: Identify phases that may benefit from session continuation
 
+## Session Commands
+
+### `ashep session-list`
+
+List active OpenCode sessions. By default, it uses smart filtering to show only sessions that are currently running or have recent activity.
+
+**Usage:**
+```bash
+ashep session-list
+ashep session-list --all
+```
+
+**Options:**
+- `--all`: Show all sessions (history), not just active ones.
+
+**Output:**
+```
+Active Sessions (2):
+┌───────────────────────────────────────┬───────────────────────────────────────────────┬──────────────────────┬─────────────┐
+│ Session ID                            │ Title                                         │ Updated              │ Status      │
+├───────────────────────────────────────┼───────────────────────────────────────────────┼──────────────────────┼─────────────┤
+│ ses_4361d9304ffezUGZULVfrBW7wG        │ astro-test-cg3.7.1: Step 9: Create validation... │ 1/17/2026, 3:57:32 AM │ Active      │
+└───────────────────────────────────────┴───────────────────────────────────────────────┴──────────────────────┴─────────────┘
+```
+
+**Filtering Logic:**
+Sessions are considered "active" if:
+1. OpenCode reports their status as 'busy' or 'retry'.
+2. OR they were created or updated within the last 5 minutes (fallback if status API is unavailable).
+
+### `ashep session-stop <session-id>`
+
+Abort/Stop a specific OpenCode session. Useful for stopping runaway agents or cleaning up stuck sessions.
+
+**Usage:**
+```bash
+ashep session-stop ses_4361d9304ffezUGZULVfrBW7wG
+```
+
+**Behavior:**
+- Sends an abort signal to the OpenCode server for the specified session.
+- Returns success or failure message.
+
 ## Plugin Commands
 
 ### `ashep plugin-install <path-or-url>`
