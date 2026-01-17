@@ -4,8 +4,10 @@ This document tracks planned improvements and known limitations for Agent Shephe
 
 ## High Priority
 
-- [ ] **Verbose Logging System:** Implement a file-based verbose logging system that can be toggled via config (`logging.verbose: true`) or CLI flag (`--verbose`). This should dump detailed request/response payloads, decision logic, and internal state to a dedicated log file for debugging complex issues.
-- [ ] **Strict Concurrency Config Switch:** Add a configuration option to choose the concurrency enforcement strategy (e.g., `enforcement_mode: "active_sessions" | "beads_status"`). Currently defaults to "active_sessions" (SDK check).
+- [ ] **Verbose Logging System:** Implement a file-based verbose logging system that can be toggled via config (`logging.verbose: true`) or CLI flag (`--verbose`). This should dump detailed request/response payloads, decision logic, and internal state to a dedicated log file (`.agent-shepherd/logs/verbose.log`) for debugging complex issues.
+- [ ] **Strict Concurrency Config Switch:** Add a configuration option to choose the concurrency enforcement strategy.
+    - `enforcement_mode: "active_sessions"` (Default): Uses OpenCode SDK to count actually running sessions. Good for detecting orphans.
+    - `enforcement_mode: "beads_status"`: Queries Beads for total number of `in_progress` issues assigned to this worker. Good for strict stateless enforcement.
 - [ ] **Automated Orphan Cleanup:** Implement a background task to automatically abort OpenCode sessions that have been inactive for >1 hour and are not tracked by any active worker.
 
 ## Medium Priority
