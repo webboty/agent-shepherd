@@ -56,7 +56,7 @@ describe("Phase Tracking Functions", () => {
       await setPhaseLabel(testIssueId, "implement");
       labels = await getIssueLabels(testIssueId);
       expect(labels).toContain("ashep-phase:implement");
-      expect(labels).toContain("ashep-phase:plan");
+      expect(labels).not.toContain("ashep-phase:plan"); // Old phase should be removed
     });
 
     it("should handle phase names with underscores", async () => {
@@ -129,7 +129,7 @@ describe("Phase Tracking Functions", () => {
       await setPhaseLabel(testIssueId, "test");
 
       const currentPhase = await getCurrentPhase(testIssueId);
-      expect(["plan", "implement", "test"]).toContain(currentPhase || "");
+      expect(currentPhase).toBe("test"); // Should strictly be the last one set
     });
   });
 
