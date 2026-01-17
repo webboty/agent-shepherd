@@ -1886,10 +1886,15 @@ async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: bool
 async function cmdListSessions(issueId?: string): Promise<void> {
   try {
     const { getOpenCodeClient } = await import("../core/opencode.ts");
+    const { loadConfig } = await import("../core/config.ts");
+    const config = loadConfig();
 
-    const opencode = getOpenCodeClient();
+    const opencode = getOpenCodeClient({
+      serverUrl: config.execution?.sdk_base_url
+    });
 
     if (!issueId) {
+
       issueId = await promptForIssueId();
     }
 
@@ -1929,11 +1934,13 @@ async function cmdListSessions(issueId?: string): Promise<void> {
  */
 async function cmdSessionList(showAll: boolean = false): Promise<void> {
   try {
-    const { getOpenCodeClient } = await import("../core/opencode.ts");
     const { getSDKClient } = await import("../core/opencode_sdk.ts");
+    const { loadConfig } = await import("../core/config.ts");
+    
+    const config = loadConfig();
     
     // We need the SDK client for this
-    const sdkClient = getSDKClient();
+    const sdkClient = getSDKClient({ baseUrl: config.execution?.sdk_base_url });
     
     console.log(`Fetching ${showAll ? "all" : "active"} sessions...`);
     const sessions = await sdkClient.listSessions(!showAll);
@@ -1989,7 +1996,9 @@ async function cmdSessionStop(sessionId: string): Promise<void> {
   
   try {
     const { getSDKClient } = await import("../core/opencode_sdk.ts");
-    const sdkClient = getSDKClient();
+    const { loadConfig } = await import("../core/config.ts");
+    const config = loadConfig();
+    const sdkClient = getSDKClient({ baseUrl: config.execution?.sdk_base_url });
     
     console.log(`Aborting session ${sessionId}...`);
     const success = await sdkClient.abortSession(sessionId);

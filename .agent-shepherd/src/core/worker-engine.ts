@@ -64,7 +64,7 @@ export class WorkerEngine {
   private config: WorkerConfig;
   private policyEngine = getPolicyEngine();
   private agentRegistry = getAgentRegistry();
-  private opencode = getOpenCodeClient();
+  private opencode: any; // Type will be resolved in constructor
   private logger = getLogger(process.env.ASHEP_DIR);
   private isRunning = false;
   private currentRunId: string | null = null;
@@ -75,6 +75,11 @@ export class WorkerEngine {
     const systemConfig = loadConfig();
     const workerConfig = systemConfig.worker || {};
     
+    // Initialize OpenCode client with config
+    this.opencode = getOpenCodeClient({
+      serverUrl: systemConfig.execution?.sdk_base_url
+    });
+
     this.config = {
       poll_interval_ms: 30000,
       max_concurrent_runs: 3,
@@ -137,7 +142,7 @@ export class WorkerEngine {
     try {
       if (strategy === "active_sessions" || strategy === "strict_both") {
         const sdkModule = await import('./opencode_sdk.ts');
-        const sdkClient = sdkModule.getSDKClient();
+        const sdkClient = sdkModule.getSDKClient({ baseUrl: config.execution?.sdk_base_url });
         const sessions = await sdkClient.listSessions(true); // true = active only
         activeCount = sessions.length;
         
@@ -903,7 +908,7 @@ export class WorkerEngine {
         if (activeSession) {
           // Check if session is actually active in OpenCode (not just in our DB)
           const sdkModule = await import('./opencode_sdk.ts');
-          const sdkClient = sdkModule.getSDKClient();
+          const sdkClient = sdkModule.getSDKClient({ baseUrl: config.execution?.sdk_base_url });
           const activity = await sdkClient.getSessionActivity(activeSession.sessionId);
           
           if (activity && activity.isActive) {

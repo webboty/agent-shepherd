@@ -115,9 +115,11 @@ export interface ParsedRunOutcome {
  */
 export class OpenCodeClient {
   private directory: string;
+  private baseUrl?: string;
 
-  constructor(config?: { directory?: string }) {
+  constructor(config?: { directory?: string; baseUrl?: string }) {
     this.directory = config?.directory || process.cwd();
+    this.baseUrl = config?.baseUrl;
   }
 
   /**
@@ -222,7 +224,7 @@ export class OpenCodeClient {
     const getSDKClient = sdkModule.getSDKClient;
     const SDKErrorType = sdkModule.SDKErrorType;
     const SDKError = sdkModule.SDKError;
-    const sdkClient = getSDKClient();
+    const sdkClient = getSDKClient(this.baseUrl ? { baseUrl: this.baseUrl } : undefined);
 
     let sessionId: string | undefined;
     const isSessionReused = !!config.sessionId;
@@ -741,7 +743,10 @@ export function getOpenCodeClient(config?: {
   serverUrl?: string;
 }): OpenCodeClient {
   if (!defaultClient) {
-    defaultClient = new OpenCodeClient(config);
+    defaultClient = new OpenCodeClient({
+      directory: config?.directory,
+      baseUrl: config?.serverUrl
+    });
   }
   return defaultClient;
 }
