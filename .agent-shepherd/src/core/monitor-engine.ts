@@ -5,7 +5,7 @@
 
 import { getLogger, type RunRecord } from "./logging.ts";
 import { getPolicyEngine } from "./policy.ts";
-import { updateIssue } from "./beads.ts";
+import { updateIssue, setLastHeartbeat } from "./beads.ts";
 
 export interface MonitorConfig {
   poll_interval_ms?: number;
@@ -140,6 +140,16 @@ export class MonitorEngine {
       
       if (result.stale) {
         console.log(`Stall detected for run ${run.id} (session ${run.session_id}): No activity for ${Math.round((result.lastActivityAge || 0) / 1000)}s (threshold: ${threshold}ms)`);
+      } else {
+        // Run is alive - broadcast heartbeat to Beads for distributed coordination
+        const epicId = this.extractEpicId(run.issue_id);
+        if (epicId) {
+          try {
+            await setLastHeartbeat(epicId, Date.now());
+          } catch (error) {
+            console.warn(`Failed to update heartbeat for epic ${epicId}: ${error}`);
+          }
+        }
       }
       
       return result.stale;
@@ -147,6 +157,24 @@ export class MonitorEngine {
       console.warn(`Failed to check stall status for run ${run.id}: ${error}`);
       return false; // Fail safe
     }
+  }
+
+  /**
+   * Extract epic ID from issue ID
+   */
+  private extractEpicId(issueId: string): string | null {
+    if (!issueId) return null;
+    // If issue ID is an epic (no dot notation), return as-is
+    if (!issueId.includes(".")) return issueId;
+    // Extract epic ID from nested task ID (e.g., "agent-shepherd-123.1" -> "agent-shepherd-123")
+    const parts = issueId.split(".");
+    // Assume epic is everything except the last part if it's a number? 
+    // Or just the first part if standard format?
+    // Let's stick to the previous logic: first part if format is Project-123.1
+    if (parts.length >= 2) {
+        return parts[0];
+    }
+    return parts[0]; 
   }
 
   /**
