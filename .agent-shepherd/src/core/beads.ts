@@ -343,7 +343,7 @@ export async function removeAshepManagedLabel(issueId: string): Promise<void> {
       const output = await execBeadsCommand(["state", epicId, key]);
       const trimmed = output.trim();
 
-      if (trimmed === "" || trimmed === "null") {
+      if (trimmed === "" || trimmed === "null" || trimmed.startsWith("(no ") && trimmed.endsWith(" state set)")) {
         return null;
       }
 
