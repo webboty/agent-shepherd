@@ -71,7 +71,7 @@ SDK mode is the default and recommended execution mode. Configure in `.agent-she
 worker:
   execution:
     mode: sdk  # Use OpenCode SDK (recommended)
-    sdk_base_url: http://localhost:4096  # OpenCode server URL
+    sdk_base_url: http://localhost:4321  # OpenCode server URL
 ```
 
 ### Switching from CLI to SDK Mode
@@ -88,7 +88,7 @@ worker:
 2. **Verify SDK Availability:**
 - Ensure OpenCode server is running at the configured URL
 - Check that `@opencode-ai/sdk` package is installed
-- Test connectivity: `curl http://localhost:4096/health`
+- Test connectivity: `curl http://localhost:4321/health`
 
 3. **Test SDK Mode:**
 - Process a simple test issue
@@ -112,7 +112,7 @@ worker:
 | Option | Type | Default | Description |
 |---------|-------|----------|-------------|
 | `mode` | string | `sdk` | Execution mode: `sdk` (recommended) or `cli` (deprecated) |
-| `sdk_base_url` | string | `http://localhost:4096` | OpenCode server URL for SDK communication |
+| `sdk_base_url` | string | `http://localhost:4321` | OpenCode server URL for SDK communication |
 
 ### Remote OpenCode Servers
 
@@ -224,7 +224,7 @@ bun run build
 **Solutions:**
 1. Verify OpenCode is running:
 ```bash
-curl http://localhost:4096/health
+curl http://localhost:4321/health
 ```
 
 2. Check configuration URL:
@@ -232,17 +232,17 @@ curl http://localhost:4096/health
 worker:
   execution:
     mode: sdk
-    sdk_base_url: http://localhost:4096  # Verify this is correct
+    sdk_base_url: http://localhost:4321  # Verify this is correct
 ```
 
 3. Test network connectivity:
 ```bash
 ping localhost  # Or remote host
-telnet localhost 4096  # Test port accessibility
+telnet localhost 4321  # Test port accessibility
 ```
 
 4. Check firewall rules:
-- Ensure port 4096 (or configured port) is not blocked
+- Ensure port 4321 (or configured port) is not blocked
 - Verify inbound/outbound connections allowed
 
 #### Session Not Preserved

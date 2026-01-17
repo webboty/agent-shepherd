@@ -390,7 +390,7 @@ Error: Failed to connect to OpenCode SDK server
 
 1. **Verify OpenCode is running:**
    ```bash
-   curl http://localhost:4096/health
+   curl http://localhost:4321/health
    ```
 
 2. **Check configuration URL:**
@@ -398,17 +398,17 @@ Error: Failed to connect to OpenCode SDK server
    worker:
      execution:
        mode: sdk
-       sdk_base_url: http://localhost:4096  # Verify correct
+       sdk_base_url: http://localhost:4321  # Verify correct
    ```
 
 3. **Test network connectivity:**
    ```bash
    ping localhost  # Or remote host
-   telnet localhost 4096  # Test port
+   telnet localhost 4321  # Test port
    ```
 
 4. **Check firewall rules:**
-   - Ensure port 4096 is not blocked
+   - Ensure port 4321 is not blocked
    - Verify inbound/outbound connections allowed
 
 5. **Check OpenCode logs:**
@@ -1835,7 +1835,7 @@ Process consumes large amounts of memory
 4. **Profile memory usage:**
    ```bash
    # Node.js memory profile
-   node --max-old-space-size=4096 node_modules/ashep/bin/ashep worker
+   node --max-old-space-size=4321 node_modules/ashep/bin/ashep worker
 
    # Or check current usage
    ps aux | grep ashep | awk '{print $6}'
@@ -1909,7 +1909,7 @@ Agent Shepherd can't call OpenCode agents
 3. **Test API connectivity:**
    ```bash
    # For SDK mode
-   curl http://localhost:4096/health
+   curl http://localhost:4321/health
 
    # For remote OpenCode servers
    curl -H "Authorization: Bearer $OPENCODE_API_KEY" \

@@ -344,7 +344,7 @@ worker:
 ```
 
 #### `sdk_base_url` (string)
-**Required**: No (default: "http://localhost:4096")
+**Required**: No (default: "http://localhost:4321")
 **Purpose**: Base URL for OpenCode SDK API server
 **Impact**: Only used when `mode: sdk`
 
@@ -355,7 +355,7 @@ worker:
 worker:
   execution:
     mode: sdk
-    sdk_base_url: http://localhost:4096  # Default
+    sdk_base_url: http://localhost:4321  # Default
 ```
 
 ```yaml
