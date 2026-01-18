@@ -372,7 +372,7 @@ export class PhaseMessenger {
     this.upsertToSQLite(updated);
   }
 
-  private getMessage(messageId: string): PhaseMessage | null {
+  getMessage(messageId: string): PhaseMessage | null {
     const row = this.db.prepare("SELECT * FROM messages WHERE id = ?").get(messageId) as any;
 
     if (!row) {

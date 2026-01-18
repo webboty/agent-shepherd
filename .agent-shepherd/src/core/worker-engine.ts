@@ -1089,30 +1089,33 @@ export class WorkerEngine {
     }
 
     return `
-# Task: ${issue.title}
+# Role & Context
+You are an autonomous agent working on the **${phase}** phase of a software engineering task.
+This is part of a multi-phase workflow. Your goal is to complete ONLY this specific phase.
 
-## Issue Details
-- ID: ${issue.id}
-- Type: ${issue.issue_type}
-- Priority: P${issue.priority}
-- Status: ${issue.status}
+## Phase Objective
+${phaseConfig?.description || "Complete the objectives for this phase."}
+
+# Task Information
+**Issue**: ${issue.title} (${issue.id})
+**Type**: ${issue.issue_type}
+**Priority**: P${issue.priority}
 
 ## Description
 ${issue.description}
 
-## Current Phase
-**${phase}** ${phaseConfig?.description ? `- ${phaseConfig.description}` : ""}
+# Previous Context
+Use the Phase Messenger to access results, decisions, or data from previous phases (e.g., implementation details, plans).
+To list available messages: \`ashep get-messages ${issue.id} --phase ${phase}\`
+To read a specific message details: \`ashep read-message <message-id>\`
 
-## Required Capabilities
-${phaseConfig?.capabilities?.map((cap) => `- ${cap}`).join("\n") || "None specified"}
-
-## Instructions
-Please complete the ${phase} phase for this issue. When done, provide a summary of your work.
+# Instructions
+1. Review the task description and phase objective.
+2. Check for phase messages to understand previous work.
+3. Execute the necessary actions for this phase.
+4. When finished, provide a summary.
 
 ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval before proceeding.\n" : ""}
-
-## Phase Messenger
-Previous phases may have sent messages containing context, results, or data for this phase. To view messages, use: \`ashep get-messages ${issue.id} --phase ${phase}\`
 `.trim();
   }
 

@@ -39,6 +39,7 @@ const COMMANDS: Record<string, string> = {
   "session-list": "List active OpenCode sessions",
   "session-stop": "Stop/Abort an active OpenCode session",
   "get-messages": "Get phase messages for an issue",
+  "read-message": "Read details of a specific phase message",
   "heartbeat": "Show heartbeat-checker status and active heartbeats",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
@@ -1881,6 +1882,56 @@ async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: bool
 }
 
 /**
+ * Read message command - get full details of a specific message
+ */
+async function cmdReadMessage(messageId: string): Promise<void> {
+  if (!messageId) {
+    console.error("Usage: ashep read-message <message-id>");
+    process.exit(1);
+  }
+
+  try {
+    const { getPhaseMessenger } = await import("../core/phase-messenger.ts");
+    const messenger = getPhaseMessenger();
+    
+    // We need to access the public getMessage method we added to the class interface
+    // But since it might not be exposed on the interface yet, we cast to any or check the implementation
+    // The previous edit made getMessage public in PhaseMessenger class
+    const message = (messenger as any).getMessage(messageId);
+
+    if (!message) {
+      console.error(`Message not found: ${messageId}`);
+      process.exit(1);
+    }
+
+    console.log(`\nMessage Details: ${message.id}`);
+    console.log("──────────────────────────────────────────────────");
+    console.log(`From Phase:   ${message.from_phase}`);
+    console.log(`To Phase:     ${message.to_phase}`);
+    console.log(`Type:         ${message.message_type}`);
+    console.log(`Created:      ${new Date(message.created_at).toLocaleString()}`);
+    console.log(`Read:         ${message.read ? "Yes" : "No"}`);
+    if (message.read_at) {
+      console.log(`Read At:      ${new Date(message.read_at).toLocaleString()}`);
+    }
+    
+    if (message.metadata) {
+      console.log("\nMetadata:");
+      console.log(JSON.stringify(message.metadata, null, 2));
+    }
+
+    console.log("\nContent:");
+    console.log("──────────────────────────────────────────────────");
+    console.log(message.content);
+    console.log("──────────────────────────────────────────────────\n");
+
+  } catch (error) {
+    console.error("❌ Failed to read message:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
  * List sessions command - list OpenCode sessions for an issue
  */
 async function cmdListSessions(issueId?: string): Promise<void> {
@@ -2199,6 +2250,10 @@ async function main(): Promise<void> {
       await cmdGetMessages(args[1], phase, unreadOnly);
       break;
     }
+
+    case "read-message":
+      await cmdReadMessage(args[1]);
+      break;
 
     case "list-sessions":
       await cmdListSessions(args[1]);
