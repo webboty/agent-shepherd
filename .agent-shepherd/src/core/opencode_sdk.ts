@@ -204,11 +204,20 @@ export class OpenCodeSDKClient {
         // Parse model format "provider/model"
         const [providerID, modelID] = config.model.split('/');
         if (providerID && modelID) {
-          body.providerID = providerID;
-          body.modelID = modelID;
+          body.model = {
+            providerID,
+            modelID
+          };
         } else {
-          // Assume it's just a model ID
-          body.modelID = config.model;
+          // Assume it's just a model ID and try to infer provider or use as-is
+          // This might fail if SDK strictly requires providerID
+          // Fallback: assume 'opencode' provider if not specified? 
+          // Or check SDK types? SDK types (SessionPromptData) expect { providerID, modelID }
+          // Let's assume 'opencode' if unknown, or try to pass what we have.
+          body.model = {
+            providerID: 'opencode', // Default fallback
+            modelID: config.model
+          };
         }
       }
 
