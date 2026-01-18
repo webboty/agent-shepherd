@@ -200,6 +200,18 @@ export class OpenCodeSDKClient {
         parts: []
       };
 
+      if (config.model) {
+        // Parse model format "provider/model"
+        const [providerID, modelID] = config.model.split('/');
+        if (providerID && modelID) {
+          body.providerID = providerID;
+          body.modelID = modelID;
+        } else {
+          // Assume it's just a model ID
+          body.modelID = config.model;
+        }
+      }
+
       if (config.message) {
         body.parts.push({
           type: "text",

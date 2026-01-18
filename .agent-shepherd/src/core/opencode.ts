@@ -267,6 +267,7 @@ export class OpenCodeClient {
         const executeResult = await sdkClient.executeAgentInSession(sessionId, {
           agent: config.agent,
           message: config.message,
+          model: config.model,
         });
 
         if (!executeResult.success) {
