@@ -903,6 +903,8 @@ worker_assistant:
   fallbackAction: block
 ```
 
+> **IMPORTANT WARNING**: The standard decision algorithm only checks for process success (exit code 0). It does **not** validate code quality, correctness, or completeness. Without the **Worker Assistant** enabled (or a subsequent rigorous Test/Validate Phase), an agent that generates poor or incomplete code (but doesn't crash) will be marked as "Successful" and the workflow will advance. **Enabling the Worker Assistant is strongly recommended for quality control.**
+
 ### Worker Assistant Behavior
 
 The worker assistant is invoked automatically when agent outcomes are ambiguous:
