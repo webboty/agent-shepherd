@@ -62,6 +62,32 @@ export async function execBeadsCommand(args: string[]): Promise<string> {
     throw new Error(`Beads command failed: ${error}`);
   }
 
+  // Handle potential warning messages mixed with JSON output
+  // Look for the start of JSON (array '[' or object '{')
+  const jsonStartIndex = output.search(/^[\[\{]/m);
+  
+  if (jsonStartIndex > 0) {
+    const warning = output.substring(0, jsonStartIndex).trim();
+    if (warning) {
+      console.warn(`[Beads Warning] ${warning}`);
+      
+      // Critical check for LEGACY DATABASE or MIGRATION warnings
+      if (warning.includes("LEGACY DATABASE") || warning.includes("migrate")) {
+        console.error("CRITICAL: Beads database migration required!");
+        console.error(warning);
+        throw new Error(`Beads migration required: ${warning.split('\n')[0]}`);
+      }
+    }
+    return output.substring(jsonStartIndex);
+  } else if (jsonStartIndex === -1 && output.trim().length > 0 && !output.trim().startsWith('[' ) && !output.trim().startsWith('{')) {
+     // If output is not JSON but has content, check if it's a warning only (e.g. empty list with warning)
+     if (output.includes("LEGACY DATABASE") || output.includes("migrate")) {
+        console.error("CRITICAL: Beads database migration required!");
+        console.error(output);
+        throw new Error(`Beads migration required: ${output.split('\n')[0]}`);
+     }
+  }
+
   return output;
 }
 
