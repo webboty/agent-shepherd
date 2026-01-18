@@ -84,8 +84,8 @@ export class WorkerEngine {
     });
 
     this.config = {
-      poll_interval_ms: 30000,
-      max_concurrent_runs: 3,
+      poll_interval_ms: workerConfig.poll_interval_ms || 30000,
+      max_concurrent_runs: workerConfig.max_concurrent_runs || 3,
       worker_id: workerConfig.worker_id,
       picking: {
         mode: workerConfig.picking?.mode || "simple",

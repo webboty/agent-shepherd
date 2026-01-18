@@ -450,7 +450,7 @@ export class AgentRegistry {
       'general': {
         name: 'General Agent',
         description: 'General purpose agent for various tasks',
-        capabilities: ['coding', 'planning', 'analysis'],
+        capabilities: ['coding', 'planning', 'analysis', 'testing'],
         priority: 10,
         constraints: { performance_tier: 'balanced' }
       },
