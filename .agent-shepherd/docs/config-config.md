@@ -1012,6 +1012,31 @@ When a policy requires a capability:
 4. Checks if fallback agent exists and is active
 5. Logs which fallback agent is being used
 
+## Policy Closure Settings
+
+These settings control behavior when a policy's last phase completes.
+
+### `close_on_completion` (boolean)
+**Required**: No (default: true)
+**Purpose**: Automatically close the issue when the last phase completes successfully
+**Impact**: If true, issue status becomes `closed`. If false, issue remains `open` or `blocked`.
+
+### `require_final_review` (boolean)
+**Required**: No (default: false)
+**Purpose**: Trigger the Worker Assistant for a final "Definition of Done" check before closing
+**Impact**: If true, the system will use AI to verify completion criteria before closing the issue. If the AI is unsure, it will block for human review.
+
+```yaml
+policies:
+  strategic-feature:
+    phases:
+      - name: plan
+      - name: implement
+      - name: verify
+    close_on_completion: true
+    require_final_review: true # AI checks "Is it really done?"
+```
+
 ## Container Handling Configuration
 
 The Smart Container Handling System provides intelligent management of epics and parent tasks with automatic detection, hierarchy-based policies, and smart ordering.

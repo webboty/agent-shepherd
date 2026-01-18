@@ -599,6 +599,11 @@ export class WorkerEngine {
     // 7. Update Beads state based on transition
     await this.applyTransition(issue.id, transition);
 
+    // 7.1. Handle cascading closure if transition was 'close'
+    if (transition.type === "close") {
+      await this.handleParentCascading(issue.id);
+    }
+
     return {
       issue_id: issue.id,
       run_id: run.id,
@@ -609,9 +614,98 @@ export class WorkerEngine {
     };
   }
 
-   /**
-      * Check if an issue is a container epic and should be handled accordingly
-      */
+  /**
+   * Handle cascading closure for parent issues
+   */
+  private async handleParentCascading(issueId: string): Promise<void> {
+    try {
+      const { execBeadsCommand } = await import("./beads.ts");
+      
+      // Get parent info
+      // Assuming issueId is like "Project-123.1" -> Parent "Project-123"
+      const parentId = this.getParentIssueId(issueId);
+      if (!parentId) return;
+
+      console.log(`Checking parent ${parentId} for cascading closure...`);
+
+      // Get parent issue details
+      let parentIssue: BeadsIssue;
+      try {
+        const output = await execBeadsCommand(["show", parentId, "--json"]);
+        parentIssue = JSON.parse(output);
+      } catch (e) {
+        console.warn(`Failed to fetch parent issue ${parentId}: ${e}`);
+        return;
+      }
+
+      if (parentIssue.status === "closed") {
+        console.log(`Parent ${parentId} is already closed.`);
+        return;
+      }
+
+      // Check if all children are complete
+      const allChildrenComplete = await this.areAllChildrenComplete(parentIssue);
+      if (!allChildrenComplete) {
+        console.log(`Parent ${parentId} has active children, keeping open.`);
+        return;
+      }
+
+      // Check container status to decide closure mode
+      const containerCheck = await this.isContainerEpic(parentIssue);
+      
+      if (containerCheck.is_container) {
+        if (containerCheck.mode === "auto-close") {
+          console.log(`Auto-closing parent container ${parentId} (all children done).`);
+          await updateIssue(parentId, { status: "closed" });
+          // Recursively check grandparent
+          await this.handleParentCascading(parentId);
+        } else if (containerCheck.mode === "worker-assistant" || containerCheck.mode === "manual") {
+          console.log(`Parent ${parentId} is in '${containerCheck.mode}' mode. Triggering validation.`);
+          
+          // Re-queue the parent to be picked up by the worker for validation
+          // We can do this by ensuring it has the 'ashep-managed' label and is in a valid state
+          // Ideally, we'd trigger a specific validation run, but queuing it is safer for async.
+          
+          // Or, since we are already in an async flow, we could trigger the validation agent right here?
+          // BUT, we might be deep in a stack. Better to let the worker pick it up?
+          // Existing container logic in 'processIssue' handles validation if we set a label?
+          // Let's set a label that forces validation on next pick.
+          
+          // Wait, if we just leave it open, the 'processIssue' loop for the parent 
+          // (when picked) will run 'isContainerEpic' -> 'ready_to_close' -> 'executeContainerValidation'.
+          // So we just need to ensure it's picked up.
+          
+          // If it's already 'in_progress' (it shouldn't be if it's a container waiting), 
+          // or 'open', the picker should find it if it has no blockers.
+          // Since all children are closed, blockers are gone.
+          
+          console.log(`Parent ${parentId} unblocked. It should be picked up by worker for validation.`);
+        }
+      } else {
+        // Not a formal container (maybe a hybrid task/epic)
+        // Default behavior: Don't auto-close unless policy says so?
+        // Safest: Do nothing, let human close.
+        console.log(`Parent ${parentId} is not a container. Leaving open for human review.`);
+      }
+
+    } catch (error) {
+      console.error(`Error in parent cascading: ${error}`);
+    }
+  }
+
+  /**
+   * Extract parent issue ID from child ID (e.g. "PROJ-123.1" -> "PROJ-123")
+   */
+  private getParentIssueId(issueId: string): string | null {
+    if (!issueId.includes(".")) return null;
+    const lastDotIndex = issueId.lastIndexOf(".");
+    if (lastDotIndex === -1) return null;
+    return issueId.substring(0, lastDotIndex);
+  }
+
+  /**
+   * Check if an issue is a container epic and should be handled accordingly
+   */
     private async isContainerEpic(issue: BeadsIssue): Promise<{
       is_container: boolean;
       mode: ContainerHandlingMode;

@@ -76,6 +76,9 @@ export interface PolicyConfig {
     enabled?: boolean;
   };
   shared_session?: boolean;
+  // Final closure settings
+  close_on_completion?: boolean; // Default: true
+  require_final_review?: boolean; // Default: false
 }
 
 export interface PoliciesFile {
@@ -468,10 +471,31 @@ export class PolicyEngine {
           reason: "Phase completed successfully",
         };
       } else {
-        transition = {
-          type: "close" as const,
-          reason: "All phases completed",
-        };
+        // End of workflow logic
+        if (policy.require_final_review) {
+          // Trigger Worker Assistant for final review
+          transition = {
+            type: "dynamic_decision" as const,
+            dynamic_agent: "worker-assistant",
+            decision_config: {
+              mode: "final_review",
+              prompt: "All phases are complete. Review artifacts and metrics to decide if the issue should be closed."
+            },
+            reason: "Final review required before closure"
+          };
+        } else if (policy.close_on_completion !== false) {
+          // Default: Close immediately
+          transition = {
+            type: "close" as const,
+            reason: "All phases completed successfully (auto-close)",
+          };
+        } else {
+          // Legacy/Manual behavior: Stop but don't close
+          transition = {
+            type: "block" as const,
+            reason: "All phases completed (waiting for manual closure)",
+          };
+        }
       }
       this.validateTransition(policyName, currentPhase, transition);
       return await this.applyLoopPrevention(transition, issueId, currentPhase);
