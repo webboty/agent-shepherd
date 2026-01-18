@@ -429,16 +429,18 @@ Struggling Issues (3):
 └─────────┴─────────────────────────────────┴──────────────┴──────────────┴─────────┴──────────────────┘
 ```
 
-### `ashep get-messages <issue-id> [--phase <phase>] [--unread]`
+### `ashep phase-msg-list <issue-id> [--phase <phase>] [--unread]`
 
-Get phase messages for an issue.
+List messages sent by the Phase Messenger between workflow phases.
+
+**Aliases:** `get-messages`
 
 **Usage:**
 ```bash
-ashep get-messages ISSUE-123                                    # All messages
-ashep get-messages ISSUE-123 --phase test                      # Specific phase
-ashep get-messages ISSUE-123 --unread                           # Unread only
-ashep get-messages ISSUE-123 --phase test --unread           # Combined
+ashep phase-msg-list ISSUE-123                                    # All messages
+ashep phase-msg-list ISSUE-123 --phase test                      # Specific phase
+ashep phase-msg-list ISSUE-123 --unread                           # Unread only
+ashep phase-msg-list ISSUE-123 --phase test --unread           # Combined
 ```
 
 **Options:**
@@ -462,6 +464,23 @@ Messages (2):
 │ msg-9876543210  │ result    │ ✗         │ Tests passed                   │ test     │ deploy      │
 └─────────────────┴───────────┴───────────┴─────────────────────────────────────┴─────────┴──────────────┘
 ```
+
+### `ashep phase-msg-read <message-id>`
+
+Read the full content and metadata of a specific phase message.
+
+**Aliases:** `read-message`
+
+**Usage:**
+```bash
+ashep phase-msg-read msg-1234567890
+```
+
+**Behavior:**
+- Fetches full details of a single message
+- Displays metadata, sender, timestamps, and full text content
+- Useful for inspecting large payloads that are truncated in list view
+
 
 ### `ashep list-sessions <issue-id>`
 

@@ -893,22 +893,27 @@ Phase Messenger enables inter-phase communication, allowing phases to exchange d
 - **Data**: Arbitrary structured data, implementation metrics, build artifacts
 
 ### CLI Commands
-- `get-messages <issue-id> [--phase <phase>] [--unread]` - Get phase messages for an issue
+- `phase-msg-list <issue-id> [--phase <phase>] [--unread]` - Get phase messages for an issue (alias: `get-messages`)
+- `phase-msg-read <message-id>` - Read full details of a specific message (alias: `read-message`)
 
 ### Usage
 ```bash
 # Get all messages for an issue
-ashep get-messages ISSUE-123
+ashep phase-msg-list ISSUE-123
 
 # Get messages for specific phase
-ashep get-messages ISSUE-123 --phase test
+ashep phase-msg-list ISSUE-123 --phase test
 
 # Get only unread messages
-ashep get-messages ISSUE-123 --unread
+ashep phase-msg-list ISSUE-123 --unread
 
 # Combined filters
-ashep get-messages ISSUE-123 --phase test --unread
+ashep phase-msg-list ISSUE-123 --phase test --unread
+
+# Read specific message
+ashep phase-msg-read msg-1234567890
 ```
+
 
 ### Integration
 - Worker engine automatically receives pending messages before phase execution

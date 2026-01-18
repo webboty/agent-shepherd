@@ -575,4 +575,68 @@ agents:
       expect(output).toContain('3)');
     });
   });
+
+  describe('Phase Messenger Commands', () => {
+    it('should list and read messages', async () => {
+      // Setup phase messenger db with a message
+      const { PhaseMessenger } = await import('../src/core/phase-messenger.ts');
+      // Create a temporary data dir for this test
+      const pmDataDir = join(testDataDir, 'pm-test');
+      const messenger = new PhaseMessenger(pmDataDir);
+      
+      const msg = messenger.sendMessage({
+        issue_id: 'PM-TEST-001',
+        from_phase: 'plan',
+        to_phase: 'implement',
+        message_type: 'context',
+        content: 'This is a test message content that is long enough to verify reading',
+        metadata: { key: 'value' }
+      });
+      
+      // Close db connection to release lock for CLI
+      (messenger as any).close();
+
+      // Test list command (using aliases for now as they map to same handler)
+      // Note: We need to pass the custom ASHEP_DIR to the CLI so it finds the DB
+      // But the CLI uses hardcoded .agent-shepherd path relative to CWD or env var.
+      // In this test setup, configDir is passed as ASHEP_DIR.
+      // So we need to put the DB where the CLI expects it.
+      
+      // Re-setup in the standard location expected by CLI test setup
+      // The CLI runs in configDir (which is .../.agent-shepherd)
+      // The CLI initializes PhaseMessenger without args, so it uses CWD + .agent-shepherd
+      // So it looks in .../.agent-shepherd/.agent-shepherd
+      const cliDataDir = join(configDir, '.agent-shepherd');
+      const standardMessenger = new PhaseMessenger(cliDataDir);
+      
+      const standardMsg = standardMessenger.sendMessage({
+        issue_id: 'PM-TEST-001',
+        from_phase: 'plan',
+        to_phase: 'implement',
+        message_type: 'context',
+        content: 'Standard location test message',
+        metadata: { foo: 'bar' }
+      });
+      (standardMessenger as any).close();
+
+      // 1. Test phase-msg-list
+      const listOutputs = await runCLICommand('phase-msg-list', ['PM-TEST-001'], configDir);
+      const listOutput = listOutputs.join(' ');
+      
+      expect(listOutput).toContain('Messages (1)');
+      expect(listOutput).toContain('Standard location test message');
+      expect(listOutput).toContain('plan');
+      expect(listOutput).toContain('implement');
+
+      // 2. Test phase-msg-read
+      const readOutputs = await runCLICommand('phase-msg-read', [standardMsg.id], configDir);
+      const readOutput = readOutputs.join(' ');
+      
+      expect(readOutput).toContain('Message Details:');
+      expect(readOutput).toContain(standardMsg.id);
+      expect(readOutput).toContain('Standard location test message');
+      expect(readOutput).toContain('Metadata:');
+      expect(readOutput).toContain('"foo": "bar"');
+    });
+  });
 });

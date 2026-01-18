@@ -421,16 +421,24 @@ View phase messages from the command line:
 
 ```bash
 # Get all messages for an issue
-ashep get-messages ISSUE-123
+ashep phase-msg-list ISSUE-123
 
 # Get messages for specific phase
-ashep get-messages ISSUE-123 --phase implement
+ashep phase-msg-list ISSUE-123 --phase implement
 
 # Get only unread messages
-ashep get-messages ISSUE-123 --unread
+ashep phase-msg-list ISSUE-123 --unread
 
 # Get unread messages for specific phase
-ashep get-messages ISSUE-123 --phase test --unread
+ashep phase-msg-list ISSUE-123 --phase test --unread
+```
+
+### Read Message Command
+
+Read full content of a specific message:
+
+```bash
+ashep phase-msg-read msg-1234567890
 ```
 
 **Output Format:**
