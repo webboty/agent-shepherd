@@ -95,7 +95,8 @@ export async function execBeadsCommand(args: string[]): Promise<string> {
  * Get ready issues from Beads
  */
 export async function getReadyIssues(): Promise<BeadsIssue[]> {
-  const output = await execBeadsCommand(["ready", "--json"]);
+  // Use --limit 0 to ensure we get ALL ready issues, not just the default batch
+  const output = await execBeadsCommand(["ready", "--limit", "0", "--json"]);
   const issues = JSON.parse(output);
   const issuesArray = Array.isArray(issues) ? issues : [];
 

@@ -39,6 +39,39 @@ describe("IssuePicker", () => {
   });
 
   describe("Simple Mode", () => {
+    it("should sort issues by priority then ID (numeric sort)", () => {
+      const issues: BeadsIssue[] = [
+        {
+          id: "task-10",
+          title: "Task 10",
+          description: "Task 10",
+          status: "open",
+          priority: 2,
+          issue_type: "task",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "task-2",
+          title: "Task 2",
+          description: "Task 2",
+          status: "open",
+          priority: 2,
+          issue_type: "task",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ];
+
+      const simplePicker = new IssuePicker({ mode: "simple", max_issues: 10 });
+
+      const result = simplePicker["simplePick"](issues);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe("task-2");
+      expect(result[1].id).toBe("task-10");
+    });
+
     it("should sort issues by priority then ID", () => {
       const issues: BeadsIssue[] = [
         {
@@ -253,6 +286,10 @@ describe("IssuePicker", () => {
           ["task-a", 0],
           ["task-b", 0],
         ]),
+        level: new Map([
+          ["task-a", 0],
+          ["task-b", 0],
+        ]),
       };
 
       const ordered = picker["applySmartOrdering"](graph);
@@ -296,6 +333,10 @@ describe("IssuePicker", () => {
           ["epic-1.1", 0],
         ]),
         depth: new Map([
+          ["epic-1", 0],
+          ["epic-1.1", 1],
+        ]),
+        level: new Map([
           ["epic-1", 0],
           ["epic-1.1", 1],
         ]),
@@ -344,6 +385,10 @@ describe("IssuePicker", () => {
           ["task-1", 0],
           ["task-2", 0],
         ]),
+        level: new Map([
+          ["task-1", 0],
+          ["task-2", 0],
+        ]),
       };
 
       const ordered = picker["applySmartOrdering"](graph);
@@ -386,6 +431,10 @@ describe("IssuePicker", () => {
           ["task-b", 0],
         ]),
         depth: new Map([
+          ["task-a", 0],
+          ["task-b", 0],
+        ]),
+        level: new Map([
           ["task-a", 0],
           ["task-b", 0],
         ]),
@@ -453,6 +502,10 @@ describe("IssuePicker", () => {
           ["task-1", 0],
           ["task-2", 0],
         ]),
+        level: new Map([
+          ["task-1", 0],
+          ["task-2", 0],
+        ]),
       };
 
       const queue = picker["initializeQueue"](graph);
@@ -479,6 +532,7 @@ describe("IssuePicker", () => {
         edges: [],
         indegree: new Map([["task-1", 1]]),
         depth: new Map([["task-1", 0]]),
+        level: new Map([["task-1", 0]]),
       };
 
       const queue = picker["initializeQueue"](graph);
@@ -524,6 +578,10 @@ describe("IssuePicker", () => {
           ["task-2", 1],
         ]),
         depth: new Map([
+          ["task-1", 0],
+          ["task-2", 0],
+        ]),
+        level: new Map([
           ["task-1", 0],
           ["task-2", 0],
         ]),
@@ -573,6 +631,10 @@ describe("IssuePicker", () => {
           ["task-2", 2],
         ]),
         depth: new Map([
+          ["task-1", 0],
+          ["task-2", 0],
+        ]),
+        level: new Map([
           ["task-1", 0],
           ["task-2", 0],
         ]),

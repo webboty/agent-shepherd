@@ -269,7 +269,7 @@ export class IssuePicker {
       if (a.priority !== b.priority) {
         return a.priority - b.priority;
       }
-      return a.id.localeCompare(b.id);
+      return a.id.localeCompare(b.id, undefined, { numeric: true });
     });
 
     return filtered.slice(0, this.config.max_issues);
