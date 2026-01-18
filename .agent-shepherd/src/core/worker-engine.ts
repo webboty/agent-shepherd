@@ -546,12 +546,33 @@ export class WorkerEngine {
       try {
         const { getPhaseMessenger } = await import("./phase-messenger.ts");
         const phaseMessenger = getPhaseMessenger();
+        
+        // Construct rich summary
+        const summaryParts = [outcome.message || "Phase completed successfully"];
+        
+        if (outcome.artifacts && outcome.artifacts.length > 0) {
+          summaryParts.push("\n**Modified Files:**");
+          const artifacts = outcome.artifacts.slice(0, 10); // Limit to top 10
+          artifacts.forEach(path => summaryParts.push(`- ${path}`));
+          if (outcome.artifacts.length > 10) {
+            summaryParts.push(`...and ${outcome.artifacts.length - 10} more`);
+          }
+        }
+        
+        if (outcome.metrics?.duration_ms) {
+          summaryParts.push(`\n**Metrics:**`);
+          summaryParts.push(`- Duration: ${(outcome.metrics.duration_ms / 1000).toFixed(1)}s`);
+          if (outcome.metrics.tokens_used) {
+            summaryParts.push(`- Tokens: ${outcome.metrics.tokens_used}`);
+          }
+        }
+
         const resultMessage = phaseMessenger.sendMessage({
           issue_id: issue.id,
           from_phase: phase,
           to_phase: transition.next_phase,
           message_type: "result",
-          content: outcome.message || "Phase completed successfully",
+          content: summaryParts.join("\n"),
           metadata: {
             status: "completed",
             artifacts: outcome.artifacts?.length || 0,
