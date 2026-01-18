@@ -656,24 +656,25 @@ export class OpenCodeClient {
       outcome.metrics!.duration_ms = outcome.metrics!.end_time_ms - outcome.metrics!.start_time_ms;
     }
 
-    if (outcome.tool_calls && outcome.tool_calls.length > 0) {
-      outcome.metrics!.api_calls_count = outcome.tool_calls.length;
-    }
+        if (outcome.tool_calls && outcome.tool_calls.length > 0) {
+          outcome.metrics!.api_calls_count = outcome.tool_calls.length;
+        }
 
-    if (!outcome.error && outcome.success === false) {
-      outcome.error = "Agent execution failed";
-    }
+        if (!outcome.error && outcome.success === false) {
+          outcome.error = "Agent execution failed";
+        }
 
-    if (lastAssistantMessageId && textPartsByMessage.has(lastAssistantMessageId)) {
-      const parts = textPartsByMessage.get(lastAssistantMessageId)!;
-      const combinedMessage = parts.join("\n").trim();
-      if (combinedMessage) {
-        outcome.message = combinedMessage;
+        // Add last message to outcome for better context transfer
+        if (lastAssistantMessageId && textPartsByMessage.has(lastAssistantMessageId)) {
+          const parts = textPartsByMessage.get(lastAssistantMessageId)!;
+          const combinedMessage = parts.join("\n").trim();
+          if (combinedMessage) {
+            outcome.message = combinedMessage;
+          }
+        }
+
+        return outcome;
       }
-    }
-
-    return outcome;
-  }
 
   // Placeholder methods for SDK compatibility
   async createSession(): Promise<any> {
