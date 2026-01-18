@@ -637,6 +637,40 @@ agents:
       expect(readOutput).toContain('Standard location test message');
       expect(readOutput).toContain('Metadata:');
       expect(readOutput).toContain('"foo": "bar"');
+
+      // 3. Test phase-msg-list --json
+      const jsonListOutputs = await runCLICommand('phase-msg-list', ['PM-TEST-001', '--json'], configDir);
+      const jsonListOutput = jsonListOutputs.join(' ');
+      
+      // Parse JSON output (robustly handle potential prefixes)
+      try {
+        const jsonStartIndex = jsonListOutput.indexOf('[');
+        const cleanJson = jsonStartIndex >= 0 ? jsonListOutput.substring(jsonStartIndex) : jsonListOutput;
+        const messages = JSON.parse(cleanJson);
+        
+        expect(Array.isArray(messages)).toBe(true);
+        expect(messages).toHaveLength(1);
+        expect(messages[0].issue_id).toBe('PM-TEST-001');
+        expect(messages[0].content).toBe('Standard location test message');
+      } catch (e) {
+        throw new Error(`Failed to parse JSON output: ${jsonListOutput}`);
+      }
+
+      // 4. Test phase-msg-read --json
+      const jsonReadOutputs = await runCLICommand('phase-msg-read', [standardMsg.id, '--json'], configDir);
+      const jsonReadOutput = jsonReadOutputs.join(' ');
+      
+      try {
+        const jsonStartIndex = jsonReadOutput.indexOf('{');
+        const cleanJson = jsonStartIndex >= 0 ? jsonReadOutput.substring(jsonStartIndex) : jsonReadOutput;
+        const message = JSON.parse(cleanJson);
+        
+        expect(message.id).toBe(standardMsg.id);
+        expect(message.content).toBe('Standard location test message');
+        expect(message.metadata.foo).toBe('bar');
+      } catch (e) {
+        throw new Error(`Failed to parse JSON output: ${jsonReadOutput}`);
+      }
     });
   });
 });

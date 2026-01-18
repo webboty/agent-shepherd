@@ -12,6 +12,8 @@ import Ajv from 'ajv';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMP_DIR = join(__dirname, '..', 'tmp_test');
 
+import { getAgentRegistry } from '../src/core/agent-registry.ts';
+
 describe('PolicyEngine', () => {
   let policyEngine: PolicyEngine;
   let tempDir: string;
@@ -153,6 +155,95 @@ default_policy: custom
       });
       expect(transition.type).toBe('advance');
       expect(transition.next_phase).toBe('implement');
+    });
+
+    it('should handle end of workflow transitions', async () => {
+      // Default: close
+      const transition = await policyEngine.determineTransition('default', 'implement', {
+        success: true
+      });
+      expect(transition.type).toBe('close');
+      expect(transition.reason).toContain('auto-close');
+    });
+  });
+
+  describe('Closure Configuration', () => {
+    it('should load closure settings', () => {
+      const closurePolicy = `
+policies:
+  auto-close:
+    name: "Auto Close"
+    phases: [{name: p1}]
+    close_on_completion: true
+    require_final_review: false
+
+  manual-close:
+    name: "Manual Close"
+    phases: [{name: p1}]
+    close_on_completion: false
+
+  ai-review:
+    name: "AI Review"
+    phases: [{name: p1}]
+    close_on_completion: true
+    require_final_review: true
+
+default_policy: auto-close
+      `.trim();
+
+      writeFileSync(policiesPath, closurePolicy);
+      const engine = new PolicyEngine(policiesPath);
+
+      const auto = engine.getPolicy('auto-close');
+      expect(auto?.close_on_completion).toBe(true);
+      expect(auto?.require_final_review).toBe(false);
+
+      const manual = engine.getPolicy('manual-close');
+      expect(manual?.close_on_completion).toBe(false);
+
+      const review = engine.getPolicy('ai-review');
+      expect(review?.require_final_review).toBe(true);
+    });
+
+    it('should respect closure settings in transitions', async () => {
+      // Setup mock agent for worker-assistant capability
+      const registry = getAgentRegistry();
+      (registry as any).agents.set('worker-assistant', {
+        id: 'worker-assistant',
+        name: 'Worker Assistant',
+        capabilities: ['worker-assistant'],
+        active: true,
+        priority: 10
+      });
+
+      const closurePolicy = `
+policies:
+  manual-close:
+    name: "Manual Close"
+    phases: [{name: p1}]
+    close_on_completion: false
+
+  ai-review:
+    name: "AI Review"
+    phases: [{name: p1}]
+    require_final_review: true
+
+default_policy: manual-close
+      `.trim();
+
+      writeFileSync(policiesPath, closurePolicy);
+      const engine = new PolicyEngine(policiesPath);
+
+      // Manual close -> Block
+      const manualTrans = await engine.determineTransition('manual-close', 'p1', { success: true });
+      expect(manualTrans.type).toBe('block');
+      expect(manualTrans.reason).toContain('waiting for manual closure');
+
+      // AI Review -> Dynamic Decision
+      const reviewTrans = await engine.determineTransition('ai-review', 'p1', { success: true });
+      expect(reviewTrans.type).toBe('dynamic_decision');
+      expect(reviewTrans.dynamic_agent).toBe('worker-assistant');
+      expect(reviewTrans.decision_config?.mode).toBe('final_review');
     });
   });
 
