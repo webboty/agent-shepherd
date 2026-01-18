@@ -1090,8 +1090,8 @@ export class WorkerEngine {
 
     return `
 # Role & Context
-You are an autonomous agent working on the **${phase}** phase of a software engineering task.
-This is part of a multi-phase workflow. Your goal is to complete ONLY this specific phase.
+You are an autonomous agent working on the **${phase}** phase of a multi-step workflow.
+Your goal is to complete ONLY the objectives for this specific phase, preparing the state for subsequent phases if any.
 
 ## Phase Objective
 ${phaseConfig?.description || "Complete the objectives for this phase."}
@@ -1105,15 +1105,15 @@ ${phaseConfig?.description || "Complete the objectives for this phase."}
 ${issue.description}
 
 # Previous Context
-Use the Phase Messenger to access results, decisions, or data from previous phases (e.g., implementation details, plans).
-To list available messages: \`ashep get-messages ${issue.id} --phase ${phase}\`
-To read a specific message details: \`ashep read-message <message-id>\`
+Use the Phase Messenger to access results, decisions, or data passed down from previous phases.
+To list available messages: \`ashep phase-msg-list ${issue.id} --phase ${phase}\`
+To read message details: \`ashep phase-msg-read <message-id>\`
 
 # Instructions
 1. Review the task description and phase objective.
-2. Check for phase messages to understand previous work.
-3. Execute the necessary actions for this phase.
-4. When finished, provide a summary.
+2. Check for phase messages to understand context from previous phases.
+3. Execute the necessary actions to complete this phase.
+4. When finished, provide a summary of your work.
 
 ${phaseConfig?.require_approval ? "\n⚠️ This phase requires human approval before proceeding.\n" : ""}
 `.trim();

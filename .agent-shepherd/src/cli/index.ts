@@ -38,8 +38,8 @@ const COMMANDS: Record<string, string> = {
   "list-struggle": "List blocked issues that need attention",
   "session-list": "List active OpenCode sessions",
   "session-stop": "Stop/Abort an active OpenCode session",
-  "get-messages": "Get phase messages for an issue",
-  "read-message": "Read details of a specific phase message",
+  "phase-msg-list": "List phase messages for an issue (alias: get-messages)",
+  "phase-msg-read": "Read details of a specific phase message (alias: read-message)",
   "heartbeat": "Show heartbeat-checker status and active heartbeats",
   quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
   "plugin-install": "Install a plugin from path or URL",
@@ -2234,28 +2234,25 @@ async function main(): Promise<void> {
       await cmdSessionStop(args[1]);
       break;
 
-    case "get-messages": {
-      let phase: string | undefined;
-      let unreadOnly = false;
-
-      for (let i = 1; i < args.length; i++) {
-        if (args[i] === '--phase' && i + 1 < args.length) {
-          phase = args[i + 1];
-          i++;
-        } else if (args[i] === '--unread') {
-          unreadOnly = true;
-        }
+    case "phase-msg-list":
+    case "get-messages": // Alias
+      // Parse options for get-messages
+      {
+        const phaseIndex = args.indexOf("--phase");
+        const phase = phaseIndex !== -1 ? args[phaseIndex + 1] : undefined;
+        const unread = args.includes("--unread");
+        const issueId = args[1]; // First arg after command
+        await cmdGetMessages(issueId, phase, unread);
       }
-
-      await cmdGetMessages(args[1], phase, unreadOnly);
       break;
-    }
 
-    case "read-message":
+    case "phase-msg-read":
+    case "read-message": // Alias
       await cmdReadMessage(args[1]);
       break;
 
     case "list-sessions":
+
       await cmdListSessions(args[1]);
       break;
 
