@@ -1844,13 +1844,14 @@ async function cmdListStruggle(hours?: number): Promise<void> {
 /**
  * Get messages command - get phase messages for an issue
  */
-async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: boolean): Promise<void> {
+async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: boolean, asJson?: boolean): Promise<void> {
   if (!issueId) {
-    console.error("Usage: ashep get-messages <issue-id> [--phase <phase>] [--unread]");
+    console.error("Usage: ashep get-messages <issue-id> [--phase <phase>] [--unread] [--json]");
     console.error("Examples:");
     console.error("  ashep get-messages ISSUE-123");
     console.error("  ashep get-messages ISSUE-123 --phase test");
     console.error("  ashep get-messages ISSUE-123 --unread");
+    console.error("  ashep get-messages ISSUE-123 --json");
     process.exit(1);
   }
 
@@ -1870,6 +1871,11 @@ async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: bool
 
     const messages = messenger.listMessages(query);
 
+    if (asJson) {
+      console.log(JSON.stringify(messages, null, 2));
+      return;
+    }
+
     if (messages.length === 0) {
       console.log(`No messages found for issue ${issueId}${phase ? ` and phase '${phase}'` : ""}${unreadOnly ? " (unread only)" : ""}.`);
     } else {
@@ -1884,9 +1890,9 @@ async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: bool
 /**
  * Read message command - get full details of a specific message
  */
-async function cmdReadMessage(messageId: string): Promise<void> {
+async function cmdReadMessage(messageId: string, asJson?: boolean): Promise<void> {
   if (!messageId) {
-    console.error("Usage: ashep read-message <message-id>");
+    console.error("Usage: ashep read-message <message-id> [--json]");
     process.exit(1);
   }
 
@@ -1902,6 +1908,11 @@ async function cmdReadMessage(messageId: string): Promise<void> {
     if (!message) {
       console.error(`Message not found: ${messageId}`);
       process.exit(1);
+    }
+
+    if (asJson) {
+      console.log(JSON.stringify(message, null, 2));
+      return;
     }
 
     console.log(`\nMessage Details: ${message.id}`);
@@ -2241,14 +2252,19 @@ async function main(): Promise<void> {
         const phaseIndex = args.indexOf("--phase");
         const phase = phaseIndex !== -1 ? args[phaseIndex + 1] : undefined;
         const unread = args.includes("--unread");
+        const asJson = args.includes("--json");
         const issueId = args[1]; // First arg after command
-        await cmdGetMessages(issueId, phase, unread);
+        await cmdGetMessages(issueId, phase, unread, asJson);
       }
       break;
 
     case "phase-msg-read":
     case "read-message": // Alias
-      await cmdReadMessage(args[1]);
+      {
+        const asJson = args.includes("--json");
+        const messageId = args[1];
+        await cmdReadMessage(messageId, asJson);
+      }
       break;
 
     case "list-sessions":

@@ -1106,8 +1106,8 @@ ${issue.description}
 
 # Previous Context
 Use the Phase Messenger to access results, decisions, or data passed down from previous phases.
-To list available messages: \`ashep phase-msg-list ${issue.id} --phase ${phase}\`
-To read message details: \`ashep phase-msg-read <message-id>\`
+To list available messages: \`ashep phase-msg-list ${issue.id} --phase ${phase} --json\`
+To read message details: \`ashep phase-msg-read <message-id> --json\`
 
 # Instructions
 1. Review the task description and phase objective.
