@@ -552,8 +552,20 @@ export class IssuePicker {
         if (b.hierarchyScore !== a.hierarchyScore) {
           return b.hierarchyScore - a.hierarchyScore;
         }
-        return a.issue.id.localeCompare(b.issue.id);
+        return a.issue.id.localeCompare(b.issue.id, undefined, { numeric: true });
       });
+
+      // Sort partially available by dependency score, then hierarchy, then by ID as tiebreaker
+      partiallyAvailable.sort((a, b) => {
+        if (b.depScore !== a.depScore) {
+          return b.depScore - a.depScore;
+        }
+        if (b.hierarchyScore !== a.hierarchyScore) {
+          return b.hierarchyScore - a.hierarchyScore;
+        }
+        return a.issue.id.localeCompare(b.issue.id, undefined, { numeric: true });
+      });
+
 
       // Sort partially available by dependency score, then hierarchy, then by ID as tiebreaker
       partiallyAvailable.sort((a, b) => {
@@ -645,37 +657,38 @@ export class IssuePicker {
     return queue;
   }
 
-   /**
-    * Compare issues by priority and ID only
-    */
-   private compareByPriorityAndId(a: BeadsIssue, b: BeadsIssue): number {
-     if (a.priority !== b.priority) {
-       return a.priority - b.priority;
-     }
-     return a.id.localeCompare(b.id);
-   }
-
-   /**
-    * Compare issues by hierarchy depth and priority
-    */
-   private compareByHierarchy(
-     a: BeadsIssue,
-     b: BeadsIssue,
-     graph: DependencyGraph
-   ): number {
-     const depthA = graph.depth.get(a.id) || 0;
-     const depthB = graph.depth.get(b.id) || 0;
-
-     if (depthA !== depthB) {
-       return depthB - depthA; // Deeper first
-     }
-
-     if (a.priority !== b.priority) {
-       return a.priority - b.priority; // Lower priority number first
-     }
-
-      return a.id.localeCompare(b.id);
+    /**
+     * Compare issues by priority and ID only
+     */
+    private compareByPriorityAndId(a: BeadsIssue, b: BeadsIssue): number {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      return a.id.localeCompare(b.id, undefined, { numeric: true });
     }
+
+    /**
+     * Compare issues by hierarchy depth and priority
+     */
+    private compareByHierarchy(
+      a: BeadsIssue,
+      b: BeadsIssue,
+      graph: DependencyGraph
+    ): number {
+      const depthA = graph.depth.get(a.id) || 0;
+      const depthB = graph.depth.get(b.id) || 0;
+
+      if (depthA !== depthB) {
+        return depthB - depthA; // Deeper first
+      }
+
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority; // Lower priority number first
+      }
+
+      return a.id.localeCompare(b.id, undefined, { numeric: true });
+    }
+
 
    /**
     * Decrement indegrees of dependent issues and add to queue if ready
