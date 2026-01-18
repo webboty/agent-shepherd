@@ -1846,12 +1846,12 @@ async function cmdListStruggle(hours?: number): Promise<void> {
  */
 async function cmdGetMessages(issueId: string, phase?: string, unreadOnly?: boolean, asJson?: boolean): Promise<void> {
   if (!issueId) {
-    console.error("Usage: ashep get-messages <issue-id> [--phase <phase>] [--unread] [--json]");
+    console.error("Usage: ashep phase-msg-list <issue-id> [--phase <phase>] [--unread] [--json]");
     console.error("Examples:");
-    console.error("  ashep get-messages ISSUE-123");
-    console.error("  ashep get-messages ISSUE-123 --phase test");
-    console.error("  ashep get-messages ISSUE-123 --unread");
-    console.error("  ashep get-messages ISSUE-123 --json");
+    console.error("  ashep phase-msg-list ISSUE-123");
+    console.error("  ashep phase-msg-list ISSUE-123 --phase test");
+    console.error("  ashep phase-msg-list ISSUE-123 --unread");
+    console.error("  ashep phase-msg-list ISSUE-123 --json");
     process.exit(1);
   }
 
