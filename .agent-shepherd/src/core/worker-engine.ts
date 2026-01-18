@@ -312,6 +312,15 @@ export class WorkerEngine {
     // 4. Update issue status to in_progress
     await updateIssue(issue.id, { status: "in_progress" });
 
+    // 4.1 Mark run as running
+    this.logger.updateRun(runId, {
+      status: "running",
+      metadata: {
+        ...run.metadata,
+        started_at: Date.now()
+      }
+    });
+
     // 4.5. Receive any pending messages for this phase (optional plugin)
     try {
       const { getPhaseMessenger } = await import("./phase-messenger.ts");
