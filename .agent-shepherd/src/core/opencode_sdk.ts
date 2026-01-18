@@ -220,6 +220,9 @@ export class OpenCodeSDKClient {
       }
 
       console.log(`Sending prompt to session ${sessionId} with ${body.parts.length} part(s)...`);
+      if (body.modelID) {
+        console.log(`Requesting model override: ${body.providerID}/${body.modelID}`);
+      }
 
       // Add retry logic for prompt sending
       const maxRetries = 3;
