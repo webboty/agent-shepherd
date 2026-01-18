@@ -278,6 +278,14 @@ bd update ISSUE-123 --labels "ashep-workflow:nonexistent"
 **Impact**: Drives agent selection from the agent registry  
 **Values**: Must match capabilities defined in `agents.yaml`
 
+#### `capability_match_mode` (string)
+**Required**: No (defaults to "AND")
+**Purpose**: Logic for matching multiple capabilities
+**Impact**: Determines if agent must have ALL capabilities or ANY capability
+**Values**:
+- `"AND"`: Agent must have all listed capabilities (default)
+- `"OR"`: Agent must have at least one of the listed capabilities
+
 #### `agent` (string)
 **Required**: No (auto-selected if omitted)  
 **Purpose**: Specific agent to use for this phase  

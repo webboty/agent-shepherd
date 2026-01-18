@@ -251,6 +251,7 @@ export class WorkerEngine {
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
     const agent = this.agentRegistry.selectAgent({
       required_capabilities: phaseConfig?.capabilities || [],
+      capability_match_mode: phaseConfig?.capability_match_mode,
       tags: [issue.issue_type],
     });
 

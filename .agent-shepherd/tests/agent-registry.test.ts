@@ -136,6 +136,67 @@ agents:
     });
   });
 
+  describe('Capability Match Mode', () => {
+    beforeEach(() => {
+      // Add agents with distinct capabilities for OR testing
+      const coderOnly = {
+        id: 'coder-only',
+        name: 'Coder Only',
+        capabilities: ['coding'],
+        priority: 10,
+        active: true
+      };
+      const testerOnly = {
+        id: 'tester-only',
+        name: 'Tester Only',
+        capabilities: ['testing'],
+        priority: 10,
+        active: true
+      };
+      // Cast to any to access private map for testing setup
+      (agentRegistry as any).agents.set('coder-only', coderOnly);
+      (agentRegistry as any).agents.set('tester-only', testerOnly);
+    });
+
+    it('should default to AND mode', () => {
+      // AND mode: needs both coding AND testing
+      // None of our test agents have BOTH coding AND testing
+      // default-coder: coding, refactoring, planning
+      // test-specialist: testing, qa
+      // architect-expert: architecture, planning, design
+      // coder-only: coding
+      // tester-only: testing
+      
+      const agent = agentRegistry.selectAgent({
+        required_capabilities: ['coding', 'testing']
+      });
+      expect(agent).toBeNull();
+    });
+
+    it('should support OR mode', () => {
+      // OR mode: needs coding OR testing
+      // Should find default-coder (coding), test-specialist (testing), etc.
+      // test-specialist has priority 15, default-coder has 10.
+      
+      const agent = agentRegistry.selectAgent({
+        required_capabilities: ['coding', 'testing'],
+        capability_match_mode: 'OR'
+      });
+      
+      expect(agent).toBeDefined();
+      expect(agent?.id).toBe('test-specialist'); // Highest priority match
+    });
+    
+    it('should still filter correctly in OR mode', () => {
+        // OR mode but capability doesn't exist
+        const agent = agentRegistry.selectAgent({
+            required_capabilities: ['non-existent-1', 'non-existent-2'],
+            capability_match_mode: 'OR'
+        });
+        expect(agent).toBeNull();
+    });
+  });
+
   describe('OpenCode Sync', () => {
     it('should have syncWithOpenCode method', async () => {
       // Test that the method exists and can be called

@@ -37,6 +37,7 @@ export interface AgentsFile {
 
 export interface AgentSelectionCriteria {
   required_capabilities?: string[];
+  capability_match_mode?: "AND" | "OR";
   tags?: string[];
   read_only?: boolean;
   performance_preference?: "fast" | "balanced" | "slow";
@@ -189,11 +190,19 @@ export class AgentRegistry {
 
     // Filter by required capabilities
     if (criteria.required_capabilities) {
-      candidates = candidates.filter((agent) =>
-        criteria.required_capabilities!.every((cap) =>
+      const mode = criteria.capability_match_mode || "AND";
+      
+      candidates = candidates.filter((agent) => {
+        if (mode === "OR") {
+          return criteria.required_capabilities!.some((cap) =>
+            agent.capabilities.includes(cap)
+          );
+        }
+        // Default to AND
+        return criteria.required_capabilities!.every((cap) =>
           agent.capabilities.includes(cap)
-        )
-      );
+        );
+      });
     }
 
     // Filter by tags

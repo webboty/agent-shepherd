@@ -31,6 +31,7 @@ export interface PhaseConfig {
   reuse_session_from_phase?: string;
   context_window_threshold?: number;
   max_context_tokens?: number;
+  capability_match_mode?: "AND" | "OR";
 }
 
 export interface TransitionConfig {
