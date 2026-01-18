@@ -109,10 +109,31 @@ async function execBeadsCommand(args) {
     const error = await new Response(proc.stderr).text();
     throw new Error(`Beads command failed: ${error}`);
   }
+  const jsonStartIndex = output.search(/^[\[\{]/m);
+  if (jsonStartIndex > 0) {
+    const warning = output.substring(0, jsonStartIndex).trim();
+    if (warning) {
+      console.warn(`[Beads Warning] ${warning}`);
+      if (warning.includes("LEGACY DATABASE") || warning.includes("migrate")) {
+        console.error("CRITICAL: Beads database migration required!");
+        console.error(warning);
+        throw new Error(`Beads migration required: ${warning.split(`
+`)[0]}`);
+      }
+    }
+    return output.substring(jsonStartIndex);
+  } else if (jsonStartIndex === -1 && output.trim().length > 0 && !output.trim().startsWith("[") && !output.trim().startsWith("{")) {
+    if (output.includes("LEGACY DATABASE") || output.includes("migrate")) {
+      console.error("CRITICAL: Beads database migration required!");
+      console.error(output);
+      throw new Error(`Beads migration required: ${output.split(`
+`)[0]}`);
+    }
+  }
   return output;
 }
 async function getReadyIssues() {
-  const output = await execBeadsCommand(["ready", "--json"]);
+  const output = await execBeadsCommand(["ready", "--limit", "0", "--json"]);
   const issues = JSON.parse(output);
   const issuesArray = Array.isArray(issues) ? issues : [];
   for (const issue of issuesArray) {
@@ -7409,6 +7430,8 @@ function loadConfig(configDir) {
       worker: {
         poll_interval_ms: 30000,
         max_concurrent_runs: 3,
+        concurrency_strategy: "active_sessions",
+        worker_id: config.worker?.worker_id,
         picking: {
           mode: "simple",
           max_issues: 3,
@@ -7679,7 +7702,13 @@ class AgentRegistry {
   selectAgent(criteria) {
     let candidates = this.getAllAgents().filter((agent) => agent.active !== false);
     if (criteria.required_capabilities) {
-      candidates = candidates.filter((agent) => criteria.required_capabilities.every((cap) => agent.capabilities.includes(cap)));
+      const mode = criteria.capability_match_mode || "AND";
+      candidates = candidates.filter((agent) => {
+        if (mode === "OR") {
+          return criteria.required_capabilities.some((cap) => agent.capabilities.includes(cap));
+        }
+        return criteria.required_capabilities.every((cap) => agent.capabilities.includes(cap));
+      });
     }
     if (criteria.tags && criteria.tags.length > 0) {
       candidates = candidates.filter((agent) => {
@@ -7846,7 +7875,7 @@ class AgentRegistry {
       general: {
         name: "General Agent",
         description: "General purpose agent for various tasks",
-        capabilities: ["coding", "planning", "analysis"],
+        capabilities: ["coding", "planning", "analysis", "testing"],
         priority: 10,
         constraints: { performance_tier: "balanced" }
       },
@@ -10960,7 +10989,8 @@ class OpenCodeSDKClient {
   client;
   baseUrl;
   constructor(config) {
-    this.baseUrl = config?.baseUrl || "http://localhost:4321";
+    this.baseUrl = config?.baseUrl || process.env.OPENCODE_URL || "http://localhost:4321";
+    console.log(`[OpenCode SDK] Initializing client with URL: ${this.baseUrl}`);
     this.client = createOpencodeClient({ baseUrl: this.baseUrl });
   }
   classifyError(error) {
@@ -11019,6 +11049,20 @@ class OpenCodeSDKClient {
         agent: config.agent || "default",
         parts: []
       };
+      if (config.model) {
+        const [providerID, modelID] = config.model.split("/");
+        if (providerID && modelID) {
+          body.model = {
+            providerID,
+            modelID
+          };
+        } else {
+          body.model = {
+            providerID: "opencode",
+            modelID: config.model
+          };
+        }
+      }
       if (config.message) {
         body.parts.push({
           type: "text",
@@ -11026,6 +11070,9 @@ class OpenCodeSDKClient {
         });
       }
       console.log(`Sending prompt to session ${sessionId} with ${body.parts.length} part(s)...`);
+      if (body.modelID) {
+        console.log(`Requesting model override: ${body.providerID}/${body.modelID}`);
+      }
       const maxRetries = 3;
       let promptResult;
       for (let attempt = 1;attempt <= maxRetries; attempt++) {
@@ -11323,7 +11370,11 @@ class OpenCodeSDKClient {
   }
   async listSessions(activeOnly = false) {
     try {
-      const result = await this.client.session.list({});
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout listing sessions")), 5000));
+      const result = await Promise.race([
+        this.client.session.list({}),
+        timeoutPromise
+      ]);
       if (!result.data) {
         return [];
       }
@@ -11371,6 +11422,9 @@ class OpenCodeSDKClient {
 function getSDKClient(config) {
   if (!defaultSDKClient) {
     defaultSDKClient = new OpenCodeSDKClient(config);
+  } else if (config?.baseUrl && defaultSDKClient.getBaseUrl() !== config.baseUrl) {
+    console.log(`[OpenCode SDK] URL mismatch (Current: ${defaultSDKClient.getBaseUrl()}, New: ${config.baseUrl}). Reinitializing client.`);
+    defaultSDKClient = new OpenCodeSDKClient(config);
   }
   return defaultSDKClient;
 }
@@ -11380,15 +11434,6 @@ function resetSDKClient() {
 var SDKErrorType, SDKError, defaultSDKClient = null;
 var init_opencode_sdk = __esm(() => {
   init_dist();
-  ((SDKErrorType2) => {
-    SDKErrorType2["NETWORK_ERROR"] = "NETWORK_ERROR";
-    SDKErrorType2["AGENT_NOT_FOUND"] = "AGENT_NOT_FOUND";
-    SDKErrorType2["SESSION_NOT_FOUND"] = "SESSION_NOT_FOUND";
-    SDKErrorType2["SESSION_CREATION_FAILED"] = "SESSION_CREATION_FAILED";
-    SDKErrorType2["EXECUTION_TIMEOUT"] = "EXECUTION_TIMEOUT";
-    SDKErrorType2["INVALID_SESSION_ID"] = "INVALID_SESSION_ID";
-    SDKErrorType2["UNKNOWN_ERROR"] = "UNKNOWN_ERROR";
-  })(SDKErrorType ||= {});
   ((SDKErrorType2) => {
     SDKErrorType2["NETWORK_ERROR"] = "NETWORK_ERROR";
     SDKErrorType2["AGENT_NOT_FOUND"] = "AGENT_NOT_FOUND";
@@ -11419,8 +11464,10 @@ __export(exports_opencode, {
 
 class OpenCodeClient {
   directory;
+  baseUrl;
   constructor(config) {
     this.directory = config?.directory || process.cwd();
+    this.baseUrl = config?.baseUrl;
   }
   async runAgentCLI(config) {
     const { spawn } = await Promise.resolve(globalThis.Bun);
@@ -11498,7 +11545,7 @@ class OpenCodeClient {
     const getSDKClient2 = sdkModule.getSDKClient;
     const SDKErrorType2 = sdkModule.SDKErrorType;
     const SDKError2 = sdkModule.SDKError;
-    const sdkClient = getSDKClient2();
+    const sdkClient = getSDKClient2(this.baseUrl ? { baseUrl: this.baseUrl } : undefined);
     let sessionId;
     const isSessionReused = !!config.sessionId;
     try {
@@ -11529,7 +11576,8 @@ class OpenCodeClient {
       if (!config.skipPrompt) {
         const executeResult = await sdkClient.executeAgentInSession(sessionId, {
           agent: config.agent,
-          message: config.message
+          message: config.message,
+          model: config.model
         });
         if (!executeResult.success) {
           const errorType = executeResult.errorType || SDKErrorType2.UNKNOWN_ERROR;
@@ -11910,7 +11958,10 @@ class OpenCodeClient {
 }
 function getOpenCodeClient(config) {
   if (!defaultClient) {
-    defaultClient = new OpenCodeClient(config);
+    defaultClient = new OpenCodeClient({
+      directory: config?.directory,
+      baseUrl: config?.serverUrl
+    });
   }
   return defaultClient;
 }
@@ -43617,7 +43668,7 @@ class IssuePicker {
       if (a.priority !== b.priority) {
         return a.priority - b.priority;
       }
-      return a.id.localeCompare(b.id);
+      return a.id.localeCompare(b.id, undefined, { numeric: true });
     });
     return filtered.slice(0, this.config.max_issues);
   }
@@ -43797,7 +43848,16 @@ class IssuePicker {
       if (b.hierarchyScore !== a.hierarchyScore) {
         return b.hierarchyScore - a.hierarchyScore;
       }
-      return a.issue.id.localeCompare(b.issue.id);
+      return a.issue.id.localeCompare(b.issue.id, undefined, { numeric: true });
+    });
+    partiallyAvailable.sort((a, b) => {
+      if (b.depScore !== a.depScore) {
+        return b.depScore - a.depScore;
+      }
+      if (b.hierarchyScore !== a.hierarchyScore) {
+        return b.hierarchyScore - a.hierarchyScore;
+      }
+      return a.issue.id.localeCompare(b.issue.id, undefined, { numeric: true });
     });
     partiallyAvailable.sort((a, b) => {
       if (b.depScore !== a.depScore) {
@@ -43855,7 +43915,7 @@ class IssuePicker {
     if (a.priority !== b.priority) {
       return a.priority - b.priority;
     }
-    return a.id.localeCompare(b.id);
+    return a.id.localeCompare(b.id, undefined, { numeric: true });
   }
   compareByHierarchy(a, b, graph) {
     const depthA = graph.depth.get(a.id) || 0;
@@ -43866,7 +43926,7 @@ class IssuePicker {
     if (a.priority !== b.priority) {
       return a.priority - b.priority;
     }
-    return a.id.localeCompare(b.id);
+    return a.id.localeCompare(b.id, undefined, { numeric: true });
   }
   decrementIndegrees(graph, issueId, queue) {
     for (const edge of graph.edges) {
@@ -43919,7 +43979,7 @@ class WorkerEngine {
   config;
   policyEngine = getPolicyEngine();
   agentRegistry = getAgentRegistry();
-  opencode = getOpenCodeClient();
+  opencode;
   logger = getLogger(process.env.ASHEP_DIR);
   isRunning = false;
   currentRunId = null;
@@ -43928,9 +43988,14 @@ class WorkerEngine {
   constructor(config) {
     const systemConfig = loadConfig();
     const workerConfig = systemConfig.worker || {};
+    const sdkUrl = systemConfig.execution?.sdk_base_url || process.env.OPENCODE_URL || "http://localhost:4321";
+    console.log(`Initializing Worker with OpenCode URL: ${sdkUrl}`);
+    this.opencode = getOpenCodeClient({
+      serverUrl: sdkUrl
+    });
     this.config = {
-      poll_interval_ms: 30000,
-      max_concurrent_runs: 3,
+      poll_interval_ms: workerConfig.poll_interval_ms || 30000,
+      max_concurrent_runs: workerConfig.max_concurrent_runs || 3,
       worker_id: workerConfig.worker_id,
       picking: {
         mode: workerConfig.picking?.mode || "simple",
@@ -43948,6 +44013,7 @@ class WorkerEngine {
   async start() {
     this.isRunning = true;
     console.log("Worker Engine started");
+    console.log(`Poll interval: ${this.config.poll_interval_ms}ms`);
     while (this.isRunning) {
       try {
         await this.processReadyIssues();
@@ -43968,8 +44034,9 @@ class WorkerEngine {
     let activeCount = 0;
     try {
       if (strategy === "active_sessions" || strategy === "strict_both") {
+        const sdkUrl = config.execution?.sdk_base_url || process.env.OPENCODE_URL || "http://localhost:4321";
         const sdkModule = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
-        const sdkClient = sdkModule.getSDKClient();
+        const sdkClient = sdkModule.getSDKClient({ baseUrl: sdkUrl });
         const sessions = await sdkClient.listSessions(true);
         activeCount = sessions.length;
         if (strategy === "strict_both") {}
@@ -44035,6 +44102,7 @@ class WorkerEngine {
     const phaseConfig = this.policyEngine.getPhaseConfig(policy, phase);
     const agent = this.agentRegistry.selectAgent({
       required_capabilities: phaseConfig?.capabilities || [],
+      capability_match_mode: phaseConfig?.capability_match_mode,
       tags: [issue.issue_type]
     });
     if (!agent) {
@@ -44524,7 +44592,7 @@ class WorkerEngine {
         const activeSession = sessionList.reverse().find((s) => s.phase === phase);
         if (activeSession) {
           const sdkModule = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
-          const sdkClient = sdkModule.getSDKClient();
+          const sdkClient = sdkModule.getSDKClient({ baseUrl: config.execution?.sdk_base_url });
           const activity = await sdkClient.getSessionActivity(activeSession.sessionId);
           if (activity && activity.isActive) {
             console.log(`Found active background session ${activeSession.sessionId} for phase '${phase}'. Attaching...`);
@@ -45545,12 +45613,32 @@ class MonitorEngine {
       const result = await sdkClient.checkSessionHeartbeat(run.session_id, threshold);
       if (result.stale) {
         console.log(`Stall detected for run ${run.id} (session ${run.session_id}): No activity for ${Math.round((result.lastActivityAge || 0) / 1000)}s (threshold: ${threshold}ms)`);
+      } else {
+        const epicId = this.extractEpicId(run.issue_id);
+        if (epicId) {
+          try {
+            await setLastHeartbeat(epicId, Date.now());
+          } catch (error) {
+            console.warn(`Failed to update heartbeat for epic ${epicId}: ${error}`);
+          }
+        }
       }
       return result.stale;
     } catch (error) {
       console.warn(`Failed to check stall status for run ${run.id}: ${error}`);
       return false;
     }
+  }
+  extractEpicId(issueId) {
+    if (!issueId)
+      return null;
+    if (!issueId.includes("."))
+      return issueId;
+    const parts = issueId.split(".");
+    if (parts.length >= 2) {
+      return parts[0];
+    }
+    return parts[0];
   }
   async detectTimeout(run) {
     const now = Date.now();
@@ -48535,7 +48623,11 @@ async function cmdGetMessages(issueId, phase, unreadOnly) {
 async function cmdListSessions(issueId) {
   try {
     const { getOpenCodeClient: getOpenCodeClient2 } = await Promise.resolve().then(() => exports_opencode);
-    const opencode = getOpenCodeClient2();
+    const { loadConfig: loadConfig3 } = await Promise.resolve().then(() => (init_config(), exports_config));
+    const config = loadConfig3();
+    const opencode = getOpenCodeClient2({
+      serverUrl: config.execution?.sdk_base_url
+    });
     if (!issueId) {
       issueId = await promptForIssueId();
     }
@@ -48568,9 +48660,10 @@ Sessions for issue ${issueId} (${sessions.length}):`);
 }
 async function cmdSessionList(showAll = false) {
   try {
-    const { getOpenCodeClient: getOpenCodeClient2 } = await Promise.resolve().then(() => exports_opencode);
     const { getSDKClient: getSDKClient2 } = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
-    const sdkClient = getSDKClient2();
+    const { loadConfig: loadConfig3 } = await Promise.resolve().then(() => (init_config(), exports_config));
+    const config = loadConfig3();
+    const sdkClient = getSDKClient2({ baseUrl: config.execution?.sdk_base_url });
     console.log(`Fetching ${showAll ? "all" : "active"} sessions...`);
     const sessions = await sdkClient.listSessions(!showAll);
     if (sessions.length === 0) {
@@ -48613,7 +48706,9 @@ async function cmdSessionStop(sessionId) {
   }
   try {
     const { getSDKClient: getSDKClient2 } = await Promise.resolve().then(() => (init_opencode_sdk(), exports_opencode_sdk));
-    const sdkClient = getSDKClient2();
+    const { loadConfig: loadConfig3 } = await Promise.resolve().then(() => (init_config(), exports_config));
+    const config = loadConfig3();
+    const sdkClient = getSDKClient2({ baseUrl: config.execution?.sdk_base_url });
     console.log(`Aborting session ${sessionId}...`);
     const success = await sdkClient.abortSession(sessionId);
     if (success) {
