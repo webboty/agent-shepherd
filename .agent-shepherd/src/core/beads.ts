@@ -64,7 +64,7 @@ export async function execBeadsCommand(args: string[]): Promise<string> {
 
   // Handle potential warning messages mixed with JSON output
   // Look for the start of JSON (array '[' or object '{')
-  const jsonStartIndex = output.search(/^[\[\{]/m);
+  const jsonStartIndex = output.search(/^[[{]/m);
   
   if (jsonStartIndex > 0) {
     const warning = output.substring(0, jsonStartIndex).trim();

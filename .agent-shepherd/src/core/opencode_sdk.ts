@@ -9,7 +9,8 @@
 import { createOpencodeClient } from '@opencode-ai/sdk';
 
 export interface ProgressCallback {
-  (_msg: string): void;
+  // eslint-disable-next-line no-unused-vars
+  (msg: string): void;
 }
 
 export interface SessionStatus {
@@ -21,6 +22,7 @@ export interface SessionStatus {
 
 // Enum values used in classifyError() and imported by opencode.ts via dynamic import
 // ESLint doesn't detect usage across dynamic imports
+/* eslint-disable no-unused-vars */
 export enum SDKErrorType {
   NETWORK_ERROR = "NETWORK_ERROR",
   AGENT_NOT_FOUND = "AGENT_NOT_FOUND",
@@ -30,9 +32,9 @@ export enum SDKErrorType {
   INVALID_SESSION_ID = "INVALID_SESSION_ID",
   UNKNOWN_ERROR = "UNKNOWN_ERROR",
 }
+/* eslint-enable no-unused-vars */
 
 // Class used in classifyError() and imported by opencode.ts via dynamic import
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export class SDKError extends Error {
   public type: SDKErrorType;
   public originalError?: any;

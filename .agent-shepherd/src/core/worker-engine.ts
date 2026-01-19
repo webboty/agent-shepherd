@@ -70,7 +70,8 @@ export class WorkerEngine {
   private currentRunId: string | null = null;
   private currentPhase: string | null = null;
   private workerId: string;
-  private issueFilter?: (issue: BeadsIssue) => boolean;
+  // eslint-disable-next-line no-unused-vars
+  private issueFilter?: (_issue: BeadsIssue) => boolean;
   private forcePolicy?: string;
 
   constructor(config?: WorkerConfig) {
@@ -108,7 +109,8 @@ export class WorkerEngine {
   /**
    * Set an issue filter for the worker (e.g. to restrict to a specific epic)
    */
-  setIssueFilter(filter: (issue: BeadsIssue) => boolean): void {
+  // eslint-disable-next-line no-unused-vars
+  setIssueFilter(filter: (_issue: BeadsIssue) => boolean): void {
     this.issueFilter = filter;
   }
 

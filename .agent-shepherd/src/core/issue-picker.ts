@@ -38,7 +38,8 @@ export interface PickerConfig {
   max_issues?: number;
   prefer_epic_affinity?: boolean;
   crash_detection?: CrashDetectionConfig;
-  candidate_filter?: (issue: BeadsIssue) => boolean;
+  // eslint-disable-next-line no-unused-vars
+  candidate_filter?: (_issue: BeadsIssue) => boolean;
 }
 
 /**

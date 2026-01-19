@@ -120,8 +120,8 @@ export class MonitorEngine {
   /**
    * Detect if a run has stalled
    */
-  // eslint-disable-next-line no-unused-vars
   private async detectStall(run: RunRecord): Promise<boolean> {
+
     if (!run.session_id) {
       // If no session ID, we can't check activity.
       // If it's been in "running" state for too long without a session ID, it's definitely stalled/crashed.

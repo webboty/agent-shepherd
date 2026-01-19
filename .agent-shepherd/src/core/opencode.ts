@@ -4,7 +4,8 @@
  */
 
 export interface ProgressCallback {
-  (_msg: string): void;
+  // eslint-disable-next-line no-unused-vars
+  (msg: string): void;
 }
 
 export interface SessionConfig {
