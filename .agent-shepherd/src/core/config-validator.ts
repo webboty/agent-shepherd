@@ -74,7 +74,7 @@ export class ConfigurationValidator {
    * Validate all configuration files
    */
   async validateAllConfigs(configDir?: string): Promise<ValidationResult[]> {
-    const { getConfigDir, findInstallDir, findWorkflowsDir, scanRecursive, findAgentShepherdDir } = await import('./path-utils');
+    const { getConfigDir, findInstallDir, findWorkflowsDir, scanRecursive, findAgentShepherdDir, findAgentsDir } = await import('./path-utils');
     const baseDir = configDir || getConfigDir();
     const installDir = findInstallDir();
     const results: ValidationResult[] = [];
@@ -160,6 +160,30 @@ export class ConfigurationValidator {
         for (const file of workflowFiles) {
           const result = await this.validateWorkflowFile(file, policiesSchemaPath);
           result.summary = `${result.valid ? '✅' : '❌'} Workflow ${file}: ${result.summary}`;
+          results.push(result);
+        }
+      }
+    }
+
+    // Validate agent files
+    const agentsDir = findAgentsDir();
+    const enabledAgentsDir = join(agentsDir, 'enabled');
+    
+    if (existsSync(enabledAgentsDir)) {
+      const agentFiles = scanRecursive(enabledAgentsDir, ['.yaml', '.yml']);
+      
+      // Find agents schema
+      const localAgentShepherdDir = findAgentShepherdDir();
+      let agentsSchemaPath = join(localAgentShepherdDir, 'schemas/agents.schema.json');
+      if (!existsSync(agentsSchemaPath)) {
+        agentsSchemaPath = join(installDir, 'schemas/agents.schema.json');
+      }
+
+      if (existsSync(agentsSchemaPath)) {
+        for (const file of agentFiles) {
+          // Agent files use the same schema as agents.yaml
+          const result = await this.validateYAMLConfig(file, agentsSchemaPath);
+          result.summary = `${result.valid ? '✅' : '❌'} Agent file ${file}: ${result.summary}`;
           results.push(result);
         }
       }

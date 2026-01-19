@@ -683,6 +683,41 @@ Installed plugins:
     Plugin has configuration issues
 ```
 
+## Agent Commands
+
+### `ashep agent <command> [name]`
+
+Manage individual agent registry files.
+
+**Usage:**
+```bash
+# List all agents
+ashep agent list
+
+# Create a new agent file template
+ashep agent create my-agent
+
+# Archive an agent (move from enabled/ to available/)
+ashep agent archive my-agent
+
+# Activate an agent (move from available/ to enabled/)
+ashep agent activate my-agent
+```
+
+**Commands:**
+- `list`: Lists all loaded agents, showing their source file and capabilities.
+- `create <name>`: Creates a new agent file template in `agents/enabled/`.
+- `archive <name>`: Moves an agent file from `enabled/` to `available/`, disabling it.
+- `activate <name>`: Moves an agent file from `available/` to `enabled/`, enabling it.
+
+**Directory Structure:**
+- Enabled agents: `.agent-shepherd/agents/enabled/` (loaded automatically)
+- Available agents: `.agent-shepherd/agents/available/` (ignored)
+
+**Behavior:**
+- Agent files in `enabled/` are loaded recursively.
+- Agents defined in `config/agents.yaml` take precedence over files if IDs conflict.
+
 ## Configuration Files
 
 For detailed configuration guides, see:

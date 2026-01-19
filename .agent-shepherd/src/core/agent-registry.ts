@@ -4,8 +4,9 @@
  */
 
 import { parse as parseYAML, stringify as stringifyYAML } from "yaml";
-import { readFileSync, writeFileSync } from "fs";
-import { getConfigPath } from "./path-utils";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { join } from "path";
+import { getConfigPath, findAgentsDir, scanRecursive } from "./path-utils";
 import { loadConfig } from "./config";
 import { type PolicyConfig, type PhaseConfig } from "./policy";
 
@@ -64,29 +65,96 @@ export class AgentRegistry {
   }
 
   /**
-   * Load agents from YAML file
+   * Load agents from YAML file and enabled directory
    */
   loadAgents(filePath: string): void {
-    try {
-      const content = readFileSync(filePath, "utf-8");
-      const config = parseYAML(content) as AgentsFile;
+    // Clear existing agents
+    this.agents.clear();
 
-      if (!config.agents) {
-        throw new Error("Invalid agents file: missing 'agents' key");
+    // 1. Load agents from enabled directory (recursively)
+    // These have lower precedence than the main config file
+    this.loadEnabledAgents();
+
+    // 2. Load main config file
+    // This has higher precedence and will overwrite agents with same ID
+    try {
+      this.loadAgentFile(filePath, true); // Allow overrides from main config
+    } catch (error) {
+      // If the file simply doesn't exist, that's fine (unless we have no agents at all, handled by caller)
+      // But if it exists and fails (e.g. invalid YAML), we should probably let the error propagate
+      // so the user knows their config is broken.
+      // However, the constructor currently catches all errors.
+      
+      // Check if it's just a missing file
+      const isEnoent = error instanceof Error && (error as any).code === 'ENOENT';
+      if (!isEnoent) {
+        throw new Error(
+          `Failed to load agents from ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+      // If file doesn't exist, we just continue with whatever we loaded from enabled/
+    }
+  }
+
+  /**
+   * Load agents from a specific file
+   */
+  private loadAgentFile(filePath: string, allowOverride = false): void {
+    const content = readFileSync(filePath, "utf-8");
+    const config = parseYAML(content) as AgentsFile;
+
+    if (!config || typeof config !== 'object') {
+       throw new Error("Invalid agent configuration file");
+    }
+
+    if (!config.agents) {
+      throw new Error("Invalid agents file: missing 'agents' key");
+    }
+
+    for (const agent of config.agents) {
+      this.validateAgent(agent);
+      
+      // Store source file in metadata
+      if (!agent.metadata) {
+        agent.metadata = {};
+      }
+      agent.metadata.source_file = filePath;
+
+      if (this.agents.has(agent.id)) {
+        if (allowOverride) {
+          console.warn(`ℹ️ Overwriting agent '${agent.id}' with definition from ${filePath}`);
+        } else {
+          throw new Error(`Duplicate agent ID '${agent.id}' found in ${filePath}. Agent IDs must be unique across enabled files.`);
+        }
+      }
+      
+      this.agents.set(agent.id, agent);
+    }
+  }
+
+  /**
+   * Recursively load agents from agents/enabled directory
+   */
+  private loadEnabledAgents(): void {
+    try {
+      const agentsDir = findAgentsDir();
+      const enabledDir = join(agentsDir, "enabled");
+
+      if (!existsSync(enabledDir)) {
+        return;
       }
 
-      // Clear existing agents
-      this.agents.clear();
+      const files = scanRecursive(enabledDir, ['.yaml', '.yml']);
 
-      // Load all agents
-      for (const agent of config.agents) {
-        this.validateAgent(agent);
-        this.agents.set(agent.id, agent);
+      for (const file of files) {
+        try {
+          this.loadAgentFile(file, false); // Do not allow overrides between enabled files
+        } catch (error) {
+          console.warn(`Warning: Failed to load agent file ${file}: ${error}`);
+        }
       }
     } catch (error) {
-      throw new Error(
-        `Failed to load agents from ${filePath}: ${error instanceof Error ? error.message : String(error)}`
-      );
+      console.warn(`Warning: Error scanning agents directory: ${error}`);
     }
   }
 
@@ -653,4 +721,8 @@ export function getAgentRegistry(configPath?: string): AgentRegistry {
     defaultAgentRegistry = new AgentRegistry(configPath);
   }
   return defaultAgentRegistry;
+}
+
+export function getAgentsPath(): string {
+  return findAgentsDir();
 }

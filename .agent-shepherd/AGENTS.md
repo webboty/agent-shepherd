@@ -99,7 +99,7 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 
 - **Worker Engine** (`src/core/worker-engine.ts`) - Processes issues from Beads through workflow phases
 - **Monitor Engine** (`src/core/monitor-engine.ts`) - Supervises agent execution and detects stalls
-- **Agent Registry** (`src/core/agent-registry.ts`) - Manages agent capabilities and selection
+- **Agent Registry** (`src/core/agent-registry.ts`) - Manages agent capabilities and selection (supports `agents.yaml` and `agents/` files)
 - **Policy Engine** (`src/core/policy.ts`) - Defines and executes workflow policies (supports `policies.yaml` and recursive workflow files)
 - **Decision Builder** (`src/core/decision-builder.ts`) - Builds prompts and parses AI decision responses
 - **Policy Capability Validator** (`src/core/policy-capability-validator.ts`) - Validates policy→capability→agent chains
@@ -508,6 +508,10 @@ Agent registry (auto-synced from OpenCode):
 - Agent capabilities and priorities
 - Provider/model information
 - Constraints and metadata
+
+**Agent Files**:
+- `.agent-shepherd/agents/enabled/` - Individual agent files (loaded recursively)
+- `.agent-shepherd/agents/available/` - Archived agent files (ignored)
 
 ## Plugin System
 

@@ -255,6 +255,19 @@ const COMMANDS: Record<string, CommandDef> = {
     }
   },
 
+  // Agents
+  agent: {
+    description: "Manage agent files (list, archive, activate, create)",
+    category: "System",
+    usage: "ashep agent <command> <name>",
+    options: {
+      "list": "List agents",
+      "archive <name>": "Archive an agent",
+      "activate <name>": "Activate an agent",
+      "create <name>": "Create a new agent"
+    }
+  },
+
   // Aliases (hidden from main list usually)
   "get-messages": {
     description: "Alias for phase-msg-list",
@@ -2707,6 +2720,215 @@ retry:
 }
 
 /**
+ * List agents command
+ */
+async function cmdAgentList(): Promise<void> {
+  const { getAgentRegistry } = await import("../core/agent-registry.ts");
+  const { findAgentsDir } = await import("../core/path-utils.ts");
+  const path = await import("path");
+
+  const registry = getAgentRegistry();
+  const agents = registry.getAllAgents();
+  const agentsDir = findAgentsDir();
+
+  if (agents.length === 0) {
+    console.log("No agents found.");
+    return;
+  }
+
+  console.log(`\nAgents (${agents.length}):`);
+  console.log("┌──────────────────────────┬──────────────────────┬──────────────────────────┬──────────────────────────┐");
+  console.log("│ ID                       │ Name                 │ Source                   │ Capabilities             │");
+  console.log("├──────────────────────────┼──────────────────────┼──────────────────────────┼──────────────────────────┤");
+
+  for (const agent of agents) {
+    const id = agent.id.substring(0, 24) + (agent.id.length > 24 ? "..." : "");
+    const name = agent.name.substring(0, 20) + (agent.name.length > 20 ? "..." : "");
+    
+    let source = "agents.yaml";
+    if (agent.metadata?.source_file) {
+      const sourceFile = agent.metadata.source_file as string;
+      if (sourceFile.startsWith(agentsDir)) {
+        source = path.relative(agentsDir, sourceFile);
+      } else {
+        source = path.basename(sourceFile);
+      }
+    }
+    source = source.substring(0, 24) + (source.length > 24 ? "..." : "");
+
+    const capabilities = agent.capabilities.join(", ");
+    const capsTruncated = capabilities.substring(0, 24) + (capabilities.length > 24 ? "..." : "");
+
+    console.log(`│ ${id.padEnd(24)} │ ${name.padEnd(20)} │ ${source.padEnd(24)} │ ${capsTruncated.padEnd(24)} │`);
+  }
+  console.log("└──────────────────────────┴──────────────────────┴──────────────────────────┴──────────────────────────┘");
+}
+
+/**
+ * Archive agent command
+ */
+async function cmdAgentArchive(name: string): Promise<void> {
+  const { findAgentsDir, scanRecursive } = await import("../core/path-utils.ts");
+  const path = await import("path");
+  const { existsSync, mkdirSync, cpSync, rmSync } = await import("fs");
+
+  const agentsDir = findAgentsDir();
+  const enabledDir = path.join(agentsDir, "enabled");
+  const availableDir = path.join(agentsDir, "available");
+
+  if (!existsSync(enabledDir)) {
+    console.error(`Enabled agents directory not found: ${enabledDir}`);
+    process.exit(1);
+  }
+
+  // Find file in enabled
+  let targetFile: string | undefined;
+  const candidates = [`${name}.yaml`, `${name}.yml`];
+  
+  for (const c of candidates) {
+    if (existsSync(path.join(enabledDir, c))) {
+      targetFile = c;
+      break;
+    }
+  }
+  
+  if (!targetFile) {
+    const allFiles = scanRecursive(enabledDir, ['.yaml', '.yml']);
+    const match = allFiles.find(f => path.basename(f, path.extname(f)) === name);
+    if (match) {
+        targetFile = path.relative(enabledDir, match);
+    }
+  }
+
+  if (!targetFile) {
+    console.error(`Agent file for '${name}' not found in ${enabledDir}`);
+    // Check if it exists in agents.yaml
+    const { getAgentRegistry } = await import("../core/agent-registry.ts");
+    if (getAgentRegistry().getAgent(name)) {
+      console.log(`Note: '${name}' might be defined in agents.yaml which cannot be archived individually.`);
+    }
+    process.exit(1);
+  }
+  
+  const srcPath = path.join(enabledDir, targetFile);
+  const destPath = path.join(availableDir, path.basename(targetFile)); // flatten to available root
+  
+  if (!existsSync(availableDir)) {
+    mkdirSync(availableDir, { recursive: true });
+  }
+  
+  try {
+    cpSync(srcPath, destPath);
+    rmSync(srcPath);
+    console.log(`✅ Archived agent '${name}' to agents/available/`);
+  } catch (error) {
+    console.error(`Failed to archive agent: ${error}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Activate agent command
+ */
+async function cmdAgentActivate(name: string): Promise<void> {
+  const { findAgentsDir, scanRecursive } = await import("../core/path-utils.ts");
+  const path = await import("path");
+  const { existsSync, mkdirSync, cpSync, rmSync } = await import("fs");
+
+  const agentsDir = findAgentsDir();
+  const enabledDir = path.join(agentsDir, "enabled");
+  const availableDir = path.join(agentsDir, "available");
+  
+  if (!existsSync(availableDir)) {
+    console.error(`No available agents found (directory missing)`);
+    process.exit(1);
+  }
+  
+  let targetFile: string | undefined;
+  const candidates = [`${name}.yaml`, `${name}.yml`];
+  
+  for (const c of candidates) {
+    if (existsSync(path.join(availableDir, c))) {
+      targetFile = c;
+      break;
+    }
+  }
+  
+  if (!targetFile) {
+    const allFiles = scanRecursive(availableDir, ['.yaml', '.yml']);
+    const match = allFiles.find(f => path.basename(f, path.extname(f)) === name);
+    if (match) {
+        targetFile = path.relative(availableDir, match);
+    }
+  }
+  
+  if (!targetFile) {
+    console.error(`Agent file '${name}' not found in ${availableDir}`);
+    process.exit(1);
+  }
+  
+  const srcPath = path.join(availableDir, targetFile);
+  const destPath = path.join(enabledDir, path.basename(targetFile)); // flatten to enabled root
+  
+  if (!existsSync(enabledDir)) {
+    mkdirSync(enabledDir, { recursive: true });
+  }
+  
+  try {
+    cpSync(srcPath, destPath);
+    rmSync(srcPath);
+    console.log(`✅ Activated agent '${name}' to agents/enabled/`);
+  } catch (error) {
+    console.error(`Failed to activate agent: ${error}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Create agent command
+ */
+async function cmdAgentCreate(name: string): Promise<void> {
+  const { findAgentsDir } = await import("../core/path-utils.ts");
+  const path = await import("path");
+  const { existsSync, mkdirSync, writeFileSync } = await import("fs");
+
+  const agentsDir = findAgentsDir();
+  const enabledDir = path.join(agentsDir, "enabled");
+  
+  if (!existsSync(enabledDir)) {
+    mkdirSync(enabledDir, { recursive: true });
+  }
+  
+  const filePath = path.join(enabledDir, `${name}.yaml`);
+  
+  if (existsSync(filePath)) {
+    console.error(`Agent file '${filePath}' already exists`);
+    process.exit(1);
+  }
+  
+  const template = `agents:
+  - id: ${name}
+    name: ${name.charAt(0).toUpperCase() + name.slice(1)} Agent
+    description: New agent created via CLI
+    capabilities:
+      - general
+    # provider_id: anthropic
+    # model_id: claude-3-5-sonnet-20241022
+    priority: 10
+    constraints:
+      performance_tier: balanced
+`;
+
+  try {
+    writeFileSync(filePath, template);
+    console.log(`✅ Created agent file: ${filePath}`);
+  } catch (error) {
+    console.error(`Failed to create agent file: ${error}`);
+    process.exit(1);
+  }
+}
+
+/**
  * Simple prompt for issue ID using Bun's built-in readline
  */
 async function promptForIssueId(): Promise<string> {
@@ -2727,8 +2949,10 @@ async function promptForIssueId(): Promise<string> {
  */
 async function main(): Promise<void> {
   // Set ASHEP_DIR to avoid debug messages during initialization
-  const agentShepherdDir = findLocalAgentShepherdDir() || getGlobalInstallDir();
-  process.env.ASHEP_DIR = agentShepherdDir;
+  if (!process.env.ASHEP_DIR) {
+    const agentShepherdDir = findLocalAgentShepherdDir() || getGlobalInstallDir();
+    process.env.ASHEP_DIR = agentShepherdDir;
+  }
 
   // Load plugins first
   loadPlugins();
@@ -2976,6 +3200,39 @@ async function main(): Promise<void> {
         default:
           console.error("Unknown workflow command. Use: list, archive, activate, create");
           console.log("Run 'ashep workflow help' for details");
+          process.exit(1);
+      }
+      break;
+    }
+
+    case "agent": {
+      const subCmd = args[1];
+      const name = args[2];
+      
+      if (!subCmd || subCmd === "help" || subCmd === "--help" || subCmd === "-h") {
+        showCommandHelp("agent");
+        return;
+      }
+
+      switch (subCmd) {
+        case "list":
+          await cmdAgentList();
+          break;
+        case "archive":
+          if (!name) { console.error("Name required"); process.exit(1); }
+          await cmdAgentArchive(name);
+          break;
+        case "activate":
+          if (!name) { console.error("Name required"); process.exit(1); }
+          await cmdAgentActivate(name);
+          break;
+        case "create":
+          if (!name) { console.error("Name required"); process.exit(1); }
+          await cmdAgentCreate(name);
+          break;
+        default:
+          console.error("Unknown agent command. Use: list, archive, activate, create");
+          console.log("Run 'ashep agent help' for details");
           process.exit(1);
       }
       break;

@@ -2,6 +2,71 @@
 
 The `agents.yaml` file defines the available agents that Agent Shepherd can use for task execution. This registry is automatically maintained through `ashep sync-agents` but can be manually customized.
 
+## Agent Registry Files (Advanced)
+
+For complex setups with many agents, you can split your agent configuration into multiple files instead of managing a single large `agents.yaml`.
+
+### Directory Structure
+
+```
+.agent-shepherd/
+├── config/
+│   └── agents.yaml           # Core agents (synced with OpenCode)
+└── agents/
+    ├── enabled/              # Active agent files (loaded recursively)
+    │   ├── specialized/
+    │   │   └── security-agents.yaml
+    │   └── team-a.yaml
+    └── available/            # Inactive/Archived agent files (ignored)
+        └── legacy-agents.yaml
+```
+
+- **`config/agents.yaml`**: The main registry file. Agents defined here take precedence over individual files.
+- **`agents/enabled/`**: Any `.yaml` or `.yml` files in this directory (and subdirectories) are automatically loaded.
+- **`agents/available/`**: Storage for inactive or archived agent files. Files here are ignored by the system.
+
+### Precedence Rules
+
+1. **`config/agents.yaml`**: Highest priority. If an agent ID is defined here, it overwrites any definition found in `enabled/`.
+2. **`agents/enabled/`**: Loaded first.
+   - **Conflict Handling**: Agent IDs must be unique across all enabled files. Duplicate IDs in enabled files will cause a warning, and the load order (which is file-system dependent) determines which one wins.
+
+### CLI Management
+
+You can manage agent files using the CLI:
+
+```bash
+# List all agents (showing source file)
+ashep agent list
+
+# Create a new agent file in enabled/
+ashep agent create my-agent
+
+# Archive an agent (move to available/)
+ashep agent archive my-agent
+
+# Activate an agent (move to enabled/)
+ashep agent activate my-agent
+```
+
+### Example: Specialized Agent File
+
+File: `.agent-shepherd/agents/enabled/security.yaml`
+
+```yaml
+agents:
+  - id: security-auditor
+    name: "Security Auditor"
+    description: "Specialized agent for security reviews"
+    capabilities: ["security", "audit", "review"]
+    provider_id: anthropic
+    model_id: claude-3-opus-20240229
+    priority: 20
+    constraints:
+      performance_tier: thorough
+      read_only: true
+```
+
 ## File Location
 
 ```

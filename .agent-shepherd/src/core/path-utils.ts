@@ -99,6 +99,19 @@ export function findWorkflowsDir(): string {
   return join(global, "workflows");
 }
 
+export function findAgentsDir(): string {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "agents"))) {
+    return join(envOverride, "agents");
+  }
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "agents"))) {
+    return join(local, "agents");
+  }
+  const global = getGlobalInstallDir();
+  return join(global, "agents");
+}
+
 // Legacy function - backward compatibility
 export function findAgentShepherdDir(): string {
   const envOverride = process.env.ASHEP_DIR;
