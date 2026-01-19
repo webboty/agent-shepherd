@@ -42,6 +42,7 @@ interface CommandDef {
   options?: Record<string, string>;
   aliases?: string[];
   hidden?: boolean;
+  plugin?: string;
 }
 
 const COMMANDS: Record<string, CommandDef> = {
@@ -348,7 +349,8 @@ function loadPlugins(): void {
             description: cmd.description,
             category: "Plugins",
             usage: `ashep ${cmd.name} [args]`,
-            options: cmd.options // Assuming plugin manifest supports options
+            options: cmd.options, // Assuming plugin manifest supports options
+            plugin: manifest.name
           };
           PLUGIN_HANDLERS[cmd.name] = handler;
         }
@@ -389,24 +391,32 @@ function showHelp(specificCommand?: string): void {
     "System", 
     "Development", 
     "Messaging", 
-    "Plugins",
     "Other"
   ];
 
+  const pluginCommands: Record<string, string[]> = {};
+
   for (const [name, def] of Object.entries(COMMANDS)) {
     if (def.hidden) continue;
-    const cat = def.category || "Other";
-    if (!categories[cat]) categories[cat] = [];
-    categories[cat].push(name);
+    
+    if (def.category === "Plugins") {
+      const pluginName = def.plugin || "Other Plugins";
+      if (!pluginCommands[pluginName]) pluginCommands[pluginName] = [];
+      pluginCommands[pluginName].push(name);
+    } else {
+      const cat = def.category || "Other";
+      if (!categories[cat]) categories[cat] = [];
+      categories[cat].push(name);
+    }
   }
 
+  // Show standard categories
   for (const cat of categoryOrder) {
     const cmds = categories[cat];
     if (!cmds || cmds.length === 0) continue;
 
     console.log(`  \x1b[33m${cat} Commands\x1b[0m`);
     
-    // Find longest command name for padding
     const maxLen = Math.max(...cmds.map(c => c.length));
     
     for (const cmd of cmds.sort()) {
@@ -415,6 +425,38 @@ function showHelp(specificCommand?: string): void {
     }
     console.log();
   }
+
+  // Show Plugin sections
+  const pluginNames = Object.keys(pluginCommands).sort();
+  if (pluginNames.length > 0) {
+    console.log(`  \x1b[33mPlugins\x1b[0m`);
+    
+    for (const pluginName of pluginNames) {
+      console.log(`    \x1b[90m${pluginName}\x1b[0m`);
+      const cmds = pluginCommands[pluginName];
+      const maxLen = Math.max(...cmds.map(c => c.length));
+      
+      for (const cmd of cmds.sort()) {
+        const def = COMMANDS[cmd];
+        console.log(`      \x1b[36m${cmd.padEnd(maxLen + 2)}\x1b[0m ${def.description}`);
+      }
+      console.log();
+    }
+  }
+
+  console.log(`  \x1b[33mExamples\x1b[0m`);
+  console.log(`    \x1b[90m# One-command setup\x1b[0m`);
+  console.log(`    ashep quickstart`);
+  console.log();
+  console.log(`    \x1b[90m# Start autonomous worker loop\x1b[0m`);
+  console.log(`    ashep worker`);
+  console.log();
+  console.log(`    \x1b[90m# Process specific issue\x1b[0m`);
+  console.log(`    ashep work ISSUE-123`);
+  console.log();
+  console.log(`    \x1b[90m# Visualize workflow\x1b[0m`);
+  console.log(`    ashep ui --port 4000`);
+  console.log();
 
   console.log(`  For more help on a specific command:`);
   console.log(`    ashep help <command>`);
@@ -2902,6 +2944,12 @@ async function main(): Promise<void> {
       const subCmd = args[1];
       const name = args[2];
       
+      // Handle help specifically for workflow subcommand
+      if (!subCmd || subCmd === "help" || subCmd === "--help" || subCmd === "-h") {
+        showCommandHelp("workflow");
+        return;
+      }
+
       switch (subCmd) {
         case "list":
           await cmdWorkflowList();
@@ -2920,6 +2968,7 @@ async function main(): Promise<void> {
           break;
         default:
           console.error("Unknown workflow command. Use: list, archive, activate, create");
+          console.log("Run 'ashep workflow help' for details");
           process.exit(1);
       }
       break;
