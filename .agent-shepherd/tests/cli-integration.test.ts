@@ -164,7 +164,8 @@ worker:
       const output = outputs.join(' ');
 
       expect(output).toContain('Agent Shepherd');
-      expect(output).toContain('Usage: ashep');
+      expect(output).toContain('Usage:');
+      expect(output).toContain('ashep');
     });
   });
 
