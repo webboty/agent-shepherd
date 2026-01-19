@@ -52,7 +52,11 @@ Start the autonomous worker engine that processes issues from Beads.
 **Usage:**
 ```bash
 ashep worker
+ashep worker --epic PROJ-123
 ```
+
+**Options:**
+- `--epic <id>`: Restrict the worker to only process issues within a specific epic's subtree. Useful for focused testing or phased rollouts.
 
 **Behavior:**
 - Polls Beads for ready issues every 30 seconds (configurable)
@@ -60,10 +64,12 @@ ashep worker
 - Automatically selects agents and manages workflow phases
 - Handles retries and failures according to policy
 - Runs indefinitely until interrupted (Ctrl+C)
+- If `--epic` is provided, it applies the smart picker logic specifically to that epic's scope (respecting dependencies and hierarchy within the epic).
 
 **Output:**
 ```
 Starting Agent Shepherd Worker...
+🔍 Scope restricted to epic subtree: PROJ-123
 Processing issue: ISSUE-123 - Implement user authentication
 Using policy 'default' at phase 'plan'
 Selected agent: architect-expert (priority: 20)
@@ -105,12 +111,12 @@ Process an issue, optionally auto-picking the next ready issue if none specified
 ashep work
 # Process specific issue
 ashep work ISSUE-123
-# Process entire epic subtree
+# Process entire epic subtree (single pass)
 ashep work --epic EPIC-123
 ```
 
 **Options:**
-- `--epic <id>`: Process all issues in an epic's subtree.
+- `--epic <id>`: Process all ready issues in an epic's subtree. Note: This runs a single pass (concurrency limit applies) using the configured picker logic (simple/smart) filtered to the epic. It does not loop continuously like `ashep worker`.
 
 **Note:** Manual `work` commands operate outside the automated worker loop and bypass the `max_concurrent_runs` limit configured in `config.yaml`. Running multiple manual commands simultaneously may exceed your system or API limits.
 
