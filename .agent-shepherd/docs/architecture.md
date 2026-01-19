@@ -56,6 +56,9 @@ Agent Shepherd is a sophisticated orchestration system designed to coordinate AI
 ### Data Flow
 
  1. **Issue Discovery**: Worker Engine polls Beads for ready issues
+    - **Smart Picking**: Dependency-aware selection with epic affinity (smart mode)
+    - **Simple Picking**: Priority-based selection (simple mode)
+    - **Coordination State**: Checks lease/heartbeat state to prevent conflicts
 2. **Label-Based Policy Resolution**: Policy Engine determines appropriate workflow using label triggers
     - **Explicit workflow label** (`ashep-workflow:<name>`): Highest priority, direct policy assignment
     - **Issue type matching**: Automatic matching based on policy `issue_types` arrays
@@ -66,6 +69,10 @@ Agent Shepherd is a sophisticated orchestration system designed to coordinate AI
 5. **Exclusion Control**: Worker skips issues with `ashep-excluded` label
 6. **Agent Selection**: Agent Registry finds best agent for current phase
     - **Fallback Agent Selection**: When no agent has a capability, uses cascading fallback hierarchy (global → policy → phase) to select appropriate fallback agent
+7. **SDK Session Monitoring**: OpenCode SDK tracks session activity via heartbeats
+    - **Liveness Broadcasting**: Monitor updates `last_heartbeat` in Beads state
+    - **Crash Detection**: Heartbeat checker identifies abandoned sessions
+    - **Recovery**: Automatic cleanup and re-queuing of crashed work
 
 ### Capability-Based Matching with Fallback
 
@@ -89,15 +96,73 @@ Selection logic:
 
 4. Verify selected fallback agent is active
 5. Log which fallback agent is being used
-4. **Session Creation**: OpenCode client launches agent session
-5. **Progress Monitoring**: Monitor Engine watches execution and detects stalls
-6. **Outcome Recording**: Logging system captures results and updates issue status
-7. **Enhanced Transition Decision**: For decision transitions, AI agent analyzes outcome and selects next phase from allowed destinations
-8. **Loop Prevention Checks**: Validates phase visits, transition counts, and cycle detection before proceeding
-9. **Phase Messenger Integration**: Automatically sends result messages to next phase if messaging enabled
-10. **Visualization**: UI displays flow state and progress
+8. **Session Creation**: OpenCode client launches agent session
+9. **Progress Monitoring**: Monitor Engine watches execution
+    - **SDK Heartbeat Monitoring**: Tracks session activity via OpenCode SDK
+    - **Stall Detection**: Identifies sessions with no recent heartbeats
+    - **Timeout Enforcement**: Enforces phase time limits
+10. **Outcome Recording**: Logging system captures results and updates issue status
+11. **Worker Assistant**: For ambiguous outcomes, AI analyzes and recommends transition
+    - **Trigger Detection**: Warnings, many artifacts, unclear signals, complex errors
+    - **AI Analysis**: Context-aware interpretation of agent outcomes
+    - **Directive Return**: ADVANCE, RETRY, or BLOCK decision
+12. **Enhanced Transition Decision**: For decision transitions, AI agent analyzes outcome and selects next phase from allowed destinations
+    - **Phase Jumping**: Can jump backward to earlier phases for rework
+    - **Constrained Routing**: Limited to allowed_destinations for safety
+13. **Loop Prevention Checks**: Validates phase visits, transition counts, and cycle detection before proceeding
+14. **Phase Messenger Integration**: Automatically sends result messages to next phase if messaging enabled
+15. **Visualization**: UI displays flow state and progress
 
 ## Key Design Decisions
+
+### Smart Issue Picking
+
+The issue picker supports two modes for selecting work from Beads:
+
+- **Simple Mode**: Priority-based selection without dependency awareness
+- **Smart Mode**: Dependency-aware selection with epic affinity for multi-worker coordination
+  - **Dependency Graph**: Builds graph from Beads issue dependencies
+  - **Topological Sorting**: Respects dependency ordering constraints
+  - **Epic Affinity**: Workers maintain ownership of epic subtrees
+  - **Coordination State**: Lease and heartbeat-based state to prevent conflicts
+  - **Multi-Worker Safety**: Prevents multiple workers from picking same epic
+
+### Multi-Worker Coordination
+
+Three coordination modes for safe concurrent processing:
+
+1. **Lease Mode**: Time-based leases for epic ownership (works offline)
+2. **Heartbeat Mode**: SDK-based session activity detection (requires SDK access)
+3. **Hybrid Mode**: Combined lease + heartbeat (recommended, most robust)
+
+**Beads State Fields**:
+- `assigned_worker`: Worker ID that owns the epic/issue
+- `lease_expires_at`: Lease expiration timestamp
+- `last_heartbeat`: SDK-reported heartbeat timestamp
+- `session_id`: Active OpenCode session ID
+
+**Coordination Flow**:
+1. Heartbeat checker polls SDK for session activity
+2. Crash detector identifies stale/abandoned sessions
+3. Monitor broadcasts liveness for healthy runs
+4. Issue picker checks coordination state before selection
+5. Automatic recovery and re-queuing on abandonment
+
+### Worker Assistant
+
+AI-powered interpretation of complex agent outcomes when deterministic logic is insufficient:
+
+- **Deterministic First**: Standard if-else for clear success/failure cases
+- **AI Fallback**: Worker assistant analyzes ambiguous outcomes
+- **Trigger Conditions**:
+  - Successful outcome with warnings
+  - Successful outcome with many artifacts (>5)
+  - Messages containing "unclear", "partial", "ambiguous", "review"
+  - Failed outcome with structured error details
+  - Failed outcome with timeout/incomplete keywords
+- **Directive Types**: ADVANCE, RETRY, or BLOCK
+- **Graceful Degradation**: Falls back to configured action if unavailable
+- **Per-Policy Opt-Out**: Policies can disable for deterministic workflows
 
 ### Dual Storage Pattern
 
@@ -228,8 +293,14 @@ The Policy Capability Validator ensures workflow integrity by validating the com
 
 Enhanced transitions enable AI-driven workflow routing with conditional branching and intelligent phase selection:
 
-- **String Transitions**: Simple direct jumps between phases (e.g., `test → deploy`)
+- **String Transitions**: Simple direct jumps between phases (e.g., `test: "implement"` to jump back)
+- **Phase Jumping**: Ability to jump backward to earlier phases for rework
+  - **Backward Jumps** (`jump_back`): Return to earlier phases for rework (e.g., `test → implement`)
+  - **Jump Validation**: Target phase must exist in policy and be in `allowed_destinations` (for AI decisions)
+  - **No Forward Jumping**: Current implementation uses sequential `advance` for moving forward
 - **Decision Transitions**: AI agents analyze outcomes and select from `allowed_destinations`
+  - `jump_to_X` → Backward jump to phase X
+  - `advance_to_X` → Advance to phase X (sequential advance, not a skip)
 - **Outcome-Based Routing**: Different transitions for success, failure, partial success, and unclear outcomes
 - **Confidence Thresholds**: Automatic progression vs. human-in-the-loop decisions based on AI confidence scores
 - **Phase Messaging**: Automatic data exchange between phases when messaging enabled
@@ -418,11 +489,16 @@ Processes issues through workflow phases:
 
 Provides supervision and intervention:
 
+- **SDK Heartbeat Monitoring**: Tracks session activity via OpenCode SDK
+  - Queries session heartbeat timestamps
+  - Identifies sessions with stale heartbeats (configurable threshold)
+  - Works independently of lease-based coordination
+- **Liveness Broadcasting**: Updates Beads `last_heartbeat` state for healthy runs to coordinate with other workers
 - **Stall Detection**: Identifies hung processes via SDK heartbeat checks
-- **Liveness Broadcasting**: Updates Beads `last-heartbeat` state for healthy runs to coordinate with other workers
 - **Timeout Management**: Enforces phase deadlines
 - **HITL Coordination**: Manages human approvals
 - **Recovery**: Resumes interrupted runs
+- **Crash Recovery**: Automatic cleanup and re-queuing when sessions are abandoned
 
 ### UI Layer
 
