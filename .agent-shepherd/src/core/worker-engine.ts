@@ -70,6 +70,7 @@ export class WorkerEngine {
   private currentRunId: string | null = null;
   private currentPhase: string | null = null;
   private workerId: string;
+  private issueFilter?: (issue: BeadsIssue) => boolean;
 
   constructor(config?: WorkerConfig) {
     const systemConfig = loadConfig();
@@ -101,6 +102,13 @@ export class WorkerEngine {
     if (!process.env.ASHEP_WORKER_ID) {
       process.env.ASHEP_WORKER_ID = this.workerId;
     }
+  }
+
+  /**
+   * Set an issue filter for the worker (e.g. to restrict to a specific epic)
+   */
+  setIssueFilter(filter: (issue: BeadsIssue) => boolean): void {
+    this.issueFilter = filter;
   }
 
   /**
@@ -207,6 +215,7 @@ export class WorkerEngine {
       max_issues: limit || config.worker?.picking?.max_issues || this.config.max_concurrent_runs,
       prefer_epic_affinity: config.worker?.picking?.prefer_epic_affinity || true,
       crash_detection: config.worker?.crash_detection,
+      candidate_filter: this.issueFilter,
     };
 
     const issuePicker = getIssuePicker(pickingConfig);

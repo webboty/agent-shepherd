@@ -38,6 +38,7 @@ export interface PickerConfig {
   max_issues?: number;
   prefer_epic_affinity?: boolean;
   crash_detection?: CrashDetectionConfig;
+  candidate_filter?: (issue: BeadsIssue) => boolean;
 }
 
 /**
@@ -65,13 +66,18 @@ export class IssuePicker {
      // Filter out issues that are already in progress to prevent double-picking
      // bd ready returns in_progress issues, but we only want to start new work on open issues
      // unless we explicitly implement a "resume" logic in the picker (which we don't currently)
-     const openReadyIssues = allReadyIssues.filter(issue => issue.status === "open");
+     let candidates = allReadyIssues.filter(issue => issue.status === "open");
 
-     if (this.config.mode === "simple") {
-       return this.simplePick(openReadyIssues);
+     // Apply custom candidate filter (e.g. for epic scoping)
+     if (this.config.candidate_filter) {
+       candidates = candidates.filter(this.config.candidate_filter);
      }
 
-     return this.smartPick(openReadyIssues);
+     if (this.config.mode === "simple") {
+       return this.simplePick(candidates);
+     }
+
+     return this.smartPick(candidates);
    }
 
    /**
