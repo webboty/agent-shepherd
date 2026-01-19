@@ -33,7 +33,8 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const TEMP_TEST_DIR = join(__dirname, '..', 'tmp_test', 'beads-isolation');
+// Fix incorrect path resolution: Go up two levels from helpers/ (tests/helpers) -> .agent-shepherd/
+const TEMP_TEST_DIR = join(__dirname, '..', '..', 'tmp_test', 'beads-isolation');
 
 export interface BeadsTestEnv {
   tempDir: string;
