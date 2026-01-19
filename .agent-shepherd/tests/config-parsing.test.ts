@@ -1,7 +1,7 @@
 import { expect, test, describe, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
-import { loadConfig } from "../.agent-shepherd/src/core/config";
+import { loadConfig } from "../src/core/config";
 
 const TEST_DIR = join(process.cwd(), "tmp_test_config");
 

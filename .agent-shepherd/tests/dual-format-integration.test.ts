@@ -1,8 +1,8 @@
 import { expect, test, describe, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
-import { loadConfig } from "../.agent-shepherd/src/core/config";
-import { ConfigurationValidator } from "../.agent-shepherd/src/core/config-validator";
+import { loadConfig } from "../src/core/config";
+import { ConfigurationValidator } from "../src/core/config-validator";
 
 const TEST_DIR = join(process.cwd(), "tmp_test_integration_dual_format");
 
