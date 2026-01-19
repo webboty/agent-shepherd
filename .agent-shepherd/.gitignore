@@ -27,6 +27,7 @@ runs.jsonl
 decisions.jsonl
 
 # Temporary files
+run/
 *.tmp
 *.temp
 .DS_Store
