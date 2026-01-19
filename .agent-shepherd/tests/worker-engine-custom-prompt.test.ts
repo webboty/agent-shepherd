@@ -69,9 +69,8 @@ default_policy: default
 
       const instructions = (workerEngine as any).buildInstructions(issue, 'plan', 'default');
 
-      expect(instructions).toContain('# Task: Test Issue');
-      expect(instructions).toContain('## Issue Details');
-      expect(instructions).toContain('## Current Phase');
+      expect(instructions).toContain('# Task Information');
+      expect(instructions).toContain('**Issue**: Test Issue');
       expect(instructions).toContain('**plan**');
     });
   });
