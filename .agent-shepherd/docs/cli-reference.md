@@ -53,10 +53,13 @@ Start the autonomous worker engine that processes issues from Beads.
 ```bash
 ashep worker
 ashep worker --epic PROJ-123
+ashep worker --policy test-policy
+ashep worker --epic PROJ-123 --policy test-policy
 ```
 
 **Options:**
 - `--epic <id>`: Restrict the worker to only process issues within a specific epic's subtree. Useful for focused testing or phased rollouts.
+- `--policy <name>`: Force all processed issues to use the specified policy, overriding any labels or default mappings. Useful for testing new workflow logic.
 
 **Behavior:**
 - Polls Beads for ready issues every 30 seconds (configurable)
@@ -64,14 +67,16 @@ ashep worker --epic PROJ-123
 - Automatically selects agents and manages workflow phases
 - Handles retries and failures according to policy
 - Runs indefinitely until interrupted (Ctrl+C)
-- If `--epic` is provided, it applies the smart picker logic specifically to that epic's scope (respecting dependencies and hierarchy within the epic).
+- If `--epic` is provided, it applies the smart picker logic specifically to that epic's scope.
+- If `--policy` is provided, it forces that policy for all issues. Priority order: CLI Flag > Beads Label > Issue Type > Default.
 
 **Output:**
 ```
 Starting Agent Shepherd Worker...
 🔍 Scope restricted to epic subtree: PROJ-123
+🔒 Forcing policy: test-policy
 Processing issue: ISSUE-123 - Implement user authentication
-Using policy 'default' at phase 'plan'
+Using policy 'test-policy' (CLI override) at phase 'plan'
 Selected agent: architect-expert (priority: 20)
 Created OpenCode session: session-abc123
 Run completed successfully
