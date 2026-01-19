@@ -20,7 +20,18 @@ describe('AgentRegistry', () => {
     tempDir = join(TEMP_DIR, 'temp-test');
     agentsPath = join(tempDir, 'agents.yaml');
     
+    // Clean up if exists
+    if (require('fs').existsSync(tempDir)) {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+
     mkdirSync(tempDir, { recursive: true });
+    // Create agents directory to ensure findAgentsDir finds this local dir
+    // and doesn't fall back to real local/global dirs
+    mkdirSync(join(tempDir, 'agents'), { recursive: true });
+    
+    // Set ASHEP_DIR to isolate tests
+    process.env.ASHEP_DIR = tempDir;
     
     // Create test agents file
     const testAgents = `
