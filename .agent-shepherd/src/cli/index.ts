@@ -395,10 +395,14 @@ function showHelp(specificCommand?: string): void {
   ];
 
   const pluginCommands: Record<string, string[]> = {};
+  let maxCommandLen = 0;
 
   for (const [name, def] of Object.entries(COMMANDS)) {
     if (def.hidden) continue;
     
+    // Track max length for global alignment
+    if (name.length > maxCommandLen) maxCommandLen = name.length;
+
     if (def.category === "Plugins") {
       const pluginName = def.plugin || "Other Plugins";
       if (!pluginCommands[pluginName]) pluginCommands[pluginName] = [];
@@ -417,11 +421,10 @@ function showHelp(specificCommand?: string): void {
 
     console.log(`  \x1b[33m${cat} Commands\x1b[0m`);
     
-    const maxLen = Math.max(...cmds.map(c => c.length));
-    
     for (const cmd of cmds.sort()) {
       const def = COMMANDS[cmd];
-      console.log(`    \x1b[36m${cmd.padEnd(maxLen + 2)}\x1b[0m ${def.description}`);
+      // Note: We use maxCommandLen for consistent padding across all categories
+      console.log(`    \x1b[36m${cmd.padEnd(maxCommandLen + 2)}\x1b[0m ${def.description}`);
     }
     console.log();
   }
@@ -434,15 +437,19 @@ function showHelp(specificCommand?: string): void {
     for (const pluginName of pluginNames) {
       console.log(`    \x1b[90m${pluginName}\x1b[0m`);
       const cmds = pluginCommands[pluginName];
-      const maxLen = Math.max(...cmds.map(c => c.length));
       
       for (const cmd of cmds.sort()) {
         const def = COMMANDS[cmd];
-        console.log(`      \x1b[36m${cmd.padEnd(maxLen + 2)}\x1b[0m ${def.description}`);
+        console.log(`      \x1b[36m${cmd.padEnd(maxCommandLen + 2)}\x1b[0m ${def.description}`);
       }
       console.log();
     }
   }
+
+  console.log(`  \x1b[33mGlobal Options\x1b[0m`);
+  console.log(`    \x1b[36m${"--help, -h".padEnd(maxCommandLen + 2)}\x1b[0m Show help information`);
+  console.log(`    \x1b[36m${"--version".padEnd(maxCommandLen + 2)}\x1b[0m Show installed version`);
+  console.log();
 
   console.log(`  \x1b[33mExamples\x1b[0m`);
   console.log(`    \x1b[90m# One-command setup\x1b[0m`);
@@ -458,7 +465,7 @@ function showHelp(specificCommand?: string): void {
   console.log(`    ashep ui --port 4000`);
   console.log();
 
-  console.log(`  For more help on a specific command:`);
+  console.log(`  For more help on a specific command including its flags:`);
   console.log(`    ashep help <command>`);
   console.log(`    ashep <command> --help\n`);
   
@@ -2741,8 +2748,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Handle command-specific help flag (ashep cmd --help)
-  if (args.includes("--help") || args.includes("-h")) {
+  // Handle command-specific help pattern (ashep cmd help OR ashep cmd --help)
+  if (args.includes("--help") || args.includes("-h") || args[1] === "help") {
     showHelp(command);
     return;
   }
