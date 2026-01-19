@@ -93,7 +93,7 @@ mock.module("../src/core/beads", () => ({
 }));
 
 const __dirname = import.meta.dir;
-const TEMP_DIR = join(__dirname, "..", "..", "tmp_test");
+const TEMP_DIR = join(__dirname, "..", "tmp_test");
 
 describe("WorkerEngine Policy Override", () => {
   let worker: WorkerEngine;
