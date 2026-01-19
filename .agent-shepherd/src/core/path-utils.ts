@@ -131,20 +131,32 @@ export function getConfigDir(): string {
 }
 
 export function getConfigPath(filename: string): string {
-  const newPath = join(findConfigDir(), filename);
-  if (existsSync(newPath)) {
-    return newPath;
-  }
-
-  // Fallback to old location for backward compatibility
+  const configDir = findConfigDir();
   const agentShepherdDir = findAgentShepherdDir();
-  const oldPath = join(agentShepherdDir, filename);
-  if (existsSync(oldPath)) {
-    return oldPath;
+
+  const ext = extname(filename);
+  const base = basename(filename, ext);
+  
+  // Priority: The provided filename, then alternative extensions
+  // We filter out the empty string in case filename has no extension
+  const extensions = [ext, ".yaml", ".yml", ".json", ".json5"]
+    .filter((e, i, a) => e && a.indexOf(e) === i); // Filter empty and duplicates
+
+  // 1. Check configDir for all variants
+  for (const e of extensions) {
+    const p = join(configDir, base + e);
+    if (existsSync(p)) return p;
   }
 
-  // Return new path (will be created when needed)
-  return newPath;
+  // 2. Check legacy dir for all variants
+  for (const e of extensions) {
+    const p = join(agentShepherdDir, base + e);
+    if (existsSync(p)) return p;
+  }
+
+  // 3. Default to the original filename in configDir
+  // This ensures that if we are creating a new file, we use the requested name
+  return join(configDir, filename);
 }
 
 /**

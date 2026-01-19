@@ -8,6 +8,36 @@ The `config.yaml` file contains core system settings for Agent Shepherd, control
 .agent-shepherd/config/config.yaml
 ```
 
+## Configuration File Formats
+
+Agent Shepherd supports multiple configuration formats for flexibility and backward compatibility.
+
+### Supported Formats
+
+- **YAML** (`.yaml`, `.yml`): The default format. Recommended for human readability and comments.
+- **JSON** (`.json`): Strict JSON format. Good for programmatic generation.
+- **JSON5** (`.json5`): JSON with comments and relaxed syntax. Good balance of readability and structure.
+
+### File Resolution Priority
+
+When loading configuration files (e.g., `config.yaml`, `agents.yaml`), the system searches for files in the following order of precedence:
+
+1. Exact filename match (e.g., `config.yaml`)
+2. `.yaml` extension
+3. `.yml` extension
+4. `.json` extension
+5. `.json5` extension
+
+This allows you to replace `config.yaml` with `config.json` without changing any code or command arguments.
+
+### Converting Formats
+
+You can convert between formats using the CLI:
+
+```bash
+ashep convert-config config.yaml config.json
+```
+
 ## Environment Variables
 
 Agent Shepherd supports environment variables for runtime configuration and testing.

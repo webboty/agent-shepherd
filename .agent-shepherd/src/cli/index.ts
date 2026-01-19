@@ -4,6 +4,8 @@
  * Main entry point for all commands
  */
 
+import { parse as parseYAML, stringify as stringifyYAML } from "yaml";
+import JSON5 from "json5";
 import { getWorkerEngine } from "../core/worker-engine.ts";
 import { getMonitorEngine } from "../core/monitor-engine.ts";
 import { getIssue } from "../core/beads.ts";
@@ -132,6 +134,11 @@ const COMMANDS: Record<string, CommandDef> = {
     description: "Sync agent registry with OpenCode",
     category: "System",
     usage: "ashep sync-agents"
+  },
+  "convert-config": {
+    description: "Convert config file between YAML and JSON formats",
+    category: "System",
+    usage: "ashep convert-config <source> <destination>"
   },
   "cleanup-metrics": {
     description: "Show cleanup statistics and performance metrics",
@@ -2904,7 +2911,64 @@ async function cmdAgentActivate(name: string): Promise<void> {
 }
 
 /**
- * Create agent command
+ * Convert config command - convert between YAML and JSON
+ */
+async function cmdConvertConfig(source: string, destination: string): Promise<void> {
+  if (!source || !destination) {
+    console.error("Usage: ashep convert-config <source> <destination>");
+    process.exit(1);
+  }
+
+  const sourcePath = path.resolve(source);
+  const destPath = path.resolve(destination);
+
+  if (!existsSync(sourcePath)) {
+    console.error(`Source file not found: ${sourcePath}`);
+    process.exit(1);
+  }
+
+  try {
+    const sourceContent = readFileSync(sourcePath, "utf-8");
+    const sourceExt = path.extname(sourcePath).toLowerCase();
+    const destExt = path.extname(destPath).toLowerCase();
+
+    let data: any;
+
+    // Parse source
+    if (sourceExt === ".json") {
+      data = JSON.parse(sourceContent);
+    } else if (sourceExt === ".json5") {
+      data = JSON5.parse(sourceContent);
+    } else if (sourceExt === ".yaml" || sourceExt === ".yml") {
+      data = parseYAML(sourceContent);
+    } else {
+      console.error(`Unsupported source format: ${sourceExt}`);
+      process.exit(1);
+    }
+
+    // Stringify to destination
+    let destContent: string;
+    if (destExt === ".json") {
+      destContent = JSON.stringify(data, null, 2);
+    } else if (destExt === ".json5") {
+      destContent = JSON5.stringify(data, null, 2); // JSON5 can omit quotes for keys
+    } else if (destExt === ".yaml" || destExt === ".yml") {
+      destContent = stringifyYAML(data);
+    } else {
+      console.error(`Unsupported destination format: ${destExt}`);
+      process.exit(1);
+    }
+
+    writeFileSync(destPath, destContent);
+    console.log(`Converted ${source} to ${destination}`);
+  } catch (error) {
+    console.error("Conversion failed:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Cleanup metrics command
  */
 async function cmdAgentCreate(name: string): Promise<void> {
   const { findAgentsDir, findLocalAgentShepherdDir } = await import("../core/path-utils.ts");
@@ -3189,6 +3253,10 @@ async function main(): Promise<void> {
 
     case "heartbeat":
       await cmdHeartbeat();
+      break;
+
+    case "convert-config":
+      await cmdConvertConfig(args[1], args[2]);
       break;
 
     case "cleanup-metrics":

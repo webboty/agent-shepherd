@@ -227,6 +227,24 @@ Synced agents include metadata about their type and automatically assigned capab
 - **Subagents**: explore, general
 - **Custom agents**: Any user-defined agents in `.opencode/agent/`
 
+### `ashep convert-config <source> <destination>`
+
+Convert a configuration file between YAML and JSON formats.
+
+**Usage:**
+```bash
+ashep convert-config config.yaml config.json
+ashep convert-config config.json config.yaml
+ashep convert-config config.json5 config.json
+```
+
+**Behavior:**
+- Reads the source file based on its extension (.yaml, .yml, .json, .json5)
+- Parses the content
+- Writes to the destination file in the target format determined by its extension
+- Supports YAML, JSON, and JSON5 formats
+- Useful for migrating configuration between formats or for programmatic generation
+
 ### `ashep validate-policy-chain`
 
 Validate the policy-capability-agent chain integrity to ensure all workflow requirements can be fulfilled.

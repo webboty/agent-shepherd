@@ -1,6 +1,7 @@
 import { parse as parseYAML } from "yaml";
+import JSON5 from "json5";
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { join, extname } from "path";
 import { getConfigPath } from "./path-utils";
 import type { CrashDetectionConfig } from "./crash-detector";
 
@@ -148,9 +149,21 @@ export interface AgentShepherdConfig {
  * Load configuration from .agent-shepherd/config.yaml
  */
 export function loadConfig(configDir?: string): AgentShepherdConfig {
-  const configPath = configDir
-    ? join(configDir, ".agent-shepherd", "config.yaml")
-    : getConfigPath("config.yaml");
+  let configPath: string;
+
+  if (configDir) {
+    const base = join(configDir, ".agent-shepherd", "config");
+    const extensions = [".yaml", ".yml", ".json", ".json5"];
+    configPath = base + ".yaml"; // Default
+    for (const ext of extensions) {
+      if (existsSync(base + ext)) {
+        configPath = base + ext;
+        break;
+      }
+    }
+  } else {
+    configPath = getConfigPath("config.yaml");
+  }
 
   if (!existsSync(configPath)) {
     throw new Error(`Configuration file not found: ${configPath}`);
@@ -158,7 +171,16 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
 
   try {
     const content = readFileSync(configPath, "utf-8");
-    const config = parseYAML(content) as AgentShepherdConfig;
+    const ext = extname(configPath).toLowerCase();
+    
+    let config: AgentShepherdConfig;
+    if (ext === ".json") {
+      config = JSON.parse(content) as AgentShepherdConfig;
+    } else if (ext === ".json5") {
+      config = JSON5.parse(content) as AgentShepherdConfig;
+    } else {
+      config = parseYAML(content) as AgentShepherdConfig;
+    }
 
     // Set defaults for missing values
     return {

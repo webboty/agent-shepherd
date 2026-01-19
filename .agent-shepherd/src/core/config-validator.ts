@@ -1,7 +1,9 @@
 import Ajv, { ErrorObject } from "ajv";
 import addFormats from "ajv-formats";
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { join, extname } from "path";
+import JSON5 from "json5";
+import { parse as parseYAML } from "yaml";
 
 interface ValidationResult {
   valid: boolean;
@@ -82,24 +84,38 @@ export class ConfigurationValidator {
     // Define validation tasks
     const validationTasks = [
       {
-        config: 'config.yaml',
+        baseName: 'config',
         schema: 'schemas/config.schema.json',
         description: 'Main configuration'
       },
       {
-        config: 'policies.yaml',
+        baseName: 'policies',
         schema: 'schemas/policies.schema.json',
         description: 'Policy definitions'
       },
       {
-        config: 'agents.yaml',
+        baseName: 'agents',
         schema: 'schemas/agents.schema.json',
         description: 'Agent registry'
       }
     ];
 
     for (const task of validationTasks) {
-      const configPath = join(baseDir, task.config);
+      // Find the config file using getConfigPath logic
+      // Note: getConfigPath is not imported here to avoid circular dependencies if it depends on config
+      // But we can replicate the logic: check config dir for extensions
+      
+      const extensions = [".yaml", ".yml", ".json", ".json5"];
+      let configPath = join(baseDir, task.baseName + ".yaml"); // Default for missing
+      
+      for (const ext of extensions) {
+        const p = join(baseDir, task.baseName + ext);
+        if (existsSync(p)) {
+          configPath = p;
+          break;
+        }
+      }
+
       // Try to find schema in multiple locations (local first, then installation dir)
       const localAgentShepherdDir = findAgentShepherdDir();
       let schemaPath = join(localAgentShepherdDir, task.schema);
@@ -114,8 +130,8 @@ export class ConfigurationValidator {
             keyword: 'missing-file',
             instancePath: '',
             schemaPath: '',
-            params: { file: task.config },
-            message: `Configuration file ${task.config} not found`
+            params: { file: task.baseName },
+            message: `Configuration file for ${task.baseName} not found`
           }],
           summary: `❌ ${task.description}: File not found`
         });
@@ -137,7 +153,7 @@ export class ConfigurationValidator {
         continue;
       }
 
-      const result = await this.validateYAMLConfig(configPath, schemaPath);
+      const result = await this.validateAnyConfig(configPath, schemaPath);
       result.summary = `${result.valid ? '✅' : '❌'} ${task.description}: ${result.summary}`;
       results.push(result);
     }
@@ -147,7 +163,7 @@ export class ConfigurationValidator {
     const enabledDir = join(workflowsDir, 'enabled');
     
     if (existsSync(enabledDir)) {
-      const workflowFiles = scanRecursive(enabledDir, ['.yaml', '.yml']);
+      const workflowFiles = scanRecursive(enabledDir, ['.yaml', '.yml', '.json', '.json5']);
       
       // Find policies schema
       const localAgentShepherdDir = findAgentShepherdDir();
@@ -170,7 +186,7 @@ export class ConfigurationValidator {
     const enabledAgentsDir = join(agentsDir, 'enabled');
     
     if (existsSync(enabledAgentsDir)) {
-      const agentFiles = scanRecursive(enabledAgentsDir, ['.yaml', '.yml']);
+      const agentFiles = scanRecursive(enabledAgentsDir, ['.yaml', '.yml', '.json', '.json5']);
       
       // Find agents schema
       const localAgentShepherdDir = findAgentShepherdDir();
@@ -182,7 +198,7 @@ export class ConfigurationValidator {
       if (existsSync(agentsSchemaPath)) {
         for (const file of agentFiles) {
           // Agent files use the same schema as agents.yaml
-          const result = await this.validateYAMLConfig(file, agentsSchemaPath);
+          const result = await this.validateAnyConfig(file, agentsSchemaPath);
           result.summary = `${result.valid ? '✅' : '❌'} Agent file ${file}: ${result.summary}`;
           results.push(result);
         }
@@ -279,6 +295,44 @@ export class ConfigurationValidator {
   }
 
   /**
+   * Validate any supported config format (YAML, JSON, JSON5)
+   */
+  async validateAnyConfig(
+    filePath: string,
+    schemaPath: string
+  ): Promise<ValidationResult> {
+    try {
+      const content = readFileSync(filePath, 'utf-8');
+      const ext = extname(filePath).toLowerCase();
+      let config: any;
+
+      if (ext === '.json') {
+        config = JSON.parse(content);
+      } else if (ext === '.json5') {
+        config = JSON5.parse(content);
+      } else if (ext === '.yaml' || ext === '.yml') {
+        config = parseYAML(content);
+      } else {
+        throw new Error(`Unsupported file extension: ${ext}`);
+      }
+
+      return this.validateConfigObject(config, schemaPath, filePath);
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [{
+          keyword: 'parse-error',
+          instancePath: '',
+          schemaPath: '',
+          params: {},
+          message: error instanceof Error ? error.message : String(error)
+        }],
+        summary: `Failed to parse ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  /**
    * Validate YAML configuration (convert to JSON for validation)
    */
   async validateYAMLConfig(
@@ -312,14 +366,23 @@ export class ConfigurationValidator {
    * Validate individual workflow file
    */
   async validateWorkflowFile(
-    yamlPath: string,
+    filePath: string,
     schemaPath: string
   ): Promise<ValidationResult> {
     try {
-      // Load and parse YAML
-      const yamlContent = readFileSync(yamlPath, 'utf-8');
-      const { parse } = await import('yaml');
-      const config = parse(yamlContent);
+      const content = readFileSync(filePath, 'utf-8');
+      const ext = extname(filePath).toLowerCase();
+      let config: any;
+
+      if (ext === '.json') {
+        config = JSON.parse(content);
+      } else if (ext === '.json5') {
+        config = JSON5.parse(content);
+      } else if (ext === '.yaml' || ext === '.yml') {
+        config = parseYAML(content);
+      } else {
+        throw new Error(`Unsupported file extension: ${ext}`);
+      }
 
       if (!config || typeof config !== 'object') {
         return {
@@ -356,18 +419,18 @@ export class ConfigurationValidator {
         }
       };
 
-      return this.validateConfigObject(wrappedConfig, schemaPath, yamlPath);
+      return this.validateConfigObject(wrappedConfig, schemaPath, filePath);
     } catch (error) {
       return {
         valid: false,
         errors: [{
-          keyword: 'yaml-error',
+          keyword: 'parse-error',
           instancePath: '',
           schemaPath: '',
           params: {},
           message: error instanceof Error ? error.message : String(error)
         }],
-        summary: `Failed to validate ${yamlPath}: ${error instanceof Error ? error.message : String(error)}`
+        summary: `Failed to validate ${filePath}: ${error instanceof Error ? error.message : String(error)}`
       };
     }
   }
