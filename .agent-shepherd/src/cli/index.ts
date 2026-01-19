@@ -1304,8 +1304,8 @@ async function cmdShowPolicyTree(format?: string): Promise<void> {
       console.log("Summary:");
       console.log(`  Policies: ${summary.validPolicies}/${summary.totalPolicies} valid`);
       console.log(`  Phases: ${summary.totalPhases}`);
-      console.log(`  Capabilities: ${summary.totalCapabilities}`);
-      console.log(`  Agents: ${summary.totalAgents}`);
+      console.log(`  Unique Capabilities: ${summary.uniqueCapabilities}`);
+      console.log(`  Unique Agents: ${summary.uniqueAgents}`);
 
       if (summary.policiesWithWarnings > 0 || summary.policiesWithErrors > 0) {
         console.log(`  Issues: ${summary.policiesWithWarnings} warnings, ${summary.policiesWithErrors} errors`);

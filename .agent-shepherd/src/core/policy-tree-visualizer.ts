@@ -228,8 +228,8 @@ export class PolicyTreeVisualizer {
    generateSummary(): {
      totalPolicies: number;
      totalPhases: number;
-     totalCapabilities: number;
-     totalAgents: number;
+     uniqueCapabilities: number;
+     uniqueAgents: number;
      validPolicies: number;
      policiesWithWarnings: number;
      policiesWithErrors: number;
@@ -240,11 +240,11 @@ export class PolicyTreeVisualizer {
 
     let totalPolicies = 0;
     let totalPhases = 0;
-    let totalCapabilities = 0;
-    let totalAgents = 0;
     let validPolicies = 0;
     let policiesWithWarnings = 0;
     let policiesWithErrors = 0;
+    const capabilities = new Set<string>();
+    const agents = new Set<string>();
     const deadEndCapabilities: string[] = [];
     const inactiveAgents: string[] = [];
 
@@ -260,13 +260,16 @@ export class PolicyTreeVisualizer {
           totalPhases++;
           break;
         case 'capability':
-          totalCapabilities++;
+          capabilities.add(node.name);
           if (node.status === 'error') {
             deadEndCapabilities.push(node.name);
           }
           break;
         case 'agent':
-          totalAgents++;
+          // Only count real agents, not "No agents available" placeholders
+          if (!node.id.startsWith('no-agents-')) {
+            agents.add(node.id);
+          }
           if (node.status === 'inactive') {
             inactiveAgents.push(node.name);
           }
@@ -283,8 +286,8 @@ export class PolicyTreeVisualizer {
     return {
       totalPolicies,
       totalPhases,
-      totalCapabilities,
-      totalAgents,
+      uniqueCapabilities: capabilities.size,
+      uniqueAgents: agents.size,
       validPolicies,
       policiesWithWarnings,
       policiesWithErrors,

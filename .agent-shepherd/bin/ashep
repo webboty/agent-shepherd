@@ -43306,11 +43306,11 @@ class PolicyTreeVisualizer {
     const tree = this.generateTree();
     let totalPolicies = 0;
     let totalPhases = 0;
-    let totalCapabilities = 0;
-    let totalAgents = 0;
     let validPolicies = 0;
     let policiesWithWarnings = 0;
     let policiesWithErrors = 0;
+    const capabilities = new Set;
+    const agents = new Set;
     const deadEndCapabilities = [];
     const inactiveAgents = [];
     const traverse = (node) => {
@@ -43328,13 +43328,15 @@ class PolicyTreeVisualizer {
           totalPhases++;
           break;
         case "capability":
-          totalCapabilities++;
+          capabilities.add(node.name);
           if (node.status === "error") {
             deadEndCapabilities.push(node.name);
           }
           break;
         case "agent":
-          totalAgents++;
+          if (!node.id.startsWith("no-agents-")) {
+            agents.add(node.id);
+          }
           if (node.status === "inactive") {
             inactiveAgents.push(node.name);
           }
@@ -43348,8 +43350,8 @@ class PolicyTreeVisualizer {
     return {
       totalPolicies,
       totalPhases,
-      totalCapabilities,
-      totalAgents,
+      uniqueCapabilities: capabilities.size,
+      uniqueAgents: agents.size,
       validPolicies,
       policiesWithWarnings,
       policiesWithErrors,
@@ -48519,8 +48521,8 @@ async function cmdShowPolicyTree(format) {
       console.log("Summary:");
       console.log(`  Policies: ${summary.validPolicies}/${summary.totalPolicies} valid`);
       console.log(`  Phases: ${summary.totalPhases}`);
-      console.log(`  Capabilities: ${summary.totalCapabilities}`);
-      console.log(`  Agents: ${summary.totalAgents}`);
+      console.log(`  Unique Capabilities: ${summary.uniqueCapabilities}`);
+      console.log(`  Unique Agents: ${summary.uniqueAgents}`);
       if (summary.policiesWithWarnings > 0 || summary.policiesWithErrors > 0) {
         console.log(`  Issues: ${summary.policiesWithWarnings} warnings, ${summary.policiesWithErrors} errors`);
       }
