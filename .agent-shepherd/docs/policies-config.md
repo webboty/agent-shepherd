@@ -25,9 +25,20 @@ For complex setups with many workflows, you can split policies into individual f
         └── experimental.yaml
 ```
 
+### Loading Logic (Shadowing)
+
+Agent Shepherd uses a **Shadowing (Override)** model for loading files to ensure project reproducibility:
+
+1. **Local Project Priority**: If your project has a local `.agent-shepherd/workflows/` directory, the system loads files **ONLY** from there. The global user directory (`~/.agent-shepherd/workflows/`) is completely **ignored**.
+   - *Why?* This ensures your project's behavior is self-contained and doesn't secretly depend on personal global configuration.
+
+2. **Global Fallback**: If (and only if) your local project does **not** have an `.agent-shepherd/workflows/` directory, the system falls back to loading from the global user directory.
+
+**Note**: `ashep init` creates the local directory structure, effectively enabling "Local Only" mode for that project.
+
 ### Loading Rules
 
-1. **Recursive Scanning**: All `.yaml` and `.yml` files in `.agent-shepherd/workflows/enabled/` (and subdirectories) are loaded automatically.
+1. **Recursive Scanning**: All `.yaml` and `.yml` files in the active `workflows/enabled/` directory (and subdirectories) are loaded automatically.
 2. **File Format**: Each file should contain a single policy definition (same schema as a policy entry in `policies.yaml`).
 3. **Precedence**: Policies defined in `config/policies.yaml` take precedence over workflow files if names conflict. This allows overriding file-based workflows without deleting them.
 4. **Validation**: Workflow files undergo the same validation as standard policies.

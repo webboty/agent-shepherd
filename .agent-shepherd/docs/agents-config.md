@@ -25,6 +25,17 @@ For complex setups with many agents, you can split your agent configuration into
 - **`agents/enabled/`**: Any `.yaml` or `.yml` files in this directory (and subdirectories) are automatically loaded.
 - **`agents/available/`**: Storage for inactive or archived agent files. Files here are ignored by the system.
 
+### Loading Logic (Shadowing)
+
+Agent Shepherd uses a **Shadowing (Override)** model for loading files to ensure project reproducibility:
+
+1. **Local Project Priority**: If your project has a local `.agent-shepherd/agents/` directory, the system loads files **ONLY** from there. The global user directory (`~/.agent-shepherd/agents/`) is completely **ignored**.
+   - *Why?* This ensures your project's behavior is self-contained and doesn't secretly depend on personal global configuration.
+
+2. **Global Fallback**: If (and only if) your local project does **not** have an `.agent-shepherd/agents/` directory, the system falls back to loading from the global user directory.
+
+**Note**: `ashep init` creates the local directory structure, effectively enabling "Local Only" mode for that project.
+
 ### Precedence Rules
 
 1. **`config/agents.yaml`**: Highest priority. If an agent ID is defined here, it overwrites any definition found in `enabled/`.

@@ -821,6 +821,8 @@ function cmdInit(): void {
   const configDir = join(process.cwd(), ".agent-shepherd");
   const configSubDir = join(configDir, "config");
   const pluginsDir = join(configDir, "plugins");
+  const agentsDir = join(configDir, "agents");
+  const workflowsDir = join(configDir, "workflows");
 
   // Check if config already exists
   const configExists = existsSync(configSubDir);
@@ -836,6 +838,19 @@ function cmdInit(): void {
   if (!existsSync(pluginsDir)) {
     mkdirSync(pluginsDir, { recursive: true });
     console.log(`✅ Created directory: ${pluginsDir}`);
+  }
+
+  // Create agents and workflows directories (for files extension)
+  if (!existsSync(agentsDir)) {
+    mkdirSync(join(agentsDir, "enabled"), { recursive: true });
+    mkdirSync(join(agentsDir, "available"), { recursive: true });
+    console.log(`✅ Created directory: ${agentsDir}`);
+  }
+
+  if (!existsSync(workflowsDir)) {
+    mkdirSync(join(workflowsDir, "enabled"), { recursive: true });
+    mkdirSync(join(workflowsDir, "available"), { recursive: true });
+    console.log(`✅ Created directory: ${workflowsDir}`);
   }
 
   // Copy schemas from installation to project if not exists
@@ -2676,38 +2691,42 @@ async function cmdWorkflowActivate(name: string): Promise<void> {
  * Create workflow command
  */
 async function cmdWorkflowCreate(name: string): Promise<void> {
-  const workflowsDir = findWorkflowsDir();
-  const enabledDir = join(workflowsDir, "enabled");
+  const { findWorkflowsDir, findLocalAgentShepherdDir } = await import("../core/path-utils.ts");
+  const path = await import("path");
+  const { existsSync, mkdirSync, writeFileSync } = await import("fs");
+
+  // Prefer local project directory if it exists, otherwise fallback to global/standard discovery
+  let workflowsDir: string;
+  const localDir = findLocalAgentShepherdDir();
+  
+  if (localDir) {
+    workflowsDir = path.join(localDir, "workflows");
+  } else {
+    workflowsDir = findWorkflowsDir();
+  }
+
+  const enabledDir = path.join(workflowsDir, "enabled");
   
   if (!existsSync(enabledDir)) {
     mkdirSync(enabledDir, { recursive: true });
   }
   
-  const filePath = join(enabledDir, `${name}.yaml`);
+  const filePath = path.join(enabledDir, `${name}.yaml`);
   
   if (existsSync(filePath)) {
     console.error(`Workflow file '${filePath}' already exists`);
     process.exit(1);
   }
   
-  const template = `name: ${name}
-description: New workflow created via CLI
-phases:
-  - name: plan
-    description: Initial planning phase
-    capabilities:
-      - planning
-    timeout_multiplier: 1.0
-
-  - name: implement
-    description: Implementation phase
-    capabilities:
-      - coding
-    timeout_multiplier: 2.0
-
-retry:
-  max_attempts: 3
-  backoff_strategy: exponential
+  const template = `policies:
+  ${name}:
+    name: ${name}
+    description: New workflow created via CLI
+    phases:
+      - name: plan
+        capabilities: [planning]
+      - name: implement
+        capabilities: [coding]
 `;
 
   try {
@@ -2888,11 +2907,20 @@ async function cmdAgentActivate(name: string): Promise<void> {
  * Create agent command
  */
 async function cmdAgentCreate(name: string): Promise<void> {
-  const { findAgentsDir } = await import("../core/path-utils.ts");
+  const { findAgentsDir, findLocalAgentShepherdDir } = await import("../core/path-utils.ts");
   const path = await import("path");
   const { existsSync, mkdirSync, writeFileSync } = await import("fs");
 
-  const agentsDir = findAgentsDir();
+  // Prefer local project directory if it exists, otherwise fallback to global/standard discovery
+  let agentsDir: string;
+  const localDir = findLocalAgentShepherdDir();
+  
+  if (localDir) {
+    agentsDir = path.join(localDir, "agents");
+  } else {
+    agentsDir = findAgentsDir();
+  }
+
   const enabledDir = path.join(agentsDir, "enabled");
   
   if (!existsSync(enabledDir)) {
