@@ -71,6 +71,7 @@ export class WorkerEngine {
   private currentPhase: string | null = null;
   private workerId: string;
   private issueFilter?: (issue: BeadsIssue) => boolean;
+  private forcePolicy?: string;
 
   constructor(config?: WorkerConfig) {
     const systemConfig = loadConfig();
@@ -109,6 +110,13 @@ export class WorkerEngine {
    */
   setIssueFilter(filter: (issue: BeadsIssue) => boolean): void {
     this.issueFilter = filter;
+  }
+
+  /**
+   * Set a forced policy override (CLI flag beats all other policy selection)
+   */
+  setForcePolicy(policy: string): void {
+    this.forcePolicy = policy;
   }
 
   /**
@@ -228,8 +236,17 @@ export class WorkerEngine {
   async processIssue(issue: BeadsIssue): Promise<ProcessResult> {
     console.log(`Processing issue: ${issue.id} - ${issue.title}`);
 
-    // 1. Resolve policy and phase using matchPolicy
-    const policy = this.policyEngine.matchPolicy(issue);
+    // 1. Resolve policy and phase
+    // Priority: 1. CLI Force Policy, 2. Beads Label, 3. Issue Type Mapping, 4. Default
+    let policy: string;
+    
+    if (this.forcePolicy) {
+      policy = this.forcePolicy;
+      console.log(`Using forced policy '${policy}' (CLI override)`);
+    } else {
+      policy = this.policyEngine.matchPolicy(issue);
+    }
+
     const phases = this.policyEngine.getPhaseSequence(policy);
 
     // Check for existing phase label to resume from

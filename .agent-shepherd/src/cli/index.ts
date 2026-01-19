@@ -172,11 +172,15 @@ Configuration guide: docs/cli-reference.md
 /**
  * Worker command - start autonomous worker loop
  */
-async function cmdWorker(options?: { epic?: string }): Promise<void> {
+async function cmdWorker(options?: { epic?: string, policy?: string }): Promise<void> {
   console.log("Starting Agent Shepherd Worker...");
 
   if (options?.epic) {
     console.log(`🔍 Scope restricted to epic subtree: ${options.epic}`);
+  }
+  
+  if (options?.policy) {
+    console.log(`🔒 Forcing policy: ${options.policy}`);
   }
 
   // Validate configuration first
@@ -190,6 +194,10 @@ async function cmdWorker(options?: { epic?: string }): Promise<void> {
       // Allow the epic itself and its children
       return issue.id === options.epic || issue.id.startsWith(`${options.epic}.`);
     });
+  }
+  
+  if (options?.policy) {
+    worker.setForcePolicy(options.policy);
   }
 
   // Initialize cleanup engine
@@ -2188,6 +2196,13 @@ async function main(): Promise<void> {
         const idx = args.indexOf("--epic");
         if (idx !== -1 && idx + 1 < args.length) {
           options.epic = args[idx + 1];
+        }
+      }
+      
+      if (args.includes("--policy")) {
+        const idx = args.indexOf("--policy");
+        if (idx !== -1 && idx + 1 < args.length) {
+          options.policy = args[idx + 1];
         }
       }
 
