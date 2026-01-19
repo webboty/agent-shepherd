@@ -1128,7 +1128,13 @@ export class WorkerEngine {
 
     console.log(`Agent execution completed successfully`);
 
-    const parsedOutcome = this.opencode.parseRunOutput(result.output, result.error || "");
+    let parsedOutcome: any;
+    if (result.outcome) {
+      console.log("Using pre-parsed outcome from SDK");
+      parsedOutcome = result.outcome;
+    } else {
+      parsedOutcome = this.opencode.parseRunOutput(result.output, result.error || "");
+    }
 
     if (!parsedOutcome.success) {
       console.error(`Agent execution reported failure: ${parsedOutcome.error}`);

@@ -22,6 +22,7 @@ export interface RunResult {
   output: string;
   error?: string;
   sessionId?: string;
+  outcome?: ParsedRunOutcome; // Pre-parsed outcome (for SDK mode)
 }
 
 export interface OpenCodeEvent {
@@ -326,18 +327,71 @@ export class OpenCodeClient {
       }
 
       if (finalResult.success && finalResult.data) {
-        // Extract last assistant message for output
+        // Extract rich data from SDK response to build ParsedRunOutcome
         const messages = finalResult.data;
+        
+        const parsedOutcome: ParsedRunOutcome = {
+          success: true,
+          message: '',
+          artifacts: [],
+          tool_calls: [],
+          warnings: [],
+          metrics: {
+            duration_ms: 0,
+            tokens_used: 0,
+            api_calls_count: 0
+          },
+          messages: []
+        };
 
-        // Extract last assistant message for output
-        const assistantMessages = messages.filter((msg: any) => msg?.info?.role === 'assistant');
-        if (assistantMessages.length > 0) {
-          const lastAssistant = assistantMessages[assistantMessages.length - 1];
-          const textParts = lastAssistant?.parts?.filter((p: any) => p?.type === 'text');
-          if (textParts && textParts.length > 0) {
-            finalResult.output = textParts.map((p: any) => p?.text || '').join('\n');
+        // Extract metrics and last message
+        let lastAssistantMessage: any;
+        
+        for (const msg of messages) {
+          if (msg.info) {
+            // Metrics
+            if (msg.info.tokens) {
+              parsedOutcome.metrics!.tokens_used = (parsedOutcome.metrics!.tokens_used || 0) + (msg.info.tokens.total || 0);
+            }
+            
+            // Capture last assistant message
+            if (msg.info.role === 'assistant') {
+              lastAssistantMessage = msg;
+            }
+          }
+          
+          // Artifacts (file edits) - usually in 'parts'
+          if (msg.parts) {
+            for (const part of msg.parts) {
+              if (part.type === 'tool' && part.tool === 'write_file' || part.tool === 'edit_file') {
+                 // Try to extract file path from inputs
+                 const inputs = part.state?.input;
+                 if (inputs && inputs.path) {
+                   parsedOutcome.artifacts!.push({
+                     path: inputs.path,
+                     operation: part.tool === 'write_file' ? 'created' : 'modified',
+                     type: 'file'
+                   });
+                 }
+              }
+              
+              if (part.type === 'tool') {
+                parsedOutcome.metrics!.api_calls_count = (parsedOutcome.metrics!.api_calls_count || 0) + 1;
+              }
+            }
           }
         }
+
+        if (lastAssistantMessage) {
+          const textParts = lastAssistantMessage.parts?.filter((p: any) => p?.type === 'text');
+          if (textParts && textParts.length > 0) {
+            parsedOutcome.message = textParts.map((p: any) => p?.text || '').join('\n');
+            finalResult.output = parsedOutcome.message; // Keep text output for backward compat
+          }
+        }
+        
+        // Attach the rich outcome to the result
+        finalResult.outcome = parsedOutcome;
       }
 
       return finalResult;
