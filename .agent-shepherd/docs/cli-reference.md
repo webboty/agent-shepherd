@@ -312,6 +312,40 @@ Summary:
 
 ## Listing Commands
 
+### `ashep workflow <command> [name]`
+
+Manage workflow files for complex setups.
+
+**Usage:**
+```bash
+# List all workflows (enabled and available)
+ashep workflow list
+
+# Create a new workflow file template
+ashep workflow create my-workflow
+
+# Archive a workflow (move from enabled/ to available/)
+ashep workflow archive my-workflow
+
+# Activate a workflow (move from available/ to enabled/)
+ashep workflow activate my-workflow
+```
+
+**Commands:**
+- `list`: Lists all enabled (active) and available (archived) workflows.
+- `create <name>`: Creates a new workflow file template in `workflows/enabled/`.
+- `archive <name>`: Moves a workflow file from `enabled/` to `available/`, disabling it.
+- `activate <name>`: Moves a workflow file from `available/` to `enabled/`, enabling it.
+
+**Directory Structure:**
+- Enabled workflows: `.agent-shepherd/workflows/enabled/` (loaded automatically)
+- Available workflows: `.agent-shepherd/workflows/available/` (ignored)
+
+**Behavior:**
+- Workflow files in `enabled/` are loaded recursively.
+- Policies defined in `config/policies.yaml` take precedence over workflow files if names conflict.
+- Useful for organizing many complex workflows into separate files.
+
 ### `ashep list-active`
 
 List all ashep-managed issues that are currently active (open or in_progress status).

@@ -65,7 +65,7 @@ export class ConfigurationValidator {
    * Validate all configuration files
    */
   async validateAllConfigs(configDir?: string): Promise<ValidationResult[]> {
-    const { getConfigDir, findInstallDir } = await import('./path-utils');
+    const { getConfigDir, findInstallDir, findWorkflowsDir, scanRecursive, findAgentShepherdDir } = await import('./path-utils');
     const baseDir = configDir || getConfigDir();
     const installDir = findInstallDir();
     const results: ValidationResult[] = [];
@@ -92,7 +92,7 @@ export class ConfigurationValidator {
     for (const task of validationTasks) {
       const configPath = join(baseDir, task.config);
       // Try to find schema in multiple locations (local first, then installation dir)
-      const localAgentShepherdDir = (await import('./path-utils')).findAgentShepherdDir();
+      const localAgentShepherdDir = findAgentShepherdDir();
       let schemaPath = join(localAgentShepherdDir, task.schema);
       if (!existsSync(schemaPath)) {
         schemaPath = join(installDir, task.schema);
@@ -131,6 +131,29 @@ export class ConfigurationValidator {
       const result = await this.validateYAMLConfig(configPath, schemaPath);
       result.summary = `${result.valid ? '✅' : '❌'} ${task.description}: ${result.summary}`;
       results.push(result);
+    }
+
+    // Validate workflow files
+    const workflowsDir = findWorkflowsDir();
+    const enabledDir = join(workflowsDir, 'enabled');
+    
+    if (existsSync(enabledDir)) {
+      const workflowFiles = scanRecursive(enabledDir, ['.yaml', '.yml']);
+      
+      // Find policies schema
+      const localAgentShepherdDir = findAgentShepherdDir();
+      let policiesSchemaPath = join(localAgentShepherdDir, 'schemas/policies.schema.json');
+      if (!existsSync(policiesSchemaPath)) {
+        policiesSchemaPath = join(installDir, 'schemas/policies.schema.json');
+      }
+
+      if (existsSync(policiesSchemaPath)) {
+        for (const file of workflowFiles) {
+          const result = await this.validateWorkflowFile(file, policiesSchemaPath);
+          result.summary = `${result.valid ? '✅' : '❌'} Workflow ${file}: ${result.summary}`;
+          results.push(result);
+        }
+      }
     }
 
     // Add policy chain validation
@@ -177,6 +200,43 @@ export class ConfigurationValidator {
   }
 
   /**
+   * Validate configuration object against schema
+   */
+  async validateConfigObject(
+    config: any,
+    schemaPath: string,
+    contextPath: string
+  ): Promise<ValidationResult> {
+    try {
+      // Load schema
+      const schemaContent = readFileSync(schemaPath, 'utf-8');
+      const schema = JSON.parse(schemaContent);
+
+      // Validate
+      const validate = this.ajv.compile(schema);
+      const valid = validate(config);
+
+      return {
+        valid: !!valid,
+        errors: validate.errors || [],
+        summary: this.formatValidationSummary(contextPath, !!valid, validate.errors || [])
+      };
+    } catch (error) {
+       return {
+        valid: false,
+        errors: [{
+          keyword: 'validation-error',
+          instancePath: '',
+          schemaPath: '',
+          params: {},
+          message: error instanceof Error ? error.message : String(error)
+        }],
+        summary: `Failed to validate ${contextPath}: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+
+  /**
    * Validate YAML configuration (convert to JSON for validation)
    */
   async validateYAMLConfig(
@@ -189,19 +249,71 @@ export class ConfigurationValidator {
       const { parse } = await import('yaml');
       const config = parse(yamlContent);
 
-      // Load schema
-      const schemaContent = readFileSync(schemaPath, 'utf-8');
-      const schema = JSON.parse(schemaContent);
-
-      // Validate
-      const validate = this.ajv.compile(schema);
-      const valid = validate(config);
-
+      return this.validateConfigObject(config, schemaPath, yamlPath);
+    } catch (error) {
       return {
-        valid: !!valid,
-        errors: validate.errors || [],
-        summary: this.formatValidationSummary(yamlPath, valid, validate.errors || [])
+        valid: false,
+        errors: [{
+          keyword: 'yaml-error',
+          instancePath: '',
+          schemaPath: '',
+          params: {},
+          message: error instanceof Error ? error.message : String(error)
+        }],
+        summary: `Failed to validate ${yamlPath}: ${error instanceof Error ? error.message : String(error)}`
       };
+    }
+  }
+
+  /**
+   * Validate individual workflow file
+   */
+  async validateWorkflowFile(
+    yamlPath: string,
+    schemaPath: string
+  ): Promise<ValidationResult> {
+    try {
+      // Load and parse YAML
+      const yamlContent = readFileSync(yamlPath, 'utf-8');
+      const { parse } = await import('yaml');
+      const config = parse(yamlContent);
+
+      if (!config || typeof config !== 'object') {
+        return {
+          valid: false,
+          errors: [{
+            keyword: 'type',
+            instancePath: '',
+            schemaPath: '',
+            params: {},
+            message: 'File content must be an object'
+          }],
+          summary: 'File content must be an object'
+        };
+      }
+
+      if (!config.name) {
+        return {
+          valid: false,
+          errors: [{
+            keyword: 'required',
+            instancePath: '',
+            schemaPath: '',
+            params: { missingProperty: 'name' },
+            message: "Missing required property 'name'"
+          }],
+          summary: "Missing required property 'name'"
+        };
+      }
+
+      // Wrap in policies object to match main schema
+      const wrappedConfig = {
+        policies: {
+          [config.name]: config
+        }
+      };
+
+      return this.validateConfigObject(wrappedConfig, schemaPath, yamlPath);
     } catch (error) {
       return {
         valid: false,

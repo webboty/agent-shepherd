@@ -7,7 +7,7 @@
 import { getWorkerEngine } from "../core/worker-engine.ts";
 import { getMonitorEngine } from "../core/monitor-engine.ts";
 import { getIssue } from "../core/beads.ts";
-import { findAgentShepherdDir, findInstallDir, findLocalAgentShepherdDir, getGlobalInstallDir } from "../core/path-utils.ts";
+import { findAgentShepherdDir, findInstallDir, findLocalAgentShepherdDir, getGlobalInstallDir, findWorkflowsDir } from "../core/path-utils.ts";
 import { getAssignedWorker, getLastHeartbeat, getLeaseExpires, listIssues, getReadyIssues } from "../core/beads.ts";
 import { loadConfig } from "../core/config.ts";
 import { getIssuePicker, type PickerConfig } from "../core/issue-picker.ts";
@@ -49,6 +49,7 @@ const COMMANDS: Record<string, string> = {
   "plugin-list": "List installed plugins",
   "cleanup-metrics": "Show cleanup statistics and performance metrics",
   "cleanup-status": "Show current cleanup system status and health",
+  "workflow": "Manage workflow files (list, archive, activate, create)",
   update: "Update Agent Shepherd to latest or specific version",
   version: "Show installed version",
   help: "Show help information",
@@ -2151,6 +2152,226 @@ async function cmdSessionStop(sessionId: string): Promise<void> {
 }
 
 /**
+ * List workflows command
+ */
+async function cmdWorkflowList(): Promise<void> {
+  const { getPolicyEngine } = await import("../core/policy.ts");
+  const { scanRecursive } = await import("../core/path-utils.ts");
+  
+  // 1. Get enabled/loaded workflows via PolicyEngine
+  const engine = getPolicyEngine();
+  const loadedPolicies = engine.getPolicyNames();
+  
+  console.log("\nEnabled Workflows (Active):");
+  if (loadedPolicies.length === 0) {
+    console.log("  (none)");
+  } else {
+    for (const name of loadedPolicies) {
+      const policy = engine.getPolicyConfig(name);
+      console.log(`  • ${name.padEnd(20)} ${policy?.description || ""}`);
+    }
+  }
+  
+  // 2. Get available (archived) workflows
+  const workflowsDir = findWorkflowsDir();
+  const availableDir = join(workflowsDir, "available");
+  
+  console.log("\nAvailable Workflows (Archived):");
+  if (existsSync(availableDir)) {
+    const files = scanRecursive(availableDir, ['.yaml', '.yml']);
+    if (files.length === 0) {
+      console.log("  (none)");
+    } else {
+      for (const file of files) {
+        const name = path.basename(file, path.extname(file));
+        console.log(`  • ${name.padEnd(20)} (${path.relative(workflowsDir, file)})`);
+      }
+    }
+  } else {
+    console.log("  (none)");
+  }
+  console.log();
+}
+
+/**
+ * Archive workflow command
+ */
+async function cmdWorkflowArchive(name: string): Promise<void> {
+  const workflowsDir = findWorkflowsDir();
+  const enabledDir = join(workflowsDir, "enabled");
+  const availableDir = join(workflowsDir, "available");
+  
+  if (!existsSync(enabledDir)) {
+    console.error(`Enabled workflows directory not found: ${enabledDir}`);
+    process.exit(1);
+  }
+
+  // Find file in enabled
+  // We need to look for files that *contain* the policy with this name, 
+  // OR files named like the policy.
+  // The instruction said "Move workflow from enabled/ to available/".
+  // Assuming 1 file = 1 policy = filename matches policy name roughly.
+  // I'll search for file named `{name}.yaml` or `{name}.yml`.
+  
+  let targetFile: string | undefined;
+  const candidates = [`${name}.yaml`, `${name}.yml`];
+  
+  for (const c of candidates) {
+    if (existsSync(join(enabledDir, c))) {
+      targetFile = c;
+      break;
+    }
+  }
+  
+  // Also scan recursive if nested?
+  // The simple `ashep workflow archive <name>` might expect flat structure or unique name.
+  // For now I'll support flat structure in root of enabled/ or match by exact filename if provided?
+  // "Move workflow from enabled/ to available/" implies moving the FILE.
+  
+  if (!targetFile) {
+    // Try recursive scan for file with that name
+    const { scanRecursive } = await import("../core/path-utils.ts");
+    const allFiles = scanRecursive(enabledDir, ['.yaml', '.yml']);
+    const match = allFiles.find(f => path.basename(f, path.extname(f)) === name);
+    if (match) {
+        // We found it deeper
+        // We need to preserve structure? Or just move to root of available?
+        // Let's just move to root of available for simplicity as per "archive <name>"
+        // But `cpSync` needs source.
+        targetFile = path.relative(enabledDir, match);
+    }
+  }
+
+  if (!targetFile) {
+    console.error(`Workflow file for '${name}' not found in ${enabledDir}`);
+    // Check if it exists in policies.yaml
+    const { getPolicyEngine } = await import("../core/policy.ts");
+    if (getPolicyEngine().getPolicyConfig(name)) {
+      console.log(`Note: '${name}' might be defined in policies.yaml which cannot be archived individually.`);
+    }
+    process.exit(1);
+  }
+  
+  const srcPath = join(enabledDir, targetFile);
+  const destPath = join(availableDir, path.basename(targetFile)); // flatten to available root
+  
+  if (!existsSync(availableDir)) {
+    mkdirSync(availableDir, { recursive: true });
+  }
+  
+  try {
+    cpSync(srcPath, destPath);
+    rmSync(srcPath);
+    console.log(`✅ Archived workflow '${name}' to workflows/available/`);
+  } catch (error) {
+    console.error(`Failed to archive workflow: ${error}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Activate workflow command
+ */
+async function cmdWorkflowActivate(name: string): Promise<void> {
+  const workflowsDir = findWorkflowsDir();
+  const enabledDir = join(workflowsDir, "enabled");
+  const availableDir = join(workflowsDir, "available");
+  
+  if (!existsSync(availableDir)) {
+    console.error(`No available workflows found (directory missing)`);
+    process.exit(1);
+  }
+  
+  let targetFile: string | undefined;
+  const candidates = [`${name}.yaml`, `${name}.yml`];
+  
+  for (const c of candidates) {
+    if (existsSync(join(availableDir, c))) {
+      targetFile = c;
+      break;
+    }
+  }
+  
+  if (!targetFile) {
+     // recursive scan in available?
+    const { scanRecursive } = await import("../core/path-utils.ts");
+    const allFiles = scanRecursive(availableDir, ['.yaml', '.yml']);
+    const match = allFiles.find(f => path.basename(f, path.extname(f)) === name);
+    if (match) {
+        targetFile = path.relative(availableDir, match);
+    }
+  }
+  
+  if (!targetFile) {
+    console.error(`Workflow file '${name}' not found in ${availableDir}`);
+    process.exit(1);
+  }
+  
+  const srcPath = join(availableDir, targetFile);
+  const destPath = join(enabledDir, path.basename(targetFile)); // flatten to enabled root
+  
+  if (!existsSync(enabledDir)) {
+    mkdirSync(enabledDir, { recursive: true });
+  }
+  
+  try {
+    cpSync(srcPath, destPath);
+    rmSync(srcPath);
+    console.log(`✅ Activated workflow '${name}' to workflows/enabled/`);
+  } catch (error) {
+    console.error(`Failed to activate workflow: ${error}`);
+    process.exit(1);
+  }
+}
+
+/**
+ * Create workflow command
+ */
+async function cmdWorkflowCreate(name: string): Promise<void> {
+  const workflowsDir = findWorkflowsDir();
+  const enabledDir = join(workflowsDir, "enabled");
+  
+  if (!existsSync(enabledDir)) {
+    mkdirSync(enabledDir, { recursive: true });
+  }
+  
+  const filePath = join(enabledDir, `${name}.yaml`);
+  
+  if (existsSync(filePath)) {
+    console.error(`Workflow file '${filePath}' already exists`);
+    process.exit(1);
+  }
+  
+  const template = `name: ${name}
+description: New workflow created via CLI
+phases:
+  - name: plan
+    description: Initial planning phase
+    capabilities:
+      - planning
+    timeout_multiplier: 1.0
+
+  - name: implement
+    description: Implementation phase
+    capabilities:
+      - coding
+    timeout_multiplier: 2.0
+
+retry:
+  max_attempts: 3
+  backoff_strategy: exponential
+`;
+
+  try {
+    writeFileSync(filePath, template);
+    console.log(`✅ Created workflow file: ${filePath}`);
+  } catch (error) {
+    console.error(`Failed to create workflow file: ${error}`);
+    process.exit(1);
+  }
+}
+
+/**
  * Simple prompt for issue ID using Bun's built-in readline
  */
 async function promptForIssueId(): Promise<string> {
@@ -2377,6 +2598,33 @@ async function main(): Promise<void> {
     case "cleanup-status":
       await cmdCleanupStatus();
       break;
+
+    case "workflow": {
+      const subCmd = args[1];
+      const name = args[2];
+      
+      switch (subCmd) {
+        case "list":
+          await cmdWorkflowList();
+          break;
+        case "archive":
+          if (!name) { console.error("Name required"); process.exit(1); }
+          await cmdWorkflowArchive(name);
+          break;
+        case "activate":
+          if (!name) { console.error("Name required"); process.exit(1); }
+          await cmdWorkflowActivate(name);
+          break;
+        case "create":
+          if (!name) { console.error("Name required"); process.exit(1); }
+          await cmdWorkflowCreate(name);
+          break;
+        default:
+          console.error("Unknown workflow command. Use: list, archive, activate, create");
+          process.exit(1);
+      }
+      break;
+    }
 
     case "update":
       await cmdUpdate(args[1]);

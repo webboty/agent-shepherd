@@ -1,5 +1,5 @@
-import { existsSync } from "fs";
-import { join, dirname } from "path";
+import { existsSync, readdirSync, statSync } from "fs";
+import { join, dirname, extname, basename } from "path";
 import { homedir } from "os";
 
 export function getGlobalInstallDir(): string {
@@ -8,6 +8,12 @@ export function getGlobalInstallDir(): string {
 
 export function findLocalAgentShepherdDir(): string | null {
   let currentDir = process.cwd();
+  
+  // If we are already inside .agent-shepherd, return currentDir
+  if (basename(currentDir) === ".agent-shepherd") {
+    return currentDir;
+  }
+
   const visited = new Set<string>();
 
   while (true) {
@@ -80,6 +86,19 @@ export function findPluginsDir(): string {
   return join(global, "plugins");
 }
 
+export function findWorkflowsDir(): string {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "workflows"))) {
+    return join(envOverride, "workflows");
+  }
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "workflows"))) {
+    return join(local, "workflows");
+  }
+  const global = getGlobalInstallDir();
+  return join(global, "workflows");
+}
+
 // Legacy function - backward compatibility
 export function findAgentShepherdDir(): string {
   const envOverride = process.env.ASHEP_DIR;
@@ -113,4 +132,36 @@ export function getConfigPath(filename: string): string {
 
   // Return new path (will be created when needed)
   return newPath;
+}
+
+/**
+ * Recursively scan directory for files with specific extensions
+ */
+export function scanRecursive(dir: string, extensions: string[] = []): string[] {
+  let results: string[] = [];
+  
+  if (!existsSync(dir)) {
+    return results;
+  }
+
+  const list = readdirSync(dir);
+  
+  for (const file of list) {
+    const filePath = join(dir, file);
+    const stat = statSync(filePath);
+    
+    if (stat && stat.isDirectory()) {
+      results = results.concat(scanRecursive(filePath, extensions));
+    } else {
+      if (extensions.length === 0) {
+        results.push(filePath);
+      } else {
+        const ext = extname(file).toLowerCase();
+        if (extensions.includes(ext)) {
+          results.push(filePath);
+        }
+      }
+    }
+  }
+  return results;
 }

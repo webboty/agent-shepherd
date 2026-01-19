@@ -485,6 +485,50 @@ agents:
     });
   });
 
+  describe('Workflow Commands', () => {
+    it('should list, archive, activate and create workflows', async () => {
+      // Setup
+      const workflowsDir = join(configDir, 'workflows');
+      const enabledDir = join(workflowsDir, 'enabled');
+      const availableDir = join(workflowsDir, 'available');
+      
+      mkdirSync(enabledDir, { recursive: true });
+      mkdirSync(availableDir, { recursive: true });
+      
+      // 1. Create Workflow
+      const createOutputs = await runCLICommand('workflow', ['create', 'test-wf'], configDir);
+      const createOutput = createOutputs.join(' ');
+      expect(createOutput).toContain('Created workflow file');
+      expect(existsSync(join(enabledDir, 'test-wf.yaml'))).toBe(true);
+      
+      // 2. List Workflows (verify enabled)
+      const listOutputs1 = await runCLICommand('workflow', ['list'], configDir);
+      const listOutput1 = listOutputs1.join(' ');
+      expect(listOutput1).toContain('test-wf');
+      expect(listOutput1).toContain('Enabled Workflows');
+      
+      // 3. Archive Workflow
+      const archiveOutputs = await runCLICommand('workflow', ['archive', 'test-wf'], configDir);
+      const archiveOutput = archiveOutputs.join(' ');
+      expect(archiveOutput).toContain('Archived workflow');
+      expect(existsSync(join(enabledDir, 'test-wf.yaml'))).toBe(false);
+      expect(existsSync(join(availableDir, 'test-wf.yaml'))).toBe(true);
+      
+      // 4. List Workflows (verify archived)
+      const listOutputs2 = await runCLICommand('workflow', ['list'], configDir);
+      const listOutput2 = listOutputs2.join(' ');
+      expect(listOutput2).toContain('test-wf');
+      expect(listOutput2).toContain('Available Workflows');
+      
+      // 5. Activate Workflow
+      const activateOutputs = await runCLICommand('workflow', ['activate', 'test-wf'], configDir);
+      const activateOutput = activateOutputs.join(' ');
+      expect(activateOutput).toContain('Activated workflow');
+      expect(existsSync(join(enabledDir, 'test-wf.yaml'))).toBe(true);
+      expect(existsSync(join(availableDir, 'test-wf.yaml'))).toBe(false);
+    });
+  });
+
   describe('Invalid Command', () => {
     it('should show error for unknown command', async () => {
       const outputs = await runCLICommand('unknown-command');

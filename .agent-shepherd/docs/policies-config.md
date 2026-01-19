@@ -8,6 +8,65 @@ The `policies.yaml` file defines workflow policies that govern how Agent Shepher
 .agent-shepherd/config/policies.yaml
 ```
 
+## Workflow Files
+
+For complex setups with many workflows, you can split policies into individual files instead of maintaining a large `policies.yaml`.
+
+### Directory Structure
+
+```
+.agent-shepherd/
+├── config/policies.yaml        # Core/simple policies
+└── workflows/
+    ├── enabled/                # Active workflow files
+    │   ├── security-audit.yaml
+    │   └── complex-feature.yaml
+    └── available/              # Archived/inactive workflows
+        └── experimental.yaml
+```
+
+### Loading Rules
+
+1. **Recursive Scanning**: All `.yaml` and `.yml` files in `.agent-shepherd/workflows/enabled/` (and subdirectories) are loaded automatically.
+2. **File Format**: Each file should contain a single policy definition (same schema as a policy entry in `policies.yaml`).
+3. **Precedence**: Policies defined in `config/policies.yaml` take precedence over workflow files if names conflict. This allows overriding file-based workflows without deleting them.
+4. **Validation**: Workflow files undergo the same validation as standard policies.
+
+### Workflow File Example
+
+`workflows/enabled/security-audit.yaml`:
+
+```yaml
+name: security-audit
+description: "Security audit workflow for sensitive features"
+phases:
+  - name: threat-modeling
+    capabilities: [security, analysis]
+    custom_prompt: "Analyze security threats for {{issue.title}}"
+  - name: implementation
+    capabilities: [coding, security]
+retry:
+  max_attempts: 2
+```
+
+### Managing Workflows via CLI
+
+You can manage workflow files using the CLI:
+
+```bash
+# List all workflows (enabled and available)
+ashep workflow list
+
+# Create a new workflow file template
+ashep workflow create my-workflow
+
+# Archive a workflow (move to available/)
+ashep workflow archive my-workflow
+
+# Activate a workflow (move to enabled/)
+ashep workflow activate my-workflow
+```
+
 ## Validation
 
 Agent Shepherd includes comprehensive validation tools to ensure policy-capability-agent relationships are healthy:

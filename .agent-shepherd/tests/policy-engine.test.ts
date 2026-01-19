@@ -583,6 +583,107 @@ default_policy: mixed
     });
   });
 
+  describe('Workflow Files', () => {
+    let workflowsDir: string;
+    let enabledDir: string;
+    let availableDir: string;
+
+    beforeEach(() => {
+      workflowsDir = join(tempDir, 'workflows');
+      enabledDir = join(workflowsDir, 'enabled');
+      availableDir = join(workflowsDir, 'available');
+      mkdirSync(enabledDir, { recursive: true });
+      mkdirSync(availableDir, { recursive: true });
+      
+      // Override findWorkflowsDir via mock or env variable
+      // Since we can't easily mock imports in bun test without full mocking framework,
+      // we'll use the ASHEP_DIR env variable which path-utils respects
+      process.env.ASHEP_DIR = tempDir;
+    });
+
+    it('should load workflows from enabled directory', () => {
+      const workflowContent = `
+name: file-workflow
+description: Workflow from file
+phases:
+  - name: phase1
+    capabilities: [planning]
+      `.trim();
+      
+      writeFileSync(join(enabledDir, 'workflow.yaml'), workflowContent);
+      
+      // Re-initialize engine to pick up new files
+      policyEngine = new PolicyEngine(policiesPath);
+      
+      const policy = policyEngine.getPolicy('file-workflow');
+      expect(policy).toBeDefined();
+      expect(policy?.name).toBe('file-workflow');
+      expect(policy?.description).toBe('Workflow from file');
+    });
+
+    it('should recursively scan enabled directory', () => {
+      const subDir = join(enabledDir, 'category');
+      mkdirSync(subDir, { recursive: true });
+      
+      const workflowContent = `
+name: nested-workflow
+phases:
+  - name: phase1
+    capabilities: [planning]
+      `.trim();
+      
+      writeFileSync(join(subDir, 'nested.yaml'), workflowContent);
+      
+      policyEngine = new PolicyEngine(policiesPath);
+      const policy = policyEngine.getPolicy('nested-workflow');
+      expect(policy).toBeDefined();
+    });
+
+    it('should ignore workflows in available directory', () => {
+      const workflowContent = `
+name: ignored-workflow
+phases:
+  - name: phase1
+    capabilities: [planning]
+      `.trim();
+      
+      writeFileSync(join(availableDir, 'ignored.yaml'), workflowContent);
+      
+      policyEngine = new PolicyEngine(policiesPath);
+      const policy = policyEngine.getPolicy('ignored-workflow');
+      expect(policy).toBeNull();
+    });
+
+    it('should give precedence to policies.yaml over workflow files', () => {
+      // Create conflict
+      const workflowContent = `
+name: default
+description: Conflict workflow from file
+phases:
+  - name: phase1
+    capabilities: [planning]
+      `.trim();
+      
+      writeFileSync(join(enabledDir, 'conflict.yaml'), workflowContent);
+      
+      policyEngine = new PolicyEngine(policiesPath);
+      const policy = policyEngine.getPolicy('default');
+      // Should match the one in policies.yaml (Default Policy), not file (Conflict workflow)
+      expect(policy?.description).toBe('Test default policy');
+    });
+
+    it('should handle invalid workflow files gracefully', () => {
+      const invalidContent = `
+invalid: yaml: content
+      `.trim();
+      
+      writeFileSync(join(enabledDir, 'invalid.yaml'), invalidContent);
+      
+      // Should not throw, just log warning
+      expect(() => new PolicyEngine(policiesPath)).not.toThrow();
+    });
+  });
+
   describe('Schema Validation', () => {
     let ajv: any;
     let schema: any;

@@ -16,6 +16,7 @@ Agent Shepherd is an orchestration system for AI coding agents that coordinates 
 - **Flow Visualization**: Interactive ReactFlow UI showing workflow progress and agent assignments
 - **Plugin System**: Extensible architecture for optional functionality and custom integrations - [Plugin Documentation](docs/plugin-system.md)
 - **Configuration Management**: YAML-based configuration with JSON schema validation
+- **Workflow Files**: Modular workflow management with individual policy files and CLI tools
 - **Dual Storage**: Efficient logging with JSONL for source-of-truth and SQLite for fast queries
 - **Reliable SDK Integration**: Robust OpenCode SDK integration with improved reliability and session management
 

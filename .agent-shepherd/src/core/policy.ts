@@ -4,8 +4,9 @@
  */
 
 import { parse as parseYAML } from "yaml";
-import { readFileSync } from "fs";
-import { getConfigPath } from "./path-utils";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
+import { getConfigPath, findWorkflowsDir, scanRecursive } from "./path-utils";
 import { type BeadsIssue } from "./beads.ts";
 import { type HITLConfig, loadConfig } from "./config.ts";
 import { getAgentRegistry } from "./agent-registry.ts";
@@ -136,7 +137,7 @@ export class PolicyEngine {
   }
 
   /**
-   * Load policies from YAML file
+   * Load policies from YAML file and workflows directory
    */
   loadPolicies(filePath: string): void {
     try {
@@ -156,6 +157,9 @@ export class PolicyEngine {
         this.policies.set(name, policy);
       }
 
+      // Load individual workflow files
+      this.loadWorkflowFiles();
+
       // Set default policy
       if (config.default_policy) {
         if (!this.policies.has(config.default_policy)) {
@@ -167,8 +171,49 @@ export class PolicyEngine {
       }
     } catch (error) {
       throw new Error(
-        `Failed to load policies from ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to load policies: ${error instanceof Error ? error.message : String(error)}`
       );
+    }
+  }
+
+  /**
+   * Recursively scan and load workflow files
+   */
+  private loadWorkflowFiles(): void {
+    try {
+      const workflowsDir = findWorkflowsDir();
+      const enabledDir = join(workflowsDir, "enabled");
+
+      if (!existsSync(enabledDir)) {
+        return;
+      }
+
+      const files = scanRecursive(enabledDir, ['.yaml', '.yml']);
+
+      for (const file of files) {
+        try {
+          const content = readFileSync(file, "utf-8");
+          const policy = parseYAML(content) as PolicyConfig;
+
+          // Basic validation
+          if (!policy.name || !policy.phases) {
+            console.warn(`Skipping invalid workflow file ${file}: missing name or phases`);
+            continue;
+          }
+
+          // Check precedence: policies.yaml wins
+          if (this.policies.has(policy.name)) {
+            continue;
+          }
+
+          this.validatePolicy(policy.name, policy);
+          this.policies.set(policy.name, policy);
+        } catch (error) {
+          console.warn(`Failed to load workflow file ${file}: ${error}`);
+        }
+      }
+    } catch (error) {
+      console.warn(`Error loading workflow files: ${error}`);
     }
   }
 
@@ -253,6 +298,7 @@ export class PolicyEngine {
    * Get a policy by name
    */
   getPolicy(name?: string): PolicyConfig | null {
+
     const policyName = name || this.defaultPolicy;
     return this.policies.get(policyName) || null;
   }
