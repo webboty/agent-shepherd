@@ -53,6 +53,11 @@ const mockSelectAgent = mock(() => ({
 
 const mockAgentRegistry = {
   selectAgent: mockSelectAgent,
+  // Add missing methods to prevent breakage if mock leaks
+  loadAgents: mock(() => {}),
+  getAgentsByCapability: mock(() => []),
+  syncWithOpenCode: mock(async () => ({ added: 0, updated: 0, removed: 0 })),
+  getAgent: mock(() => null),
 };
 
 // Mock IssuePicker
@@ -95,6 +100,9 @@ describe("WorkerEngine Policy Override", () => {
   let testDataDir: string;
 
   beforeEach(() => {
+    // Restore mocks before each test to ensure clean slate from other tests
+    mock.restore(); 
+    
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
     testDataDir = join(TEMP_DIR, `.test-policy-override-${timestamp}-${random}`);
@@ -114,6 +122,7 @@ describe("WorkerEngine Policy Override", () => {
   });
 
   afterEach(() => {
+    mock.restore(); // Clean up mocks immediately after test
     if (existsSync(testDataDir)) {
       rmSync(testDataDir, { recursive: true, force: true });
     }

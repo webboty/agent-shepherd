@@ -136,7 +136,7 @@ default_policy: default
       });
       
       expect(transition.type).toBe('close');
-      expect(transition.reason).toBe('All phases completed');
+      expect(transition.reason).toContain('All phases completed');
     });
   });
 

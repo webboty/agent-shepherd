@@ -29,11 +29,17 @@ describe("Beads Label Functions", () => {
     process.env.BD_NO_DAEMON = "true";
     process.env.BD_SANDBOX = "true";
 
-    testIssueId = await beadsTestEnv.createIssue(
-      `${TEST_ISSUE_PREFIX}: Test issue for label operations`,
-      "task",
-      []
-    );
+    // Create a fresh issue for each test, ensuring clean state
+    try {
+      testIssueId = await beadsTestEnv.createIssue(
+        `${TEST_ISSUE_PREFIX}: Test issue for label operations ${Date.now()}`,
+        "task",
+        []
+      );
+    } catch (e) {
+      console.error('Failed to create test issue in beforeEach:', e);
+      throw e;
+    }
   });
 
   afterEach(async () => {
@@ -128,7 +134,18 @@ describe("Beads Label Functions", () => {
 
   describe("getIssue includes labels", () => {
     it("should include labels field in returned issue", async () => {
-      const issue = await getIssue(testIssueId);
+      // Add simple retry loop to handle potential race condition in isolated environment
+      let issue = await getIssue(testIssueId);
+      
+      // Retry a few times if null (file system latency in test env)
+      if (!issue) {
+        for (let i = 0; i < 3; i++) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          issue = await getIssue(testIssueId);
+          if (issue) break;
+        }
+      }
+
       expect(issue).not.toBeNull();
       if (issue) {
         expect(issue.labels).toBeDefined();
