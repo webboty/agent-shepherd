@@ -38,13 +38,22 @@ export class ConfigurationValidator {
       const schema = JSON.parse(schemaContent);
 
       // Validate
-      const validate = this.ajv.compile(schema);
+      // Create a fresh validator instance for each validation to avoid schema ID conflicts
+      // when multiple instances of the same schema ID might be loaded (e.g. policies.json)
+      const ajv = new Ajv({
+        allErrors: true,
+        verbose: true,
+        strict: false // Relax strict mode to avoid "unknown format" errors if formats not loaded
+      });
+      addFormats(ajv);
+
+      const validate = ajv.compile(schema);
       const valid = validate(config);
 
       return {
         valid: !!valid,
         errors: validate.errors || [],
-        summary: this.formatValidationSummary(configPath, valid, validate.errors || [])
+        summary: this.formatValidationSummary(configPath, !!valid, validate.errors || [])
       };
     } catch (error) {
       return {
@@ -213,7 +222,16 @@ export class ConfigurationValidator {
       const schema = JSON.parse(schemaContent);
 
       // Validate
-      const validate = this.ajv.compile(schema);
+      // Create a fresh validator instance for each validation to avoid schema ID conflicts
+      // when multiple instances of the same schema ID might be loaded (e.g. policies.json)
+      const ajv = new Ajv({
+        allErrors: true,
+        verbose: true,
+        strict: false // Relax strict mode to avoid "unknown format" errors if formats not loaded
+      });
+      addFormats(ajv);
+
+      const validate = ajv.compile(schema);
       const valid = validate(config);
 
       return {
@@ -222,7 +240,7 @@ export class ConfigurationValidator {
         summary: this.formatValidationSummary(contextPath, !!valid, validate.errors || [])
       };
     } catch (error) {
-       return {
+      return {
         valid: false,
         errors: [{
           keyword: 'validation-error',
@@ -253,6 +271,7 @@ export class ConfigurationValidator {
     } catch (error) {
       return {
         valid: false,
+
         errors: [{
           keyword: 'yaml-error',
           instancePath: '',

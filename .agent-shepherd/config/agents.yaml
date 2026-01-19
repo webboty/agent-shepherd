@@ -152,25 +152,25 @@ agents:
       performance_tier: balanced
     metadata:
       agent_type: decision
-   - id: workflow-orchestrator
-     name: Workflow Orchestrator
-     description: Handles complex multi-factor workflow decisions
-     capabilities:
-       - complex-decision
-       - planning
-       - planning-decision
-       - failure-analysis
-       - test-clarification
-       - review-decision
-       - quality-decision
-       - worker-assistant
-       - container-validation
-     priority: 10
-     active: true
-     constraints:
-       performance_tier: balanced
-     metadata:
-       agent_type: decision
+  - id: workflow-orchestrator
+    name: Workflow Orchestrator
+    description: Handles complex multi-factor workflow decisions
+    capabilities:
+      - complex-decision
+      - planning
+      - planning-decision
+      - failure-analysis
+      - test-clarification
+      - review-decision
+      - quality-decision
+      - worker-assistant
+      - container-validation
+    priority: 10
+    active: true
+    constraints:
+      performance_tier: balanced
+    metadata:
+      agent_type: decision
   - id: universal-agent
     name: Universal Agent
     description: General-purpose agent with all common capabilities for basic workflows

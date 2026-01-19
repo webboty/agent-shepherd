@@ -109,7 +109,7 @@ async function execBeadsCommand(args) {
     const error = await new Response(proc.stderr).text();
     throw new Error(`Beads command failed: ${error}`);
   }
-  const jsonStartIndex = output.search(/^[\[\{]/m);
+  const jsonStartIndex = output.search(/^[[{]/m);
   if (jsonStartIndex > 0) {
     const warning = output.substring(0, jsonStartIndex).trim();
     if (warning) {
@@ -19379,12 +19379,18 @@ class ConfigurationValidator {
       const config = JSON.parse(configContent);
       const schemaContent = readFileSync8(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
-      const validate = this.ajv.compile(schema);
+      const ajv = new import_ajv.default({
+        allErrors: true,
+        verbose: true,
+        strict: false
+      });
+      import_ajv_formats.default(ajv);
+      const validate = ajv.compile(schema);
       const valid = validate(config);
       return {
         valid: !!valid,
         errors: validate.errors || [],
-        summary: this.formatValidationSummary(configPath, valid, validate.errors || [])
+        summary: this.formatValidationSummary(configPath, !!valid, validate.errors || [])
       };
     } catch (error) {
       return {
@@ -19513,7 +19519,13 @@ class ConfigurationValidator {
     try {
       const schemaContent = readFileSync8(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
-      const validate = this.ajv.compile(schema);
+      const ajv = new import_ajv.default({
+        allErrors: true,
+        verbose: true,
+        strict: false
+      });
+      import_ajv_formats.default(ajv);
+      const validate = ajv.compile(schema);
       const valid = validate(config);
       return {
         valid: !!valid,
@@ -43341,8 +43353,8 @@ class PolicyTreeVisualizer {
       validPolicies,
       policiesWithWarnings,
       policiesWithErrors,
-      deadEndCapabilities,
-      inactiveAgents
+      deadEndCapabilities: [...new Set(deadEndCapabilities)],
+      inactiveAgents: [...new Set(inactiveAgents)]
     };
   }
   getPolicyStatus(policyName) {
@@ -47512,36 +47524,211 @@ function getSizeMonitor(config) {
 
 // src/cli/index.ts
 var COMMANDS = {
-  worker: "Start the autonomous worker loop",
-  monitor: "Start the supervision loop",
-  work: "Process an issue (auto-picks if none specified)",
-  init: "Initialize .agent-shepherd configuration",
-  install: "Check and install dependencies",
-  "sync-agents": "Sync agent registry with OpenCode",
-  ui: "Start the flow visualization server",
-  "validate-policy-chain": "Validate policy-capability-agent chain integrity",
-  "show-policy-tree": "Display policy-capability-agent relationship tree",
-  "list-active": "List issues currently being worked on (in_progress)",
-  "list-hitl": "List issues requiring human-in-the-loop intervention",
-  "list-ready": "List issues ready to be worked on (no blockers)",
-  "list-struggle": "List blocked issues that need attention",
-  "session-list": "List active OpenCode sessions",
-  "session-stop": "Stop/Abort an active OpenCode session",
-  "phase-msg-list": "List phase messages for an issue (alias: get-messages)",
-  "phase-msg-read": "Read details of a specific phase message (alias: read-message)",
-  heartbeat: "Show heartbeat-checker status and active heartbeats",
-  quickstart: "One-command onboarding with dependencies, configs, and demo workflow",
-  "plugin-install": "Install a plugin from path or URL",
-  "plugin-activate": "Activate a plugin",
-  "plugin-deactivate": "Deactivate a plugin",
-  "plugin-remove": "Remove a plugin",
-  "plugin-list": "List installed plugins",
-  "cleanup-metrics": "Show cleanup statistics and performance metrics",
-  "cleanup-status": "Show current cleanup system status and health",
-  workflow: "Manage workflow files (list, archive, activate, create)",
-  update: "Update Agent Shepherd to latest or specific version",
-  version: "Show installed version",
-  help: "Show help information"
+  quickstart: {
+    description: "One-command onboarding with dependencies, configs, and demo workflow",
+    category: "Core",
+    usage: "ashep quickstart"
+  },
+  init: {
+    description: "Initialize .agent-shepherd configuration",
+    category: "Core",
+    usage: "ashep init"
+  },
+  help: {
+    description: "Show help information",
+    category: "Core",
+    usage: "ashep help [command]"
+  },
+  worker: {
+    description: "Start the autonomous worker loop",
+    category: "Execution",
+    usage: "ashep worker [options]",
+    options: {
+      "--epic <id>": "Restrict scope to specific epic subtree",
+      "--policy <name>": "Force specific policy"
+    }
+  },
+  monitor: {
+    description: "Start the supervision loop",
+    category: "Execution",
+    usage: "ashep monitor"
+  },
+  work: {
+    description: "Process an issue (auto-picks if none specified)",
+    category: "Execution",
+    usage: "ashep work [issue-id] [options]",
+    options: {
+      "--epic <id>": "Process all issues in epic subtree"
+    }
+  },
+  "list-active": {
+    description: "List issues currently being worked on (in_progress)",
+    category: "Issues",
+    usage: "ashep list-active"
+  },
+  "list-hitl": {
+    description: "List issues requiring human-in-the-loop intervention",
+    category: "Issues",
+    usage: "ashep list-hitl"
+  },
+  "list-ready": {
+    description: "List issues ready to be worked on (no blockers)",
+    category: "Issues",
+    usage: "ashep list-ready"
+  },
+  "list-struggle": {
+    description: "List blocked issues that need attention",
+    category: "Issues",
+    usage: "ashep list-struggle [hours]",
+    options: {
+      "[hours]": "Threshold in hours (default: 24)"
+    }
+  },
+  install: {
+    description: "Check and install dependencies",
+    category: "System",
+    usage: "ashep install"
+  },
+  update: {
+    description: "Update Agent Shepherd to latest or specific version",
+    category: "System",
+    usage: "ashep update [version]"
+  },
+  version: {
+    description: "Show installed version",
+    category: "System",
+    usage: "ashep version"
+  },
+  "sync-agents": {
+    description: "Sync agent registry with OpenCode",
+    category: "System",
+    usage: "ashep sync-agents"
+  },
+  "cleanup-metrics": {
+    description: "Show cleanup statistics and performance metrics",
+    category: "System",
+    usage: "ashep cleanup-metrics"
+  },
+  "cleanup-status": {
+    description: "Show current cleanup system status and health",
+    category: "System",
+    usage: "ashep cleanup-status"
+  },
+  heartbeat: {
+    description: "Show heartbeat-checker status and active heartbeats",
+    category: "System",
+    usage: "ashep heartbeat"
+  },
+  ui: {
+    description: "Start the flow visualization server",
+    category: "Development",
+    usage: "ashep ui [options]",
+    options: {
+      "--port <number>": "Port to run on (default: 3000)",
+      "--host <string>": "Host to bind to (default: localhost)"
+    }
+  },
+  "validate-policy-chain": {
+    description: "Validate policy-capability-agent chain integrity",
+    category: "Development",
+    usage: "ashep validate-policy-chain"
+  },
+  "show-policy-tree": {
+    description: "Display policy-capability-agent relationship tree",
+    category: "Development",
+    usage: "ashep show-policy-tree [options]",
+    options: {
+      "--format <type>": "Output format (json or tree)"
+    }
+  },
+  "session-list": {
+    description: "List active OpenCode sessions",
+    category: "Sessions",
+    usage: "ashep session-list [options]",
+    options: {
+      "--all": "Show all sessions (including inactive)"
+    }
+  },
+  "session-stop": {
+    description: "Stop/Abort an active OpenCode session",
+    category: "Sessions",
+    usage: "ashep session-stop <session-id>"
+  },
+  "list-sessions": {
+    description: "List sessions for a specific issue",
+    category: "Sessions",
+    usage: "ashep list-sessions [issue-id]"
+  },
+  "phase-msg-list": {
+    description: "List phase messages for an issue",
+    category: "Messaging",
+    usage: "ashep phase-msg-list <issue-id> [options]",
+    aliases: ["get-messages"],
+    options: {
+      "--phase <name>": "Filter by phase",
+      "--unread": "Show only unread messages",
+      "--json": "Output as JSON"
+    }
+  },
+  "phase-msg-read": {
+    description: "Read details of a specific phase message",
+    category: "Messaging",
+    usage: "ashep phase-msg-read <message-id> [options]",
+    aliases: ["read-message"],
+    options: {
+      "--json": "Output as JSON"
+    }
+  },
+  "plugin-list": {
+    description: "List installed plugins",
+    category: "Plugins",
+    usage: "ashep plugin-list"
+  },
+  "plugin-install": {
+    description: "Install a plugin from path or URL",
+    category: "Plugins",
+    usage: "ashep plugin-install <path-or-url>"
+  },
+  "plugin-activate": {
+    description: "Activate a plugin",
+    category: "Plugins",
+    usage: "ashep plugin-activate <name>"
+  },
+  "plugin-deactivate": {
+    description: "Deactivate a plugin",
+    category: "Plugins",
+    usage: "ashep plugin-deactivate <name>"
+  },
+  "plugin-remove": {
+    description: "Remove a plugin",
+    category: "Plugins",
+    usage: "ashep plugin-remove <name>"
+  },
+  workflow: {
+    description: "Manage workflow files (list, archive, activate, create)",
+    category: "Workflows",
+    usage: "ashep workflow <command> <name>",
+    options: {
+      list: "List workflows",
+      "archive <name>": "Archive a workflow",
+      "activate <name>": "Activate a workflow",
+      "create <name>": "Create a new workflow"
+    }
+  },
+  "get-messages": {
+    description: "Alias for phase-msg-list",
+    category: "Messaging",
+    usage: "ashep get-messages <issue-id>",
+    aliases: ["phase-msg-list"],
+    hidden: true
+  },
+  "read-message": {
+    description: "Alias for phase-msg-read",
+    category: "Messaging",
+    usage: "ashep read-message <message-id>",
+    aliases: ["phase-msg-read"],
+    hidden: true
+  }
 };
 var PLUGIN_HANDLERS = {};
 var LOADED_PLUGINS = [];
@@ -47550,10 +47737,8 @@ function loadPlugins() {
     const agentShepherdDir = findAgentShepherdDir();
     const pluginsDir = join13(agentShepherdDir, "plugins");
     if (!existsSync12(pluginsDir)) {
-      console.log(`No plugins directory found at ${pluginsDir}`);
       return;
     }
-    console.log(`Loading plugins from: ${pluginsDir}`);
     const pluginDirs = readdirSync2(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     for (const pluginName of pluginDirs) {
       const pluginPath = join13(pluginsDir, pluginName);
@@ -47589,7 +47774,16 @@ function loadPlugins() {
             console.warn(`Plugin ${pluginName}: handler for command '${cmd.name}' not found, skipping`);
             continue;
           }
-          COMMANDS[cmd.name] = cmd.description;
+          if (COMMANDS[cmd.name]) {
+            continue;
+          }
+          COMMANDS[cmd.name] = {
+            description: cmd.description,
+            category: "Plugins",
+            usage: `ashep ${cmd.name} [args]`,
+            options: cmd.options,
+            plugin: manifest.name
+          };
           PLUGIN_HANDLERS[cmd.name] = handler;
         }
         LOADED_PLUGINS.push({ name: manifest.name, version: manifest.version });
@@ -47601,31 +47795,126 @@ function loadPlugins() {
     console.warn("Failed to load plugins:", error);
   }
 }
-function showHelp() {
+function showHelp(specificCommand) {
+  if (specificCommand) {
+    showCommandHelp(specificCommand);
+    return;
+  }
+  const version = getCurrentVersion();
   console.log(`
-Agent Shepherd - AI Coding Agent Orchestration System
-
-Usage: ashep <command> [options]
-
-Commands:
-${Object.entries(COMMANDS).map(([cmd, desc]) => `  ${cmd.padEnd(15)} ${desc}`).join(`
-`)}
-
-  Examples:
-    ashep quickstart          # One-command onboarding
-    ashep init                # Initialize configuration
-    ashep worker              # Start autonomous worker
-    ashep work                # Auto-pick and process issue (uses config: simple/smart)
-    ashep work ISSUE-123      # Process specific issue
-    ashep work --epic EPIC-123  # Process all issues in epic subtree
-    ashep ui                  # Start visualization UI
-    ashep list-sessions ISSUE-123  # List sessions for an issue
-    ashep validate-policy-chain  # Validate policy relationships
-    ashep show-policy-tree    # Show relationship tree
-
-For detailed documentation, see: README.md
-Configuration guide: docs/cli-reference.md
+  \x1B[1mAgent Shepherd\x1B[0m \x1B[36m${version}\x1B[0m`);
+  console.log(`  AI Coding Agent Orchestration System
 `);
+  console.log(`  \x1B[33mUsage:\x1B[0m ashep <command> [options]
+`);
+  const categories = {};
+  const categoryOrder = [
+    "Core",
+    "Execution",
+    "Issues",
+    "Workflows",
+    "Sessions",
+    "System",
+    "Development",
+    "Messaging",
+    "Other"
+  ];
+  const pluginCommands = {};
+  let maxCommandLen = 0;
+  for (const [name, def] of Object.entries(COMMANDS)) {
+    if (def.hidden)
+      continue;
+    if (name.length > maxCommandLen)
+      maxCommandLen = name.length;
+    if (def.category === "Plugins") {
+      const pluginName = def.plugin || "Other Plugins";
+      if (!pluginCommands[pluginName])
+        pluginCommands[pluginName] = [];
+      pluginCommands[pluginName].push(name);
+    } else {
+      const cat = def.category || "Other";
+      if (!categories[cat])
+        categories[cat] = [];
+      categories[cat].push(name);
+    }
+  }
+  for (const cat of categoryOrder) {
+    const cmds = categories[cat];
+    if (!cmds || cmds.length === 0)
+      continue;
+    console.log(`  \x1B[33m${cat} Commands\x1B[0m`);
+    for (const cmd of cmds.sort()) {
+      const def = COMMANDS[cmd];
+      console.log(`    \x1B[36m${cmd.padEnd(maxCommandLen + 2)}\x1B[0m ${def.description}`);
+    }
+    console.log();
+  }
+  const pluginNames = Object.keys(pluginCommands).sort();
+  if (pluginNames.length > 0) {
+    console.log(`  \x1B[33mPlugins\x1B[0m`);
+    for (const pluginName of pluginNames) {
+      console.log(`    \x1B[90m${pluginName}\x1B[0m`);
+      const cmds = pluginCommands[pluginName];
+      for (const cmd of cmds.sort()) {
+        const def = COMMANDS[cmd];
+        console.log(`      \x1B[36m${cmd.padEnd(maxCommandLen + 2)}\x1B[0m ${def.description}`);
+      }
+      console.log();
+    }
+  }
+  console.log(`  \x1B[33mGlobal Options\x1B[0m`);
+  console.log(`    \x1B[36m${"--help, -h".padEnd(maxCommandLen + 2)}\x1B[0m Show help information`);
+  console.log(`    \x1B[36m${"--version".padEnd(maxCommandLen + 2)}\x1B[0m Show installed version`);
+  console.log();
+  console.log(`  \x1B[33mExamples\x1B[0m`);
+  console.log(`    \x1B[90m# One-command setup\x1B[0m`);
+  console.log(`    ashep quickstart`);
+  console.log();
+  console.log(`    \x1B[90m# Start autonomous worker loop\x1B[0m`);
+  console.log(`    ashep worker`);
+  console.log();
+  console.log(`    \x1B[90m# Process specific issue\x1B[0m`);
+  console.log(`    ashep work ISSUE-123`);
+  console.log();
+  console.log(`    \x1B[90m# Visualize workflow\x1B[0m`);
+  console.log(`    ashep ui --port 4000`);
+  console.log();
+  console.log(`  For more help on a specific command including its flags:`);
+  console.log(`    ashep help <command>`);
+  console.log(`    ashep <command> --help
+`);
+  console.log(`  \x1B[90mDocumentation: README.md\x1B[0m`);
+}
+function showCommandHelp(commandName) {
+  const def = COMMANDS[commandName];
+  if (!def) {
+    console.error(`Unknown command: ${commandName}`);
+    console.log("Run 'ashep help' for a list of available commands.");
+    return;
+  }
+  console.log(`
+  \x1B[36mashep ${commandName}\x1B[0m`);
+  console.log(`  ${def.description}
+`);
+  if (def.usage) {
+    console.log(`  \x1B[33mUsage:\x1B[0m`);
+    console.log(`    ${def.usage}
+`);
+  }
+  if (def.aliases && def.aliases.length > 0) {
+    console.log(`  \x1B[33mAliases:\x1B[0m`);
+    console.log(`    ${def.aliases.join(", ")}
+`);
+  }
+  if (def.options) {
+    console.log(`  \x1B[33mOptions:\x1B[0m`);
+    const opts = Object.entries(def.options);
+    const maxOptLen = Math.max(...opts.map(([k]) => k.length));
+    for (const [opt, desc] of opts) {
+      console.log(`    \x1B[36m${opt.padEnd(maxOptLen + 2)}\x1B[0m ${desc}`);
+    }
+    console.log();
+  }
 }
 async function cmdWorker(options) {
   console.log("Starting Agent Shepherd Worker...");
@@ -49313,8 +49602,16 @@ async function main() {
   loadPlugins();
   const args = process.argv.slice(2);
   const command = args[0];
-  if (!command || command === "help" || command === "-h" || command === "--help") {
+  if (command === "help") {
+    showHelp(args[1]);
+    return;
+  }
+  if (!command || command === "-h" || command === "--help") {
     showHelp();
+    return;
+  }
+  if (args.includes("--help") || args.includes("-h") || args[1] === "help") {
+    showHelp(command);
     return;
   }
   switch (command) {
@@ -49467,6 +49764,10 @@ async function main() {
     case "workflow": {
       const subCmd = args[1];
       const name = args[2];
+      if (!subCmd || subCmd === "help" || subCmd === "--help" || subCmd === "-h") {
+        showCommandHelp("workflow");
+        return;
+      }
       switch (subCmd) {
         case "list":
           await cmdWorkflowList();
@@ -49494,6 +49795,7 @@ async function main() {
           break;
         default:
           console.error("Unknown workflow command. Use: list, archive, activate, create");
+          console.log("Run 'ashep workflow help' for details");
           process.exit(1);
       }
       break;

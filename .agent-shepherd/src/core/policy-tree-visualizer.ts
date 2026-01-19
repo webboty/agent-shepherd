@@ -288,8 +288,8 @@ export class PolicyTreeVisualizer {
       validPolicies,
       policiesWithWarnings,
       policiesWithErrors,
-      deadEndCapabilities,
-      inactiveAgents
+      deadEndCapabilities: [...new Set(deadEndCapabilities)],
+      inactiveAgents: [...new Set(inactiveAgents)]
     };
   }
 

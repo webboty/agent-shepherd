@@ -9,6 +9,7 @@ worker_assistant:
 worker:
   poll_interval_ms: 30000
   max_concurrent_runs: 3
+  worker_id: default
   picking:
     mode: simple  # "simple" | "smart"
     max_issues: 3
@@ -17,8 +18,9 @@ worker:
     heartbeat_threshold_ms: 300000  # 5 minutes default
     lease_duration_ms: 1800000  # 30 minutes default
     fallback_to_lease: true
-  execution:
-    mode: sdk  # "cli" | "sdk"
+
+execution:
+  mode: sdk  # "cli" | "sdk"
 
 monitor:
   poll_interval_ms: 10000
