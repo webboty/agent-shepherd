@@ -7302,23 +7302,28 @@ var require_dist = __commonJS((exports) => {
 // src/core/path-utils.ts
 var exports_path_utils = {};
 __export(exports_path_utils, {
+  scanRecursive: () => scanRecursive,
   getGlobalInstallDir: () => getGlobalInstallDir,
   getConfigPath: () => getConfigPath,
   getConfigDir: () => getConfigDir,
+  findWorkflowsDir: () => findWorkflowsDir,
   findPluginsDir: () => findPluginsDir,
   findLocalAgentShepherdDir: () => findLocalAgentShepherdDir,
   findInstallDir: () => findInstallDir,
   findConfigDir: () => findConfigDir,
   findAgentShepherdDir: () => findAgentShepherdDir
 });
-import { existsSync } from "fs";
-import { join, dirname } from "path";
+import { existsSync, readdirSync, statSync } from "fs";
+import { join, dirname, extname, basename } from "path";
 import { homedir } from "os";
 function getGlobalInstallDir() {
   return join(homedir(), ".agent-shepherd");
 }
 function findLocalAgentShepherdDir() {
   let currentDir = process.cwd();
+  if (basename(currentDir) === ".agent-shepherd") {
+    return currentDir;
+  }
   const visited = new Set;
   while (true) {
     if (visited.has(currentDir)) {
@@ -7379,6 +7384,18 @@ function findPluginsDir() {
   const global2 = getGlobalInstallDir();
   return join(global2, "plugins");
 }
+function findWorkflowsDir() {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "workflows"))) {
+    return join(envOverride, "workflows");
+  }
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "workflows"))) {
+    return join(local, "workflows");
+  }
+  const global2 = getGlobalInstallDir();
+  return join(global2, "workflows");
+}
 function findAgentShepherdDir() {
   const envOverride = process.env.ASHEP_DIR;
   if (envOverride && existsSync(envOverride)) {
@@ -7406,6 +7423,30 @@ function getConfigPath(filename) {
     return oldPath;
   }
   return newPath;
+}
+function scanRecursive(dir, extensions = []) {
+  let results = [];
+  if (!existsSync(dir)) {
+    return results;
+  }
+  const list = readdirSync(dir);
+  for (const file of list) {
+    const filePath = join(dir, file);
+    const stat = statSync(filePath);
+    if (stat && stat.isDirectory()) {
+      results = results.concat(scanRecursive(filePath, extensions));
+    } else {
+      if (extensions.length === 0) {
+        results.push(filePath);
+      } else {
+        const ext = extname(file).toLowerCase();
+        if (extensions.includes(ext)) {
+          results.push(filePath);
+        }
+      }
+    }
+  }
+  return results;
 }
 var init_path_utils = () => {};
 
@@ -9126,7 +9167,15 @@ var init_decision_builder = __esm(() => {
 });
 
 // src/core/policy.ts
-import { readFileSync as readFileSync5 } from "fs";
+var exports_policy = {};
+__export(exports_policy, {
+  validateHITLReason: () => validateHITLReason,
+  getTransitionKey: () => getTransitionKey,
+  getPolicyEngine: () => getPolicyEngine,
+  PolicyEngine: () => PolicyEngine
+});
+import { readFileSync as readFileSync5, existsSync as existsSync5 } from "fs";
+import { join as join5 } from "path";
 function getTransitionKey(outcome) {
   if (outcome.result_type) {
     return `on_${outcome.result_type}`;
@@ -9156,6 +9205,7 @@ class PolicyEngine {
         this.validatePolicy(name, policy);
         this.policies.set(name, policy);
       }
+      this.loadWorkflowFiles();
       if (config.default_policy) {
         if (!this.policies.has(config.default_policy)) {
           throw new Error(`Default policy '${config.default_policy}' not found`);
@@ -9163,7 +9213,36 @@ class PolicyEngine {
         this.defaultPolicy = config.default_policy;
       }
     } catch (error) {
-      throw new Error(`Failed to load policies from ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to load policies: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  loadWorkflowFiles() {
+    try {
+      const workflowsDir = findWorkflowsDir();
+      const enabledDir = join5(workflowsDir, "enabled");
+      if (!existsSync5(enabledDir)) {
+        return;
+      }
+      const files = scanRecursive(enabledDir, [".yaml", ".yml"]);
+      for (const file of files) {
+        try {
+          const content = readFileSync5(file, "utf-8");
+          const policy = import_yaml4.parse(content);
+          if (!policy.name || !policy.phases) {
+            console.warn(`Skipping invalid workflow file ${file}: missing name or phases`);
+            continue;
+          }
+          if (this.policies.has(policy.name)) {
+            continue;
+          }
+          this.validatePolicy(policy.name, policy);
+          this.policies.set(policy.name, policy);
+        } catch (error) {
+          console.warn(`Failed to load workflow file ${file}: ${error}`);
+        }
+      }
+    } catch (error) {
+      console.warn(`Error loading workflow files: ${error}`);
     }
   }
   validatePolicy(name, policy) {
@@ -12033,11 +12112,11 @@ __export(exports_phase_messenger, {
   PhaseMessenger: () => PhaseMessenger
 });
 import { Database as Database3 } from "bun:sqlite";
-import { existsSync as existsSync5, readFileSync as readFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, statSync } from "fs";
-import { join as join5 } from "path";
+import { existsSync as existsSync6, readFileSync as readFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, statSync as statSync2 } from "fs";
+import { join as join6 } from "path";
 function loadConfig2(dataDir) {
-  const configPath = join5(dataDir || process.cwd(), ".agent-shepherd", "config", "phase-messenger.yaml");
-  if (!existsSync5(configPath)) {
+  const configPath = join6(dataDir || process.cwd(), ".agent-shepherd", "config", "phase-messenger.yaml");
+  if (!existsSync6(configPath)) {
     return DEFAULT_CONFIG;
   }
   try {
@@ -12069,12 +12148,12 @@ class PhaseMessenger {
   config;
   constructor(dataDir) {
     this.config = loadConfig2(dataDir);
-    const dir = dataDir || join5(process.cwd(), this.config.storage.data_dir);
-    if (!existsSync5(dir)) {
+    const dir = dataDir || join6(process.cwd(), this.config.storage.data_dir);
+    if (!existsSync6(dir)) {
       mkdirSync3(dir, { recursive: true });
     }
-    this.jsonlPath = join5(dir, this.config.storage.jsonl_file);
-    const dbPath = join5(dir, this.config.storage.database_file);
+    this.jsonlPath = join6(dir, this.config.storage.jsonl_file);
+    const dbPath = join6(dir, this.config.storage.database_file);
     this.db = new Database3(dbPath);
     this.initializeSchema();
     this.syncFromJSONL();
@@ -12108,7 +12187,7 @@ class PhaseMessenger {
     indexes.forEach((idx) => this.db.exec(idx));
   }
   syncFromJSONL() {
-    if (!existsSync5(this.jsonlPath)) {
+    if (!existsSync6(this.jsonlPath)) {
       return;
     }
     const content = readFileSync6(this.jsonlPath, "utf-8");
@@ -12291,11 +12370,11 @@ class PhaseMessenger {
     };
   }
   getArchivePath(issueId) {
-    const archiveDir = join5(this.jsonlPath, "..", "messages_archive");
-    if (!existsSync5(archiveDir)) {
+    const archiveDir = join6(this.jsonlPath, "..", "messages_archive");
+    if (!existsSync6(archiveDir)) {
       mkdirSync3(archiveDir, { recursive: true });
     }
-    return join5(archiveDir, `${issueId}.jsonl`);
+    return join6(archiveDir, `${issueId}.jsonl`);
   }
   archiveMessagesForIssue(issueId, reason = "cleanup") {
     const messages = this.listMessages({ issue_id: issueId });
@@ -12317,7 +12396,7 @@ class PhaseMessenger {
     return { archived: messages.length };
   }
   cleanupPhaseMessages(issueId, reason = "manual") {
-    const dbPath = join5(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbPath = join6(this.jsonlPath, "..", this.config.storage.database_file);
     const dbSizeBefore = this.getDatabaseSize(dbPath);
     const archiveResult = this.archiveMessagesForIssue(issueId, reason);
     this.deleteIssueMessages(issueId);
@@ -12331,14 +12410,14 @@ class PhaseMessenger {
     };
   }
   getDatabaseSize(dbPath) {
-    if (existsSync5(dbPath)) {
-      const stats = statSync(dbPath);
+    if (existsSync6(dbPath)) {
+      const stats = statSync2(dbPath);
       return stats.size;
     }
     return 0;
   }
   recordCleanupMetric(issueId, reason, archived, deleted, sizeBefore, sizeAfter) {
-    const cleanupMetricsPath = join5(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+    const cleanupMetricsPath = join6(this.jsonlPath, "..", "cleanup_metrics.jsonl");
     const metric = {
       timestamp: Date.now(),
       issue_id: issueId,
@@ -12354,9 +12433,9 @@ class PhaseMessenger {
 `);
   }
   getCleanupMetrics(issueId) {
-    const { existsSync: existsSync6, readFileSync: readFileSync7 } = __require("fs");
-    const cleanupMetricsPath = join5(this.jsonlPath, "..", "cleanup_metrics.jsonl");
-    if (!existsSync6(cleanupMetricsPath)) {
+    const { existsSync: existsSync7, readFileSync: readFileSync7 } = __require("fs");
+    const cleanupMetricsPath = join6(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+    if (!existsSync7(cleanupMetricsPath)) {
       return [];
     }
     const content = readFileSync7(cleanupMetricsPath, "utf-8");
@@ -12393,7 +12472,7 @@ class PhaseMessenger {
         byIssue[m.issue_id] = (byIssue[m.issue_id] || 0) + 1;
       });
     }
-    const dbPath = join5(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbPath = join6(this.jsonlPath, "..", this.config.storage.database_file);
     const dbSize = this.getDatabaseSize(dbPath) / (1024 * 1024);
     return {
       total_messages: total,
@@ -19281,8 +19360,8 @@ __export(exports_config_validator, {
   configValidator: () => configValidator,
   ConfigurationValidator: () => ConfigurationValidator
 });
-import { readFileSync as readFileSync8, existsSync as existsSync9 } from "fs";
-import { join as join10 } from "path";
+import { readFileSync as readFileSync8, existsSync as existsSync10 } from "fs";
+import { join as join11 } from "path";
 
 class ConfigurationValidator {
   ajv;
@@ -19322,7 +19401,7 @@ class ConfigurationValidator {
     }
   }
   async validateAllConfigs(configDir) {
-    const { getConfigDir: getConfigDir2, findInstallDir: findInstallDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+    const { getConfigDir: getConfigDir2, findInstallDir: findInstallDir2, findWorkflowsDir: findWorkflowsDir2, scanRecursive: scanRecursive2, findAgentShepherdDir: findAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
     const baseDir = configDir || getConfigDir2();
     const installDir = findInstallDir2();
     const results = [];
@@ -19344,13 +19423,13 @@ class ConfigurationValidator {
       }
     ];
     for (const task of validationTasks) {
-      const configPath = join10(baseDir, task.config);
-      const localAgentShepherdDir = (await Promise.resolve().then(() => (init_path_utils(), exports_path_utils))).findAgentShepherdDir();
-      let schemaPath = join10(localAgentShepherdDir, task.schema);
-      if (!existsSync9(schemaPath)) {
-        schemaPath = join10(installDir, task.schema);
+      const configPath = join11(baseDir, task.config);
+      const localAgentShepherdDir = findAgentShepherdDir2();
+      let schemaPath = join11(localAgentShepherdDir, task.schema);
+      if (!existsSync10(schemaPath)) {
+        schemaPath = join11(installDir, task.schema);
       }
-      if (!existsSync9(configPath)) {
+      if (!existsSync10(configPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -19364,7 +19443,7 @@ class ConfigurationValidator {
         });
         continue;
       }
-      if (!existsSync9(schemaPath)) {
+      if (!existsSync10(schemaPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -19381,6 +19460,23 @@ class ConfigurationValidator {
       const result = await this.validateYAMLConfig(configPath, schemaPath);
       result.summary = `${result.valid ? "\u2705" : "\u274C"} ${task.description}: ${result.summary}`;
       results.push(result);
+    }
+    const workflowsDir = findWorkflowsDir2();
+    const enabledDir = join11(workflowsDir, "enabled");
+    if (existsSync10(enabledDir)) {
+      const workflowFiles = scanRecursive2(enabledDir, [".yaml", ".yml"]);
+      const localAgentShepherdDir = findAgentShepherdDir2();
+      let policiesSchemaPath = join11(localAgentShepherdDir, "schemas/policies.schema.json");
+      if (!existsSync10(policiesSchemaPath)) {
+        policiesSchemaPath = join11(installDir, "schemas/policies.schema.json");
+      }
+      if (existsSync10(policiesSchemaPath)) {
+        for (const file of workflowFiles) {
+          const result = await this.validateWorkflowFile(file, policiesSchemaPath);
+          result.summary = `${result.valid ? "\u2705" : "\u274C"} Workflow ${file}: ${result.summary}`;
+          results.push(result);
+        }
+      }
     }
     const chainResult = await this.validatePolicyChain();
     results.push(chainResult);
@@ -19413,11 +19509,8 @@ class ConfigurationValidator {
       console.log("\u2705 All configuration files are valid");
     }
   }
-  async validateYAMLConfig(yamlPath, schemaPath) {
+  async validateConfigObject(config, schemaPath, contextPath) {
     try {
-      const yamlContent = readFileSync8(yamlPath, "utf-8");
-      const { parse } = await Promise.resolve().then(() => __toESM(require_dist(), 1));
-      const config = parse(yamlContent);
       const schemaContent = readFileSync8(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const validate = this.ajv.compile(schema);
@@ -19425,8 +19518,79 @@ class ConfigurationValidator {
       return {
         valid: !!valid,
         errors: validate.errors || [],
-        summary: this.formatValidationSummary(yamlPath, valid, validate.errors || [])
+        summary: this.formatValidationSummary(contextPath, !!valid, validate.errors || [])
       };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [{
+          keyword: "validation-error",
+          instancePath: "",
+          schemaPath: "",
+          params: {},
+          message: error instanceof Error ? error.message : String(error)
+        }],
+        summary: `Failed to validate ${contextPath}: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+  async validateYAMLConfig(yamlPath, schemaPath) {
+    try {
+      const yamlContent = readFileSync8(yamlPath, "utf-8");
+      const { parse } = await Promise.resolve().then(() => __toESM(require_dist(), 1));
+      const config = parse(yamlContent);
+      return this.validateConfigObject(config, schemaPath, yamlPath);
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [{
+          keyword: "yaml-error",
+          instancePath: "",
+          schemaPath: "",
+          params: {},
+          message: error instanceof Error ? error.message : String(error)
+        }],
+        summary: `Failed to validate ${yamlPath}: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+  async validateWorkflowFile(yamlPath, schemaPath) {
+    try {
+      const yamlContent = readFileSync8(yamlPath, "utf-8");
+      const { parse } = await Promise.resolve().then(() => __toESM(require_dist(), 1));
+      const config = parse(yamlContent);
+      if (!config || typeof config !== "object") {
+        return {
+          valid: false,
+          errors: [{
+            keyword: "type",
+            instancePath: "",
+            schemaPath: "",
+            params: {},
+            message: "File content must be an object"
+          }],
+          summary: "File content must be an object"
+        };
+      }
+      if (!config.name) {
+        return {
+          valid: false,
+          errors: [{
+            keyword: "required",
+            instancePath: "",
+            schemaPath: "",
+            params: { missingProperty: "name" },
+            message: "Missing required property 'name'"
+          }],
+          summary: "Missing required property 'name'"
+        };
+      }
+      const wrappedConfig = {
+        policies: {
+          [config.name]: config
+        }
+      };
+      return this.validateConfigObject(wrappedConfig, schemaPath, yamlPath);
     } catch (error) {
       return {
         valid: false,
@@ -34587,7 +34751,7 @@ var require_mime_types = __commonJS((exports) => {
    * MIT Licensed
    */
   var db = require_mime_db();
-  var extname = __require("path").extname;
+  var extname2 = __require("path").extname;
   var mimeScore = require_mimeScore();
   var EXTRACT_TYPE_REGEXP = /^\s*([^;\s]*)(?:;|\s|$)/;
   var TEXT_TYPE_REGEXP = /^text\//i;
@@ -34644,7 +34808,7 @@ var require_mime_types = __commonJS((exports) => {
     if (!path || typeof path !== "string") {
       return false;
     }
-    var extension2 = extname("x." + path).toLowerCase().slice(1);
+    var extension2 = extname2("x." + path).toLowerCase().slice(1);
     if (!extension2) {
       return false;
     }
@@ -37815,15 +37979,15 @@ var require_view = __commonJS((exports, module) => {
   var path = __require("path");
   var fs = __require("fs");
   var dirname2 = path.dirname;
-  var basename = path.basename;
-  var extname = path.extname;
-  var join11 = path.join;
+  var basename2 = path.basename;
+  var extname2 = path.extname;
+  var join12 = path.join;
   var resolve = path.resolve;
   module.exports = View;
   function View(name, options) {
     var opts = options || {};
     this.defaultEngine = opts.defaultEngine;
-    this.ext = extname(name);
+    this.ext = extname2(name);
     this.name = name;
     this.root = opts.root;
     if (!this.ext && !this.defaultEngine) {
@@ -37854,7 +38018,7 @@ var require_view = __commonJS((exports, module) => {
       var root = roots[i];
       var loc = resolve(root, name);
       var dir = dirname2(loc);
-      var file = basename(loc);
+      var file = basename2(loc);
       path2 = this.resolve(dir, file);
     }
     return path2;
@@ -37879,12 +38043,12 @@ var require_view = __commonJS((exports, module) => {
   };
   View.prototype.resolve = function resolve(dir, file) {
     var ext = this.ext;
-    var path2 = join11(dir, file);
+    var path2 = join12(dir, file);
     var stat = tryStat(path2);
     if (stat && stat.isFile()) {
       return path2;
     }
-    path2 = join11(dir, basename(file, ext), "index" + ext);
+    path2 = join12(dir, basename2(file, ext), "index" + ext);
     stat = tryStat(path2);
     if (stat && stat.isFile()) {
       return path2;
@@ -41205,7 +41369,7 @@ var require_content_disposition = __commonJS((exports, module) => {
    */
   module.exports = contentDisposition;
   module.exports.parse = parse;
-  var basename = __require("path").basename;
+  var basename2 = __require("path").basename;
   var ENCODE_URL_ATTR_CHAR_REGEXP = /[\x00-\x20"'()*,/:;<=>?@[\\\]{}\x7f]/g;
   var HEX_ESCAPE_REGEXP = /%[0-9A-Fa-f]{2}/;
   var HEX_ESCAPE_REPLACE_REGEXP = /%([0-9A-Fa-f]{2})/g;
@@ -41240,9 +41404,9 @@ var require_content_disposition = __commonJS((exports, module) => {
     if (typeof fallback === "string" && NON_LATIN1_REGEXP.test(fallback)) {
       throw new TypeError("fallback must be ISO-8859-1 string");
     }
-    var name = basename(filename);
+    var name = basename2(filename);
     var isQuotedString = TEXT_REGEXP.test(name);
-    var fallbackName = typeof fallback !== "string" ? fallback && getlatin1(name) : basename(fallback);
+    var fallbackName = typeof fallback !== "string" ? fallback && getlatin1(name) : basename2(fallback);
     var hasFallback = typeof fallbackName === "string" && fallbackName !== name;
     if (hasFallback || !isQuotedString || HEX_ESCAPE_REGEXP.test(name)) {
       params["filename*"] = name;
@@ -41578,8 +41742,8 @@ var require_send = __commonJS((exports, module) => {
   var statuses = require_statuses();
   var Stream = __require("stream");
   var util = __require("util");
-  var extname = path.extname;
-  var join11 = path.join;
+  var extname2 = path.extname;
+  var join12 = path.join;
   var normalize = path.normalize;
   var resolve = path.resolve;
   var sep = path.sep;
@@ -41751,7 +41915,7 @@ var require_send = __commonJS((exports, module) => {
         return res;
       }
       parts = path2.split(sep);
-      path2 = normalize(join11(root, path2));
+      path2 = normalize(join12(root, path2));
     } else {
       if (UP_PATH_REGEXP.test(path2)) {
         debug('malicious path "%s"', path2);
@@ -41854,7 +42018,7 @@ var require_send = __commonJS((exports, module) => {
     debug('stat "%s"', path2);
     fs.stat(path2, function onstat(err, stat) {
       var pathEndsWithSep = path2[path2.length - 1] === sep;
-      if (err && err.code === "ENOENT" && !extname(path2) && !pathEndsWithSep) {
+      if (err && err.code === "ENOENT" && !extname2(path2) && !pathEndsWithSep) {
         return next(err);
       }
       if (err)
@@ -41891,7 +42055,7 @@ var require_send = __commonJS((exports, module) => {
           return self.onStatError(err);
         return self.error(404);
       }
-      var p = join11(path2, self._index[i]);
+      var p = join12(path2, self._index[i]);
       debug('stat "%s"', p);
       fs.stat(p, function(err2, stat) {
         if (err2)
@@ -41926,7 +42090,7 @@ var require_send = __commonJS((exports, module) => {
     var res = this.res;
     if (res.getHeader("Content-Type"))
       return;
-    var ext = extname(path2);
+    var ext = extname2(path2);
     var type = mime.contentType(ext) || "application/octet-stream";
     debug("content-type %s", type);
     res.setHeader("Content-Type", type);
@@ -42161,7 +42325,7 @@ var require_response = __commonJS((exports, module) => {
   var setCharset = require_utils4().setCharset;
   var cookie = require_cookie();
   var send = require_send();
-  var extname = path.extname;
+  var extname2 = path.extname;
   var resolve = path.resolve;
   var vary = require_vary();
   var { Buffer: Buffer2 } = __require("buffer");
@@ -42402,7 +42566,7 @@ var require_response = __commonJS((exports, module) => {
   };
   res.attachment = function attachment(filename) {
     if (filename) {
-      this.type(extname(filename));
+      this.type(extname2(filename));
     }
     this.set("Content-Disposition", contentDisposition(filename));
     return this;
@@ -42799,8 +42963,8 @@ var exports_ui_server = {};
 __export(exports_ui_server, {
   UIServer: () => UIServer
 });
-import { join as join11, dirname as dirname2, resolve } from "path";
-import { readFileSync as readFileSync9, existsSync as existsSync10 } from "fs";
+import { join as join12, dirname as dirname2, resolve } from "path";
+import { readFileSync as readFileSync9, existsSync as existsSync11 } from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
@@ -42814,8 +42978,8 @@ class UIServer {
     this.setupRoutes();
   }
   async ensureUIBuilt() {
-    const distDir = join11(PROJECT_ROOT, "dist");
-    if (!existsSync10(join11(distDir, "AgentShepherdFlow.js"))) {
+    const distDir = join12(PROJECT_ROOT, "dist");
+    if (!existsSync11(join12(distDir, "AgentShepherdFlow.js"))) {
       console.log("Building UI...");
       return new Promise((resolve2, reject) => {
         const build = spawn("bun", ["run", "build:ui"], {
@@ -42840,7 +43004,7 @@ class UIServer {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
       next();
     });
-    const isDev = existsSync10(join11(PROJECT_ROOT, "package.json"));
+    const isDev = existsSync11(join12(PROJECT_ROOT, "package.json"));
     if (isDev) {
       this.ensureUIBuilt().catch((err) => {
         console.error("Failed to build UI:", err);
@@ -42908,9 +43072,9 @@ class UIServer {
     });
     this.app.get("/", (_req, res) => {
       try {
-        const filePath = join11(UI_DIR, "index.html");
+        const filePath = join12(UI_DIR, "index.html");
         console.log("Serving dashboard from:", filePath);
-        if (!existsSync10(filePath)) {
+        if (!existsSync11(filePath)) {
           console.error("index.html not found at:", filePath);
           res.status(404).send("index.html not found");
           return;
@@ -42969,8 +43133,8 @@ var init_ui_server = __esm(() => {
     resolve(process.cwd(), ".agent-shepherd"),
     process.cwd()
   ];
-  PROJECT_ROOT = possibleRoots.find((root) => existsSync10(join11(root, "src", "ui", "index.html"))) || possibleRoots[0];
-  UI_DIR = join11(PROJECT_ROOT, "src", "ui");
+  PROJECT_ROOT = possibleRoots.find((root) => existsSync11(join12(root, "src", "ui", "index.html"))) || possibleRoots[0];
+  UI_DIR = join12(PROJECT_ROOT, "src", "ui");
 });
 
 // src/core/policy-tree-visualizer.ts
@@ -45911,8 +46075,8 @@ function getMonitorEngine(config) {
 init_path_utils();
 init_config();
 init_policy_capability_validator();
-import { existsSync as existsSync11, mkdirSync as mkdirSync5, writeFileSync as writeFileSync3, readdirSync, readFileSync as readFileSync10, cpSync, rmSync } from "fs";
-import { join as join12 } from "path";
+import { existsSync as existsSync12, mkdirSync as mkdirSync5, writeFileSync as writeFileSync3, readdirSync as readdirSync2, readFileSync as readFileSync10, cpSync, rmSync } from "fs";
+import { join as join13 } from "path";
 import path from "path";
 import { execSync } from "child_process";
 import { homedir as homedir2, platform } from "os";
@@ -45923,8 +46087,8 @@ init_config();
 // src/core/garbage-collector.ts
 init_logging();
 import { Database as Database4 } from "bun:sqlite";
-import { existsSync as existsSync6, mkdirSync as mkdirSync4, readFileSync as readFileSync7, writeFileSync as writeFileSync2 } from "fs";
-import { join as join6 } from "path";
+import { existsSync as existsSync7, mkdirSync as mkdirSync4, readFileSync as readFileSync7, writeFileSync as writeFileSync2 } from "fs";
+import { join as join7 } from "path";
 
 // src/core/retention-policy.ts
 init_logging();
@@ -46098,16 +46262,16 @@ class GarbageCollector {
   policyManager;
   isClosed = false;
   constructor(config) {
-    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join6(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join7(process.cwd(), ".agent-shepherd");
     this.policyManager = getRetentionPolicyManager(config.policies);
-    const archiveDir = join6(this.dataDir, "archive");
-    if (!existsSync6(archiveDir)) {
+    const archiveDir = join7(this.dataDir, "archive");
+    if (!existsSync7(archiveDir)) {
       mkdirSync4(archiveDir, { recursive: true });
     }
-    const archiveDbPath = join6(archiveDir, "archive.db");
+    const archiveDbPath = join7(archiveDir, "archive.db");
     this.archiveDb = new Database4(archiveDbPath);
     this.initializeArchiveSchema();
-    this.archiveJsonlPath = join6(archiveDir, "archive.jsonl");
+    this.archiveJsonlPath = join7(archiveDir, "archive.jsonl");
   }
   initializeArchiveSchema() {
     this.archiveDb.run(`
@@ -46373,8 +46537,8 @@ class GarbageCollector {
   }
   deleteRunFromMain(runId) {
     this.logger.deleteRun(runId);
-    const decisionsPath = join6(this.dataDir, "decisions.jsonl");
-    if (existsSync6(decisionsPath)) {
+    const decisionsPath = join7(this.dataDir, "decisions.jsonl");
+    if (existsSync7(decisionsPath)) {
       const content = readFileSync7(decisionsPath, "utf-8");
       const lines = content.trim().split(`
 `);
@@ -46505,15 +46669,15 @@ function resetCollector() {
 // src/core/cleanup-health-check.ts
 init_logging();
 import { Database as Database5 } from "bun:sqlite";
-import { existsSync as existsSync7, statSync as statSync2 } from "fs";
-import { join as join7 } from "path";
+import { existsSync as existsSync8, statSync as statSync3 } from "fs";
+import { join as join8 } from "path";
 
 class CleanupHealthChecker {
   dataDir;
   logger;
   config;
   constructor(config = {}) {
-    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join7(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join8(process.cwd(), ".agent-shepherd");
     this.logger = getLogger(this.dataDir);
     this.config = {
       run_vacuum: config.run_vacuum ?? true,
@@ -46563,8 +46727,8 @@ class CleanupHealthChecker {
     return report;
   }
   async checkDatabaseIntegrity() {
-    const dbPath = join7(this.dataDir, "runs.db");
-    if (!existsSync7(dbPath)) {
+    const dbPath = join8(this.dataDir, "runs.db");
+    if (!existsSync8(dbPath)) {
       return {
         check_name: "Database Integrity",
         passed: true,
@@ -46645,8 +46809,8 @@ class CleanupHealthChecker {
     const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
     try {
       const archiveLogger = new ArchiveLogger2(this.dataDir);
-      const dbPath = join7(this.dataDir, "archive", "archive.db");
-      if (!existsSync7(dbPath)) {
+      const dbPath = join8(this.dataDir, "archive", "archive.db");
+      if (!existsSync8(dbPath)) {
         archiveLogger.close();
         return {
           check_name: "Archive Consistency",
@@ -46685,8 +46849,8 @@ class CleanupHealthChecker {
     }
   }
   async checkSizeReduction() {
-    const dbPath = join7(this.dataDir, "runs.db");
-    if (!existsSync7(dbPath)) {
+    const dbPath = join8(this.dataDir, "runs.db");
+    if (!existsSync8(dbPath)) {
       return {
         check_name: "Size Reduction",
         passed: true,
@@ -46695,7 +46859,7 @@ class CleanupHealthChecker {
       };
     }
     try {
-      const fileSize = statSync2(dbPath).size;
+      const fileSize = statSync3(dbPath).size;
       const fileSizeMb = fileSize / 1048576;
       const db = new Database5(dbPath);
       const pageCountResult = db.prepare("PRAGMA page_count").get();
@@ -46737,8 +46901,8 @@ class CleanupHealthChecker {
     }
   }
   async checkIndexHealth() {
-    const dbPath = join7(this.dataDir, "runs.db");
-    if (!existsSync7(dbPath)) {
+    const dbPath = join8(this.dataDir, "runs.db");
+    if (!existsSync8(dbPath)) {
       return {
         check_name: "Index Health",
         passed: true,
@@ -46780,8 +46944,8 @@ class CleanupHealthChecker {
     }
   }
   async runVacuumOptimization() {
-    const dbPath = join7(this.dataDir, "runs.db");
-    if (!existsSync7(dbPath)) {
+    const dbPath = join8(this.dataDir, "runs.db");
+    if (!existsSync8(dbPath)) {
       return {
         check_name: "Vacuum Optimization",
         passed: true,
@@ -46790,11 +46954,11 @@ class CleanupHealthChecker {
       };
     }
     try {
-      const sizeBefore = statSync2(dbPath).size;
+      const sizeBefore = statSync3(dbPath).size;
       const db = new Database5(dbPath);
       db.run("VACUUM");
       db.close();
-      const sizeAfter = statSync2(dbPath).size;
+      const sizeAfter = statSync3(dbPath).size;
       const sizeSaved = sizeBefore - sizeAfter;
       const sizeSavedPercent = sizeSaved / sizeBefore * 100;
       return {
@@ -46831,7 +46995,7 @@ function resetHealthChecker() {
 }
 
 // src/core/cleanup-engine.ts
-import { join as join8 } from "path";
+import { join as join9 } from "path";
 
 class CleanupEngine {
   config;
@@ -46860,7 +47024,7 @@ class CleanupEngine {
       } : undefined,
       ...config
     };
-    this.dataDir = this.config.dataDir || process.env.ASHEP_DIR || join8(process.cwd(), ".agent-shepherd");
+    this.dataDir = this.config.dataDir || process.env.ASHEP_DIR || join9(process.cwd(), ".agent-shepherd");
     if (this.config.retentionConfig?.enabled && this.config.retentionConfig.policies.length > 0) {
       this.collector = getGarbageCollector({
         dataDir: this.config.dataDir,
@@ -47111,8 +47275,8 @@ function resetCleanupEngine() {
 
 // src/core/size-monitor.ts
 init_logging();
-import { existsSync as existsSync8, statSync as statSync3 } from "fs";
-import { join as join9 } from "path";
+import { existsSync as existsSync9, statSync as statSync4 } from "fs";
+import { join as join10 } from "path";
 class SizeMonitor {
   config;
   logger;
@@ -47125,7 +47289,7 @@ class SizeMonitor {
     this.logger = getLogger(config.dataDir);
     this.cleanupEngine = getCleanupEngine({ dataDir: config.dataDir });
     const fullConfig = {
-      dataDir: config.dataDir || process.env.ASHEP_DIR || join9(process.cwd(), ".agent-shepherd"),
+      dataDir: config.dataDir || process.env.ASHEP_DIR || join10(process.cwd(), ".agent-shepherd"),
       check_interval_ms: config.check_interval_ms || 3600000,
       warning_threshold_percent: config.warning_threshold_percent || 90,
       critical_threshold_percent: config.critical_threshold_percent || 100,
@@ -47170,16 +47334,16 @@ class SizeMonitor {
   }
   async collectSizeMetrics() {
     const dataDir = this.config.dataDir;
-    const activeDbPath = join9(dataDir, "runs.db");
-    const jsonlPath = join9(dataDir, "runs.jsonl");
-    const decisionsPath = join9(dataDir, "decisions.jsonl");
-    const archiveDbPath = join9(dataDir, "archive", "archive.db");
-    const archiveJsonlPath = join9(dataDir, "archive", "archive.jsonl");
-    const activeDbSize = existsSync8(activeDbPath) ? statSync3(activeDbPath).size : 0;
-    const jsonlSize = existsSync8(jsonlPath) ? statSync3(jsonlPath).size : 0;
-    const decisionsSize = existsSync8(decisionsPath) ? statSync3(decisionsPath).size : 0;
-    const archiveDbSize = existsSync8(archiveDbPath) ? statSync3(archiveDbPath).size : 0;
-    const archiveJsonlSize = existsSync8(archiveJsonlPath) ? statSync3(archiveJsonlPath).size : 0;
+    const activeDbPath = join10(dataDir, "runs.db");
+    const jsonlPath = join10(dataDir, "runs.jsonl");
+    const decisionsPath = join10(dataDir, "decisions.jsonl");
+    const archiveDbPath = join10(dataDir, "archive", "archive.db");
+    const archiveJsonlPath = join10(dataDir, "archive", "archive.jsonl");
+    const activeDbSize = existsSync9(activeDbPath) ? statSync4(activeDbPath).size : 0;
+    const jsonlSize = existsSync9(jsonlPath) ? statSync4(jsonlPath).size : 0;
+    const decisionsSize = existsSync9(decisionsPath) ? statSync4(decisionsPath).size : 0;
+    const archiveDbSize = existsSync9(archiveDbPath) ? statSync4(archiveDbPath).size : 0;
+    const archiveJsonlSize = existsSync9(archiveJsonlPath) ? statSync4(archiveJsonlPath).size : 0;
     const totalSizeBytes = activeDbSize + jsonlSize + decisionsSize + archiveDbSize + archiveJsonlSize;
     const runCount = this.logger.queryRuns({}).length;
     const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
@@ -47374,6 +47538,7 @@ var COMMANDS = {
   "plugin-list": "List installed plugins",
   "cleanup-metrics": "Show cleanup statistics and performance metrics",
   "cleanup-status": "Show current cleanup system status and health",
+  workflow: "Manage workflow files (list, archive, activate, create)",
   update: "Update Agent Shepherd to latest or specific version",
   version: "Show installed version",
   help: "Show help information"
@@ -47383,17 +47548,17 @@ var LOADED_PLUGINS = [];
 function loadPlugins() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join12(agentShepherdDir, "plugins");
-    if (!existsSync11(pluginsDir)) {
+    const pluginsDir = join13(agentShepherdDir, "plugins");
+    if (!existsSync12(pluginsDir)) {
       console.log(`No plugins directory found at ${pluginsDir}`);
       return;
     }
     console.log(`Loading plugins from: ${pluginsDir}`);
-    const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+    const pluginDirs = readdirSync2(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     for (const pluginName of pluginDirs) {
-      const pluginPath = join12(pluginsDir, pluginName);
-      const manifestPath = join12(pluginPath, "manifest.json");
-      if (!existsSync11(manifestPath)) {
+      const pluginPath = join13(pluginsDir, pluginName);
+      const manifestPath = join13(pluginPath, "manifest.json");
+      if (!existsSync12(manifestPath)) {
         console.warn(`Plugin ${pluginName}: manifest.json not found, skipping`);
         continue;
       }
@@ -47404,8 +47569,8 @@ function loadPlugins() {
           console.warn(`Plugin ${pluginName}: invalid manifest.json, skipping`);
           continue;
         }
-        const indexPath = join12(pluginPath, "index.js");
-        if (!existsSync11(indexPath)) {
+        const indexPath = join13(pluginPath, "index.js");
+        if (!existsSync12(indexPath)) {
           console.warn(`Plugin ${pluginName}: index.js not found, skipping`);
           continue;
         }
@@ -47648,48 +47813,48 @@ Details:`);
 }
 function cmdInit() {
   console.log("Initializing Agent Shepherd configuration...");
-  const configDir = join12(process.cwd(), ".agent-shepherd");
-  const configSubDir = join12(configDir, "config");
-  const pluginsDir = join12(configDir, "plugins");
-  const configExists = existsSync11(configSubDir);
+  const configDir = join13(process.cwd(), ".agent-shepherd");
+  const configSubDir = join13(configDir, "config");
+  const pluginsDir = join13(configDir, "plugins");
+  const configExists = existsSync12(configSubDir);
   if (!configExists) {
     mkdirSync5(configSubDir, { recursive: true });
     console.log(`\u2705 Created directory: ${configSubDir}`);
   } else {
     console.log(`\u2139\uFE0F  Configuration directory already exists: ${configSubDir}`);
   }
-  if (!existsSync11(pluginsDir)) {
+  if (!existsSync12(pluginsDir)) {
     mkdirSync5(pluginsDir, { recursive: true });
     console.log(`\u2705 Created directory: ${pluginsDir}`);
   }
   try {
     const installDir = findInstallDir();
-    const schemasSource = join12(installDir, "schemas");
-    const schemasDest = join12(configDir, "schemas");
-    if (existsSync11(schemasSource) && !existsSync11(schemasDest)) {
+    const schemasSource = join13(installDir, "schemas");
+    const schemasDest = join13(configDir, "schemas");
+    if (existsSync12(schemasSource) && !existsSync12(schemasDest)) {
       cpSync(schemasSource, schemasDest, { recursive: true });
       console.log(`\u2705 Created directory: ${schemasDest}`);
-    } else if (!existsSync11(schemasSource)) {
+    } else if (!existsSync12(schemasSource)) {
       console.log(`\u26A0\uFE0F  Warning: Schemas directory not found in installation`);
     }
   } catch {}
   try {
     const installDir = findInstallDir();
-    const pluginsSource = join12(installDir, "plugins");
-    if (existsSync11(pluginsSource)) {
-      const pluginDirs = readdirSync(pluginsSource, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+    const pluginsSource = join13(installDir, "plugins");
+    if (existsSync12(pluginsSource)) {
+      const pluginDirs = readdirSync2(pluginsSource, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
       for (const pluginName of pluginDirs) {
-        const sourcePath = join12(pluginsSource, pluginName);
-        const destPath = join12(pluginsDir, pluginName);
-        if (!existsSync11(destPath)) {
+        const sourcePath = join13(pluginsSource, pluginName);
+        const destPath = join13(pluginsDir, pluginName);
+        if (!existsSync12(destPath)) {
           cpSync(sourcePath, destPath, { recursive: true });
           console.log(`\u2705 Copied plugin: ${pluginName}`);
         }
       }
     }
   } catch {}
-  const policiesPath = join12(configSubDir, "policies.yaml");
-  if (!existsSync11(policiesPath)) {
+  const policiesPath = join13(configSubDir, "policies.yaml");
+  if (!existsSync12(policiesPath)) {
     const defaultPolicies = `policies:
   # Simple beginner workflow - works out-of-the-box with basic OpenCode agents
   simple:
@@ -47776,8 +47941,8 @@ default_policy: simple
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${policiesPath}`);
   }
-  const agentsPath = join12(configSubDir, "agents.yaml");
-  if (!existsSync11(agentsPath)) {
+  const agentsPath = join13(configSubDir, "agents.yaml");
+  if (!existsSync12(agentsPath)) {
     const defaultAgents = `version: "1.0"
 agents:
   - id: default-coder
@@ -47823,8 +47988,8 @@ agents:
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${agentsPath}`);
   }
-  const configPath = join12(configSubDir, "config.yaml");
-  if (!existsSync11(configPath)) {
+  const configPath = join13(configSubDir, "config.yaml");
+  if (!existsSync12(configPath)) {
     const defaultConfig = `version: "1.0"
 
 worker:
@@ -48092,28 +48257,28 @@ async function cmdPluginInstall(source) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join12(agentShepherdDir, "plugins");
-    if (!existsSync11(pluginsDir)) {
+    const pluginsDir = join13(agentShepherdDir, "plugins");
+    if (!existsSync12(pluginsDir)) {
       mkdirSync5(pluginsDir, { recursive: true });
     }
     if (source.startsWith("http")) {
       console.log(`Cloning plugin from ${source}...`);
       const pluginName = source.split("/").pop()?.replace(".git", "") || "plugin";
-      const pluginPath = join12(pluginsDir, pluginName);
-      if (existsSync11(pluginPath)) {
+      const pluginPath = join13(pluginsDir, pluginName);
+      if (existsSync12(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
       execSync(`git clone "${source}" "${pluginPath}"`, { stdio: "inherit" });
     } else {
       const sourcePath = path.resolve(source);
-      if (!existsSync11(sourcePath)) {
+      if (!existsSync12(sourcePath)) {
         console.error(`Source path does not exist: ${sourcePath}`);
         process.exit(1);
       }
       const pluginName = path.basename(sourcePath);
-      const pluginPath = join12(pluginsDir, pluginName);
-      if (existsSync11(pluginPath)) {
+      const pluginPath = join13(pluginsDir, pluginName);
+      if (existsSync12(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
@@ -48132,14 +48297,14 @@ function cmdPluginActivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join12(agentShepherdDir, "plugins");
-    const pluginPath = join12(pluginsDir, name);
-    if (!existsSync11(pluginPath)) {
+    const pluginsDir = join13(agentShepherdDir, "plugins");
+    const pluginPath = join13(pluginsDir, name);
+    if (!existsSync12(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
-    const manifestPath = join12(pluginPath, "manifest.json");
-    if (!existsSync11(manifestPath)) {
+    const manifestPath = join13(pluginPath, "manifest.json");
+    if (!existsSync12(manifestPath)) {
       console.error(`Plugin ${name} has no manifest.json`);
       process.exit(1);
     }
@@ -48156,9 +48321,9 @@ function cmdPluginDeactivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join12(agentShepherdDir, "plugins");
-    const pluginPath = join12(pluginsDir, name);
-    if (!existsSync11(pluginPath)) {
+    const pluginsDir = join13(agentShepherdDir, "plugins");
+    const pluginPath = join13(pluginsDir, name);
+    if (!existsSync12(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -48175,9 +48340,9 @@ function cmdPluginRemove(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join12(agentShepherdDir, "plugins");
-    const pluginPath = join12(pluginsDir, name);
-    if (!existsSync11(pluginPath)) {
+    const pluginsDir = join13(agentShepherdDir, "plugins");
+    const pluginPath = join13(pluginsDir, name);
+    if (!existsSync12(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -48304,12 +48469,12 @@ You can try running individual commands:`);
 function getCurrentVersion() {
   try {
     const installDir = findInstallDir();
-    const versionFile = join12(installDir, "VERSION");
-    if (existsSync11(versionFile)) {
+    const versionFile = join13(installDir, "VERSION");
+    if (existsSync12(versionFile)) {
       return readFileSync10(versionFile, "utf-8").trim();
     }
-    const packageJsonPath = join12(installDir, "package.json");
-    if (existsSync11(packageJsonPath)) {
+    const packageJsonPath = join13(installDir, "package.json");
+    if (existsSync12(packageJsonPath)) {
       const packageJson = JSON.parse(readFileSync10(packageJsonPath, "utf-8"));
       return packageJson.version || "unknown";
     }
@@ -48335,46 +48500,46 @@ async function cmdUpdate(version) {
   console.log(`Updating Agent Shepherd to ${targetVersion}...`);
   try {
     const installDir = findInstallDir();
-    const tempDir = join12(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
+    const tempDir = join13(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
     mkdirSync5(tempDir, { recursive: true });
-    const configDir = join12(installDir, "config");
-    const pluginsDir = join12(installDir, "plugins");
-    if (existsSync11(configDir)) {
-      cpSync(configDir, join12(tempDir, "config"), { recursive: true });
+    const configDir = join13(installDir, "config");
+    const pluginsDir = join13(installDir, "plugins");
+    if (existsSync12(configDir)) {
+      cpSync(configDir, join13(tempDir, "config"), { recursive: true });
     }
-    if (existsSync11(pluginsDir)) {
-      cpSync(pluginsDir, join12(tempDir, "plugins"), { recursive: true });
+    if (existsSync12(pluginsDir)) {
+      cpSync(pluginsDir, join13(tempDir, "plugins"), { recursive: true });
     }
     const repoUrl = "https://github.com/USER/agent-shepherd.git";
-    const cloneDir = join12(tempDir, "clone");
+    const cloneDir = join13(tempDir, "clone");
     if (targetVersion === "latest") {
       execSync(`git clone --depth 1 "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
     } else {
       execSync(`git clone --depth 1 --branch "${targetVersion}" "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
     }
-    const items = readdirSync(installDir);
+    const items = readdirSync2(installDir);
     for (const item of items) {
       if (item !== "logs" && item !== "config" && item !== "plugins") {
-        const itemPath = join12(installDir, item);
-        if (existsSync11(itemPath)) {
+        const itemPath = join13(installDir, item);
+        if (existsSync12(itemPath)) {
           rmSync(itemPath, { recursive: true, force: true });
         }
       }
     }
-    const sourceDir = join12(cloneDir, ".agent-shepherd");
-    const sourceItems = readdirSync(sourceDir);
+    const sourceDir = join13(cloneDir, ".agent-shepherd");
+    const sourceItems = readdirSync2(sourceDir);
     for (const item of sourceItems) {
-      const srcPath = join12(sourceDir, item);
-      const destPath = join12(installDir, item);
+      const srcPath = join13(sourceDir, item);
+      const destPath = join13(installDir, item);
       cpSync(srcPath, destPath, { recursive: true });
     }
-    if (existsSync11(join12(tempDir, "config"))) {
-      cpSync(join12(tempDir, "config"), configDir, { recursive: true });
+    if (existsSync12(join13(tempDir, "config"))) {
+      cpSync(join13(tempDir, "config"), configDir, { recursive: true });
     }
-    if (existsSync11(join12(tempDir, "plugins"))) {
-      cpSync(join12(tempDir, "plugins"), pluginsDir, { recursive: true });
+    if (existsSync12(join13(tempDir, "plugins"))) {
+      cpSync(join13(tempDir, "plugins"), pluginsDir, { recursive: true });
     }
-    writeFileSync3(join12(installDir, "VERSION"), targetVersion);
+    writeFileSync3(join13(installDir, "VERSION"), targetVersion);
     console.log("Installing dependencies...");
     execSync("bun install", { cwd: installDir, stdio: "inherit" });
     rmSync(tempDir, { recursive: true, force: true });
@@ -48463,23 +48628,23 @@ async function cmdCleanupStatus() {
 function cmdPluginList() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join12(agentShepherdDir, "plugins");
-    if (!existsSync11(pluginsDir)) {
+    const pluginsDir = join13(agentShepherdDir, "plugins");
+    if (!existsSync12(pluginsDir)) {
       console.log("No plugins directory found");
       return;
     }
-    const pluginDirs = readdirSync(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+    const pluginDirs = readdirSync2(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     if (pluginDirs.length === 0) {
       console.log("No plugins installed");
       return;
     }
     console.log("Installed plugins:");
     for (const pluginName of pluginDirs) {
-      const pluginPath = join12(pluginsDir, pluginName);
-      const manifestPath = join12(pluginPath, "manifest.json");
+      const pluginPath = join13(pluginsDir, pluginName);
+      const manifestPath = join13(pluginPath, "manifest.json");
       let status = "\u274C Invalid";
       let description = "";
-      if (existsSync11(manifestPath)) {
+      if (existsSync12(manifestPath)) {
         try {
           const manifest = JSON.parse(readFileSync10(manifestPath, "utf-8"));
           status = "\u2705 Active";
@@ -48970,6 +49135,166 @@ async function cmdSessionStop(sessionId) {
     process.exit(1);
   }
 }
+async function cmdWorkflowList() {
+  const { getPolicyEngine: getPolicyEngine2 } = await Promise.resolve().then(() => (init_policy(), exports_policy));
+  const { scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+  const engine = getPolicyEngine2();
+  const loadedPolicies = engine.getPolicyNames();
+  console.log(`
+Enabled Workflows (Active):`);
+  if (loadedPolicies.length === 0) {
+    console.log("  (none)");
+  } else {
+    for (const name of loadedPolicies) {
+      const policy = engine.getPolicyConfig(name);
+      console.log(`  \u2022 ${name.padEnd(20)} ${policy?.description || ""}`);
+    }
+  }
+  const workflowsDir = findWorkflowsDir();
+  const availableDir = join13(workflowsDir, "available");
+  console.log(`
+Available Workflows (Archived):`);
+  if (existsSync12(availableDir)) {
+    const files = scanRecursive2(availableDir, [".yaml", ".yml"]);
+    if (files.length === 0) {
+      console.log("  (none)");
+    } else {
+      for (const file of files) {
+        const name = path.basename(file, path.extname(file));
+        console.log(`  \u2022 ${name.padEnd(20)} (${path.relative(workflowsDir, file)})`);
+      }
+    }
+  } else {
+    console.log("  (none)");
+  }
+  console.log();
+}
+async function cmdWorkflowArchive(name) {
+  const workflowsDir = findWorkflowsDir();
+  const enabledDir = join13(workflowsDir, "enabled");
+  const availableDir = join13(workflowsDir, "available");
+  if (!existsSync12(enabledDir)) {
+    console.error(`Enabled workflows directory not found: ${enabledDir}`);
+    process.exit(1);
+  }
+  let targetFile;
+  const candidates = [`${name}.yaml`, `${name}.yml`];
+  for (const c of candidates) {
+    if (existsSync12(join13(enabledDir, c))) {
+      targetFile = c;
+      break;
+    }
+  }
+  if (!targetFile) {
+    const { scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+    const allFiles = scanRecursive2(enabledDir, [".yaml", ".yml"]);
+    const match = allFiles.find((f) => path.basename(f, path.extname(f)) === name);
+    if (match) {
+      targetFile = path.relative(enabledDir, match);
+    }
+  }
+  if (!targetFile) {
+    console.error(`Workflow file for '${name}' not found in ${enabledDir}`);
+    const { getPolicyEngine: getPolicyEngine2 } = await Promise.resolve().then(() => (init_policy(), exports_policy));
+    if (getPolicyEngine2().getPolicyConfig(name)) {
+      console.log(`Note: '${name}' might be defined in policies.yaml which cannot be archived individually.`);
+    }
+    process.exit(1);
+  }
+  const srcPath = join13(enabledDir, targetFile);
+  const destPath = join13(availableDir, path.basename(targetFile));
+  if (!existsSync12(availableDir)) {
+    mkdirSync5(availableDir, { recursive: true });
+  }
+  try {
+    cpSync(srcPath, destPath);
+    rmSync(srcPath);
+    console.log(`\u2705 Archived workflow '${name}' to workflows/available/`);
+  } catch (error) {
+    console.error(`Failed to archive workflow: ${error}`);
+    process.exit(1);
+  }
+}
+async function cmdWorkflowActivate(name) {
+  const workflowsDir = findWorkflowsDir();
+  const enabledDir = join13(workflowsDir, "enabled");
+  const availableDir = join13(workflowsDir, "available");
+  if (!existsSync12(availableDir)) {
+    console.error(`No available workflows found (directory missing)`);
+    process.exit(1);
+  }
+  let targetFile;
+  const candidates = [`${name}.yaml`, `${name}.yml`];
+  for (const c of candidates) {
+    if (existsSync12(join13(availableDir, c))) {
+      targetFile = c;
+      break;
+    }
+  }
+  if (!targetFile) {
+    const { scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+    const allFiles = scanRecursive2(availableDir, [".yaml", ".yml"]);
+    const match = allFiles.find((f) => path.basename(f, path.extname(f)) === name);
+    if (match) {
+      targetFile = path.relative(availableDir, match);
+    }
+  }
+  if (!targetFile) {
+    console.error(`Workflow file '${name}' not found in ${availableDir}`);
+    process.exit(1);
+  }
+  const srcPath = join13(availableDir, targetFile);
+  const destPath = join13(enabledDir, path.basename(targetFile));
+  if (!existsSync12(enabledDir)) {
+    mkdirSync5(enabledDir, { recursive: true });
+  }
+  try {
+    cpSync(srcPath, destPath);
+    rmSync(srcPath);
+    console.log(`\u2705 Activated workflow '${name}' to workflows/enabled/`);
+  } catch (error) {
+    console.error(`Failed to activate workflow: ${error}`);
+    process.exit(1);
+  }
+}
+async function cmdWorkflowCreate(name) {
+  const workflowsDir = findWorkflowsDir();
+  const enabledDir = join13(workflowsDir, "enabled");
+  if (!existsSync12(enabledDir)) {
+    mkdirSync5(enabledDir, { recursive: true });
+  }
+  const filePath = join13(enabledDir, `${name}.yaml`);
+  if (existsSync12(filePath)) {
+    console.error(`Workflow file '${filePath}' already exists`);
+    process.exit(1);
+  }
+  const template = `name: ${name}
+description: New workflow created via CLI
+phases:
+  - name: plan
+    description: Initial planning phase
+    capabilities:
+      - planning
+    timeout_multiplier: 1.0
+
+  - name: implement
+    description: Implementation phase
+    capabilities:
+      - coding
+    timeout_multiplier: 2.0
+
+retry:
+  max_attempts: 3
+  backoff_strategy: exponential
+`;
+  try {
+    writeFileSync3(filePath, template);
+    console.log(`\u2705 Created workflow file: ${filePath}`);
+  } catch (error) {
+    console.error(`Failed to create workflow file: ${error}`);
+    process.exit(1);
+  }
+}
 async function promptForIssueId() {
   return new Promise((resolve2) => {
     process.stdout.write("Enter issue ID: ");
@@ -49139,6 +49464,40 @@ async function main() {
     case "cleanup-status":
       await cmdCleanupStatus();
       break;
+    case "workflow": {
+      const subCmd = args[1];
+      const name = args[2];
+      switch (subCmd) {
+        case "list":
+          await cmdWorkflowList();
+          break;
+        case "archive":
+          if (!name) {
+            console.error("Name required");
+            process.exit(1);
+          }
+          await cmdWorkflowArchive(name);
+          break;
+        case "activate":
+          if (!name) {
+            console.error("Name required");
+            process.exit(1);
+          }
+          await cmdWorkflowActivate(name);
+          break;
+        case "create":
+          if (!name) {
+            console.error("Name required");
+            process.exit(1);
+          }
+          await cmdWorkflowCreate(name);
+          break;
+        default:
+          console.error("Unknown workflow command. Use: list, archive, activate, create");
+          process.exit(1);
+      }
+      break;
+    }
     case "update":
       await cmdUpdate(args[1]);
       break;
