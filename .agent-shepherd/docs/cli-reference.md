@@ -626,6 +626,78 @@ ashep session-stop ses_4361d9304ffezUGZULVfrBW7wG
 - Sends an abort signal to the OpenCode server for the specified session.
 - Returns success or failure message.
 
+## Server Commands
+
+### `ashep server-status`
+
+Check the status of the OpenCode server (whether it is running, auto-start enabled, etc.).
+
+**Usage:**
+```bash
+ashep server-status
+```
+
+**Output:**
+```
+OpenCode Server Status:
+  URL: http://localhost:4321
+  Auto-start: Enabled
+  Status: ✅ Running
+  PID: 12345 (Daemon process)
+```
+
+### `ashep server-start`
+
+Manually start the OpenCode server in the background (detached mode).
+
+**Usage:**
+```bash
+ashep server-start
+```
+
+**Behavior:**
+- Spawns `opencode serve` as a detached process
+- Writes PID to `.agent-shepherd/run/opencode-server.pid`
+- Waits for the server to respond on the configured port
+
+### `ashep server-stop`
+
+Stop the running OpenCode server.
+
+**Usage:**
+```bash
+ashep server-stop
+```
+
+**Behavior:**
+- Reads PID from `.agent-shepherd/run/opencode-server.pid`
+- Sends SIGTERM to the process
+- Cleans up PID file
+
+### `ashep server-enable`
+
+Enable auto-start for the OpenCode server.
+
+**Usage:**
+```bash
+ashep server-enable
+```
+
+**Behavior:**
+- Updates `.agent-shepherd/config/config.yaml` to set `opencode.server.auto_start: true`
+
+### `ashep server-disable`
+
+Disable auto-start for the OpenCode server.
+
+**Usage:**
+```bash
+ashep server-disable
+```
+
+**Behavior:**
+- Updates `.agent-shepherd/config/config.yaml` to set `opencode.server.auto_start: false`
+
 ## Plugin Commands
 
 ### `ashep plugin-install <path-or-url>`

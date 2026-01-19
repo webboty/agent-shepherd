@@ -474,6 +474,38 @@
       "required": [],
       "additionalProperties": false
     },
+    "opencode": {
+      "type": "object",
+      "description": "OpenCode server configuration",
+      "properties": {
+        "server": {
+          "type": "object",
+          "description": "Server auto-start configuration",
+          "properties": {
+            "auto_start": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether to automatically start the OpenCode server if not running"
+            },
+            "base_url": {
+              "type": "string",
+              "format": "uri",
+              "default": "http://localhost:4321",
+              "description": "Base URL for the OpenCode server (used to determine port)"
+            },
+            "startup_timeout_ms": {
+              "type": "integer",
+              "minimum": 1000,
+              "maximum": 60000,
+              "default": 5000,
+              "description": "Timeout in milliseconds to wait for server startup"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "container_handling": {
       "type": "object",
       "description": "Smart container handling configuration for epics and parent tasks",

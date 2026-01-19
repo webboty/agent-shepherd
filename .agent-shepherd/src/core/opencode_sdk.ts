@@ -7,6 +7,8 @@
  */
 
 import { createOpencodeClient } from '@opencode-ai/sdk';
+import { ensureServerRunning } from './process-manager.ts';
+import { loadConfig } from './config.ts';
 
 export interface ProgressCallback {
   // eslint-disable-next-line no-unused-vars
@@ -77,11 +79,38 @@ export interface HeartbeatCheckResult {
 export class OpenCodeSDKClient {
   private client: ReturnType<typeof createOpencodeClient>;
   private baseUrl: string;
+  private serverChecked: boolean = false;
 
   constructor(config?: { baseUrl?: string }) {
     this.baseUrl = config?.baseUrl || process.env.OPENCODE_URL || 'http://localhost:4321';
     console.log(`[OpenCode SDK] Initializing client with URL: ${this.baseUrl}`);
     this.client = createOpencodeClient({ baseUrl: this.baseUrl });
+  }
+
+  /**
+   * Ensure server is running before attempting operations
+   */
+  private async ensureConnection(): Promise<void> {
+    if (this.serverChecked) return;
+
+    try {
+      const config = loadConfig();
+      // Only auto-start if configured AND the base URL matches the configured one
+      // (to avoid auto-starting if user manually overrode URL)
+      if (config.opencode?.server?.auto_start) {
+        // If URLs match (ignoring trailing slash)
+        const configuredUrl = config.opencode.server.base_url.replace(/\/$/, "");
+        const currentUrl = this.baseUrl.replace(/\/$/, "");
+        
+        if (configuredUrl === currentUrl) {
+           await ensureServerRunning(config.opencode.server);
+        }
+      }
+      this.serverChecked = true;
+    } catch (error) {
+      console.warn("Failed to check/start OpenCode server:", error);
+      // Don't throw, let the actual request fail if server is down
+    }
   }
 
   /**
@@ -162,6 +191,7 @@ export class OpenCodeSDKClient {
    * @throws SDKError if session creation fails
    */
   async createSession(title: string): Promise<string> {
+    await this.ensureConnection();
     try {
       const result = await this.client.session.create({
         body: {
@@ -196,6 +226,7 @@ export class OpenCodeSDKClient {
     sessionId: string,
     config: SessionConfig
   ): Promise<any> {
+    await this.ensureConnection();
     try {
       const body: any = {
         agent: config.agent || 'default',

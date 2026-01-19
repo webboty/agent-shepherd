@@ -85,6 +85,16 @@ export interface ExecutionConfig {
   sdk_base_url?: string;
 }
 
+export interface OpenCodeServerConfig {
+  auto_start: boolean;
+  base_url: string;
+  startup_timeout_ms: number;
+}
+
+export interface OpenCodeConfig {
+  server?: OpenCodeServerConfig;
+}
+
 export type ContainerHandlingMode = "auto-close" | "hitl" | "validate";
 
 export interface LevelPolicy {
@@ -143,6 +153,7 @@ export interface AgentShepherdConfig {
   session_continuation?: SessionContinuationConfig;
   container_handling?: ContainerHandlingConfig;
   execution?: ExecutionConfig;
+  opencode?: OpenCodeConfig;
 }
 
 /**
@@ -284,6 +295,23 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
       } : {
         mode: "sdk",
         sdk_base_url: undefined
+      },
+      opencode: config.opencode ? {
+        server: config.opencode.server ? {
+          auto_start: config.opencode.server.auto_start ?? true,
+          base_url: config.opencode.server.base_url ?? "http://localhost:4321",
+          startup_timeout_ms: config.opencode.server.startup_timeout_ms ?? 5000
+        } : {
+          auto_start: true,
+          base_url: "http://localhost:4321",
+          startup_timeout_ms: 5000
+        }
+      } : {
+        server: {
+          auto_start: true,
+          base_url: "http://localhost:4321",
+          startup_timeout_ms: 5000
+        }
       },
       container_handling: config.container_handling ? {
         enabled: config.container_handling.enabled ?? true,

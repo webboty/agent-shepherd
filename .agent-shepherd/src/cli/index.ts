@@ -23,6 +23,7 @@ import { getCleanupEngine } from "../core/cleanup-engine.ts";
 import { resetCleanupEngine } from "../core/cleanup-engine.ts";
 import { getSizeMonitor } from "../core/size-monitor.ts";
 import { getHealthChecker, resetHealthChecker } from "../core/cleanup-health-check.ts";
+import { startServer, stopServer, isServerRunning, getServerPid } from "../core/process-manager.ts";
 
 
 type CommandCategory = 
@@ -35,6 +36,7 @@ type CommandCategory =
   | "Messaging" 
   | "Plugins" 
   | "Workflows"
+  | "Server"
   | "Other";
 
 interface CommandDef {
@@ -247,6 +249,33 @@ const COMMANDS: Record<string, CommandDef> = {
     description: "Remove a plugin",
     category: "Plugins",
     usage: "ashep plugin-remove <name>"
+  },
+
+  // Server
+  "server-status": {
+    description: "Check OpenCode server status",
+    category: "Server",
+    usage: "ashep server-status"
+  },
+  "server-start": {
+    description: "Start OpenCode server in background",
+    category: "Server",
+    usage: "ashep server-start"
+  },
+  "server-stop": {
+    description: "Stop OpenCode server",
+    category: "Server",
+    usage: "ashep server-stop"
+  },
+  "server-enable": {
+    description: "Enable auto-start for OpenCode server",
+    category: "Server",
+    usage: "ashep server-enable"
+  },
+  "server-disable": {
+    description: "Disable auto-start for OpenCode server",
+    category: "Server",
+    usage: "ashep server-disable"
   },
 
   // Workflows
@@ -1357,6 +1386,124 @@ async function cmdShowPolicyTree(format?: string): Promise<void> {
   } catch (error) {
     console.error("❌ Failed to generate tree:", error instanceof Error ? error.message : String(error));
     process.exit(1);
+  }
+}
+
+/**
+ * Server status command
+ */
+async function cmdServerStatus(): Promise<void> {
+  const config = loadConfig();
+  const url = config.opencode?.server?.base_url || "http://localhost:4321";
+  const pid = getServerPid();
+  const running = await isServerRunning(url);
+
+  console.log("OpenCode Server Status:");
+  console.log(`  URL: ${url}`);
+  console.log(`  Auto-start: ${config.opencode?.server?.auto_start ? "Enabled" : "Disabled"}`);
+  console.log(`  Status: ${running ? "✅ Running" : "🔴 Stopped"}`);
+  if (pid) {
+    console.log(`  PID: ${pid} (Daemon process)`);
+  } else if (running) {
+    console.log(`  PID: External/Manual process`);
+  }
+}
+
+/**
+ * Server start command
+ */
+async function cmdServerStart(): Promise<void> {
+  const config = loadConfig();
+  const serverConfig = config.opencode?.server || {
+    auto_start: true,
+    base_url: "http://localhost:4321",
+    startup_timeout_ms: 5000
+  };
+
+  const success = await startServer(serverConfig);
+  if (!success) {
+    process.exit(1);
+  }
+}
+
+/**
+ * Server stop command
+ */
+function cmdServerStop(): void {
+  const success = stopServer();
+  if (!success) {
+    console.log("Could not stop server (maybe not running or not started by agent-shepherd?)");
+    process.exit(1);
+  }
+}
+
+/**
+ * Server config command (enable/disable)
+ */
+function cmdServerConfig(enable: boolean): void {
+  const { getConfigPath } = require("../core/path-utils.ts");
+  const configPath = getConfigPath("config.yaml");
+  
+  if (!existsSync(configPath)) {
+    console.error("Config file not found.");
+    process.exit(1);
+  }
+
+  let content = readFileSync(configPath, "utf-8");
+  
+  // Simple regex-based update to preserve comments
+  // Matches "opencode:" ... "server:" ... "auto_start: true/false"
+  // This is a bit fragile but safest for comment preservation without a CST parser.
+  
+  // Strategy:
+  // 1. Check if opencode section exists
+  // 2. If yes, look for server/auto_start inside it
+  // 3. If no, append new block
+  
+  // Check if auto_start line exists under opencode/server context?
+  // We'll try to replace "auto_start: true" or "auto_start: false" if strictly indented?
+  // Or simpler: Load full YAML, update object, dump YAML (warn user about comments).
+  
+  // Given the request for "activate/deactivate", modifying the file is key.
+  // I'll stick to full YAML parse/dump for reliability of the structure, 
+  // but warn about comments.
+  // Actually, let's try to just append or replace if I can match the exact line.
+  
+  // Regex approach:
+  const autoStartRegex = /auto_start:\s*(true|false)/;
+  
+  if (autoStartRegex.test(content)) {
+     // This matches the FIRST occurrence. Might be risky if other sections have auto_start.
+     // But schema only has it in opencode.server (and maybe nowhere else? cleanup has run_on_startup).
+     // Let's use a more specific regex if possible or fall back to YAML dump.
+     
+     // Let's use YAML dump for correctness.
+     console.log("Updating configuration...");
+     const config = parseYAML(content);
+     
+     if (!config.opencode) config.opencode = {};
+     if (!config.opencode.server) config.opencode.server = { base_url: "http://localhost:4321", startup_timeout_ms: 5000 };
+     
+     config.opencode.server.auto_start = enable;
+     
+     const newContent = stringifyYAML(config);
+     writeFileSync(configPath, newContent);
+     console.log(`✅ Server auto-start ${enable ? "enabled" : "disabled"}.`);
+     console.log("⚠️  Note: Comments in config.yaml may have been removed by YAML parser.");
+  } else {
+    // If not found, maybe just append?
+    // Using YAML dump is consistent.
+     console.log("Updating configuration...");
+     const config = parseYAML(content);
+     
+     if (!config.opencode) config.opencode = {};
+     if (!config.opencode.server) config.opencode.server = { base_url: "http://localhost:4321", startup_timeout_ms: 5000 };
+     
+     config.opencode.server.auto_start = enable;
+     
+     const newContent = stringifyYAML(config);
+     writeFileSync(configPath, newContent);
+     console.log(`✅ Server auto-start ${enable ? "enabled" : "disabled"}.`);
   }
 }
 
@@ -3187,6 +3334,22 @@ async function main(): Promise<void> {
 
     case "plugin-remove":
       cmdPluginRemove(args[1]);
+      break;
+
+    case "server-status":
+      await cmdServerStatus();
+      break;
+    case "server-start":
+      await cmdServerStart();
+      break;
+    case "server-stop":
+      cmdServerStop();
+      break;
+    case "server-enable":
+      cmdServerConfig(true);
+      break;
+    case "server-disable":
+      cmdServerConfig(false);
       break;
 
     case "plugin-list":
