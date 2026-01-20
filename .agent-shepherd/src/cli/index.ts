@@ -203,6 +203,23 @@ const COMMANDS: Record<string, CommandDef> = {
   },
 
   // Messaging
+  "phase-msg-send": {
+    description: "Send a phase message",
+    category: "Messaging",
+    usage: "ashep phase-msg-send <issue-id> <from> <to> <type> <content> [metadata-json]",
+    options: {
+      "--json": "Output as JSON"
+    }
+  },
+  "phase-msg-receive": {
+    description: "Receive (and mark read) messages for a phase",
+    category: "Messaging",
+    usage: "ashep phase-msg-receive <issue-id> <phase> [options]",
+    options: {
+      "--keep-unread": "Don't mark messages as read",
+      "--json": "Output as JSON"
+    }
+  },
   "phase-msg-list": {
     description: "List phase messages for an issue",
     category: "Messaging",
@@ -222,6 +239,16 @@ const COMMANDS: Record<string, CommandDef> = {
     options: {
       "--json": "Output as JSON"
     }
+  },
+  "phase-msg-cleanup": {
+    description: "Archive and delete messages for an issue",
+    category: "Messaging",
+    usage: "ashep phase-msg-cleanup <issue-id> [reason]"
+  },
+  "phase-msg-status": {
+    description: "Show messaging system status and statistics",
+    category: "Messaging",
+    usage: "ashep phase-msg-status [issue-id]"
   },
 
   // Plugins
@@ -2534,6 +2561,161 @@ async function cmdReadMessage(messageId: string, asJson?: boolean): Promise<void
 }
 
 /**
+ * Send message command
+ */
+async function cmdSendMessage(
+  issueId: string, 
+  fromPhase: string, 
+  toPhase: string, 
+  type: string, 
+  content: string, 
+  metadataStr?: string,
+  asJson?: boolean
+): Promise<void> {
+  if (!issueId || !fromPhase || !toPhase || !type || !content) {
+    console.error("Usage: ashep phase-msg-send <issue-id> <from> <to> <type> <content> [metadata-json]");
+    console.error("Types: context, result, decision, data");
+    process.exit(1);
+  }
+
+  try {
+    const { getPhaseMessenger } = await import("../core/phase-messenger.ts");
+    const messenger = getPhaseMessenger();
+
+    let metadata: any = undefined;
+    if (metadataStr && !metadataStr.startsWith("-")) {
+      try {
+        metadata = JSON.parse(metadataStr);
+      } catch {
+        console.warn("⚠️  Warning: Invalid metadata JSON, ignoring.");
+      }
+    }
+
+    const message = messenger.sendMessage({
+      issue_id: issueId,
+      from_phase: fromPhase,
+      to_phase: toPhase,
+      message_type: type as any,
+      content: content,
+      metadata: metadata
+    });
+
+    if (asJson) {
+      console.log(JSON.stringify(message, null, 2));
+    } else {
+      console.log("✅ Message sent successfully");
+      console.log(`ID: ${message.id}`);
+    }
+  } catch (error) {
+    console.error("❌ Failed to send message:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Receive messages command
+ */
+async function cmdReceiveMessages(issueId: string, phase: string, keepUnread: boolean = false, asJson: boolean = false): Promise<void> {
+  if (!issueId || !phase) {
+    console.error("Usage: ashep phase-msg-receive <issue-id> <phase> [--keep-unread]");
+    process.exit(1);
+  }
+
+  try {
+    const { getPhaseMessenger } = await import("../core/phase-messenger.ts");
+    const messenger = getPhaseMessenger();
+
+    const messages = messenger.receiveMessages(issueId, phase, !keepUnread);
+
+    if (asJson) {
+      console.log(JSON.stringify(messages, null, 2));
+      return;
+    }
+
+    if (messages.length === 0) {
+      console.log(`No unread messages for issue ${issueId} in phase ${phase}.`);
+    } else {
+      console.log(`Received ${messages.length} messages:`);
+      for (const msg of messages) {
+        console.log(`\nFrom: ${msg.from_phase} (${msg.message_type})`);
+        console.log(`Content: ${msg.content}`);
+        if (msg.metadata) console.log(`Metadata: ${JSON.stringify(msg.metadata)}`);
+      }
+      if (!keepUnread) {
+        console.log("\n✅ Marked all as read.");
+      }
+    }
+  } catch (error) {
+    console.error("❌ Failed to receive messages:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Cleanup messages command
+ */
+async function cmdCleanupMessages(issueId: string, reason: string = "manual"): Promise<void> {
+  if (!issueId) {
+    console.error("Usage: ashep phase-msg-cleanup <issue-id> [reason]");
+    process.exit(1);
+  }
+
+  try {
+    const { getPhaseMessenger } = await import("../core/phase-messenger.ts");
+    const messenger = getPhaseMessenger();
+
+    console.log(`Cleaning up messages for ${issueId}...`);
+    const result = messenger.cleanupPhaseMessages(issueId, reason);
+
+    console.log("✅ Cleanup complete");
+    console.log(`  Archived: ${result.archived}`);
+    console.log(`  Deleted:  ${result.deleted}`);
+    console.log(`  DB Size:  ${(result.db_size_after / 1024 / 1024).toFixed(2)} MB (was ${(result.db_size_before / 1024 / 1024).toFixed(2)} MB)`);
+
+  } catch (error) {
+    console.error("❌ Failed to cleanup messages:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Message status command
+ */
+async function cmdMessageStatus(issueId?: string): Promise<void> {
+  try {
+    const { getPhaseMessenger } = await import("../core/phase-messenger.ts");
+    const messenger = getPhaseMessenger();
+
+    const stats = messenger.getMessageStats(issueId);
+
+    console.log("\nPhase Messenger Status");
+    console.log("──────────────────────");
+    console.log(`Total Messages:  ${stats.total_messages}`);
+    console.log(`Unread Messages: ${stats.unread_messages}`);
+    console.log(`Read Messages:   ${stats.read_messages}`);
+    console.log(`DB Size:         ${stats.db_size_mb.toFixed(2)} MB`);
+    
+    if (issueId) {
+      console.log(`Scope:           Issue ${issueId}`);
+    } else {
+      console.log(`\nTop Issues by Message Count:`);
+      const topIssues = Object.entries(stats.by_issue)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5);
+      
+      for (const [id, count] of topIssues) {
+        console.log(`  ${id.padEnd(20)}: ${count}`);
+      }
+    }
+    console.log();
+
+  } catch (error) {
+    console.error("❌ Failed to get status:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
  * List sessions command - list OpenCode sessions for an issue
  */
 async function cmdListSessions(issueId?: string): Promise<void> {
@@ -3406,6 +3588,50 @@ async function main(): Promise<void> {
         const asJson = args.includes("--json");
         const messageId = args[1];
         await cmdReadMessage(messageId, asJson);
+      }
+      break;
+
+    case "phase-msg-send":
+      {
+        // ashep phase-msg-send <issue-id> <from> <to> <type> <content> [metadata]
+        const issueId = args[1];
+        const fromPhase = args[2];
+        const toPhase = args[3];
+        const type = args[4];
+        const content = args[5];
+        const metadataStr = args[6];
+        const asJson = args.includes("--json");
+        
+        await cmdSendMessage(issueId, fromPhase, toPhase, type, content, metadataStr, asJson);
+      }
+      break;
+
+    case "phase-msg-receive":
+      {
+        // ashep phase-msg-receive <issue-id> <phase> [--keep-unread]
+        const issueId = args[1];
+        const phase = args[2];
+        const keepUnread = args.includes("--keep-unread");
+        const asJson = args.includes("--json");
+        
+        await cmdReceiveMessages(issueId, phase, keepUnread, asJson);
+      }
+      break;
+
+    case "phase-msg-cleanup":
+      {
+        // ashep phase-msg-cleanup <issue-id> [reason]
+        const issueId = args[1];
+        const reason = args[2];
+        await cmdCleanupMessages(issueId, reason);
+      }
+      break;
+
+    case "phase-msg-status":
+      {
+        // ashep phase-msg-status [issue-id]
+        const issueId = args[1];
+        await cmdMessageStatus(issueId);
       }
       break;
 
