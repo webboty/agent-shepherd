@@ -27,7 +27,7 @@ export interface BeadsUpdateOptions {
 /**
  * Execute a bd command and return output
  */
-export async function execBeadsCommand(args: string[]): Promise<string> {
+export async function execBeadsCommand(args: string[], cwd?: string): Promise<string> {
   const env: Record<string, string> = {};
 
   // Copy process.env but filter out undefined values
@@ -48,11 +48,31 @@ export async function execBeadsCommand(args: string[]): Promise<string> {
     env.BD_SANDBOX = process.env.BD_SANDBOX;
   }
 
-  const proc = Bun.spawn(["bd", ...args], {
+  // Determine working directory for bd command
+  // If BEADS_DIR is set and cwd is not provided, use parent of BEADS_DIR
+  let workingDir = cwd;
+  if (!workingDir && process.env.BEADS_DIR) {
+    // Extract parent directory from BEADS_DIR (remove /.beads suffix)
+    const beadsDir = process.env.BEADS_DIR;
+    if (beadsDir.endsWith('/.beads') || beadsDir.endsWith('\\.beads')) {
+      workingDir = beadsDir.substring(0, beadsDir.lastIndexOf('/'));
+      if (!workingDir) {
+        workingDir = beadsDir.substring(0, beadsDir.lastIndexOf('\\'));
+      }
+    }
+  }
+
+  const spawnOptions: any = {
     stdout: "pipe",
     stderr: "pipe",
     env,
-  });
+  };
+
+  if (workingDir) {
+    spawnOptions.cwd = workingDir;
+  }
+
+  const proc = Bun.spawn(["bd", ...args], spawnOptions);
 
   const output = await new Response(proc.stdout).text();
   const exitCode = await proc.exited;
@@ -113,6 +133,10 @@ export async function getReadyIssues(): Promise<BeadsIssue[]> {
 export async function getIssue(issueId: string): Promise<BeadsIssue | null> {
   try {
     const output = await execBeadsCommand(["show", issueId, "--json"]);
+    if (!output || output.trim() === "") {
+      console.warn(`getIssue: Empty output for ${issueId}`);
+      return null;
+    }
     const result = JSON.parse(output);
     // Beads returns an array, so take the first element
     const issue = Array.isArray(result) ? result[0] || null : result;
@@ -120,7 +144,8 @@ export async function getIssue(issueId: string): Promise<BeadsIssue | null> {
       issue.labels = await getIssueLabels(issueId);
     }
     return issue;
-  } catch {
+  } catch (error) {
+    console.error(`getIssue failed for ${issueId}:`, error);
     return null;
   }
 }

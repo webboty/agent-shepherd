@@ -9,7 +9,7 @@ const TEST_DIR = join(process.cwd(), "tmp_test_convert");
 // we might need to run the built binary or the ts file directly.
 // Running ts file directly via bun run src/cli/index.ts is best.
 
-const CLI_PATH = join(process.cwd(), ".agent-shepherd", "src", "cli", "index.ts");
+const CLI_PATH = join(process.cwd(), "src", "cli", "index.ts");
 
 describe("cli convert-config", () => {
   beforeEach(() => {

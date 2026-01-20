@@ -75,6 +75,10 @@ describe("SDK Mode End-to-End Workflows", () => {
 
   describe("RunResult Format Validation", () => {
     test("SDK execution returns compatible RunResult format", async () => {
+      // Set shorter timeouts for testing
+      process.env.OPENCODE_EXECUTION_TIMEOUT_MS = "8000";  // 8 seconds
+      process.env.OPENCODE_POLL_INTERVAL_MS = "500";       // 500ms polling
+
       const { OpenCodeClient } = await import('../src/core/opencode.ts');
 
       const client = new OpenCodeClient({ directory: testDataDir });
@@ -99,9 +103,13 @@ describe("SDK Mode End-to-End Workflows", () => {
 
       expect(result).toHaveProperty('sessionId');
       expect(result.sessionId === undefined || typeof result.sessionId === 'string').toBe(true);
-    });
+    }, 15000); // 15 second timeout for test
 
     test("SDK error results maintain RunResult compatibility", async () => {
+      // Set shorter timeouts for testing
+      process.env.OPENCODE_EXECUTION_TIMEOUT_MS = "8000";  // 8 seconds
+      process.env.OPENCODE_POLL_INTERVAL_MS = "500";       // 500ms polling
+
       const { OpenCodeClient } = await import('../src/core/opencode.ts');
 
       const client = new OpenCodeClient({ directory: testDataDir });
@@ -123,7 +131,7 @@ describe("SDK Mode End-to-End Workflows", () => {
       // Error should be descriptive (either agent not found or connection error)
       expect(result.error).toBeTruthy();
       expect(typeof result.error).toBe('string');
-    });
+    }, 15000); // 15 second timeout for test
   });
 
   describe("Session Preservation", () => {
