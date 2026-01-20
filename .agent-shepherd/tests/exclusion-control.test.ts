@@ -36,6 +36,7 @@ describe("hasExcludedLabel", () => {
 
   afterEach(async () => {
     await beadsTestEnv.cleanup();
+    cleanupBeadsEnv();
   });
 
   it("should return true for issue with ashep-excluded label", async () => {
@@ -104,6 +105,7 @@ describe("Exclusion Label Integration", () => {
 
   afterEach(async () => {
     await beadsTestEnv.cleanup();
+    cleanupBeadsEnv();
   });
 
   it("should distinguish between excluded and non-excluded issues", async () => {

@@ -135,13 +135,18 @@ export function setupBeadsIsolation(useRealBeads: boolean = false): BeadsTestEnv
         args.push("--labels", label);
       }
 
+      console.log(`Creating Beads issue: bd ${args.join(' ')}`);
       const output = await execBeadsCommand(args);
+      console.log(`Beads create output: ${output}`);
+
       const issueId = output.match(/Created issue: ([^\s\n]+)/)?.[1];
 
       if (!issueId) {
+        console.error(`Failed to extract issue ID from output: ${output}`);
         throw new Error(`Failed to create test issue: ${title}. Output: ${output}`);
       }
 
+      console.log(`Successfully extracted issue ID: ${issueId}`);
       return issueId;
     },
 

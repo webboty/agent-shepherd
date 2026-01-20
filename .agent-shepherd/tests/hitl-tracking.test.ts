@@ -42,6 +42,7 @@ describe("HITL Tracking Functions", () => {
 
   afterEach(async () => {
     await beadsTestEnv.cleanup();
+    cleanupBeadsEnv();
   });
 
   describe("setHITLLabel", () => {

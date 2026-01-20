@@ -9,7 +9,7 @@ import { Logger, getLogger, resetLogger } from "../src/core/logging";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { mkdirSync, rmSync, existsSync } from "fs";
-import { setupBeadsIsolation, type BeadsTestEnv } from "./helpers/beads-test-isolation";
+import { setupBeadsIsolation, cleanupBeadsEnv, type BeadsTestEnv } from "./helpers/beads-test-isolation";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMP_DIR = join(__dirname, '..', 'tmp_test');
@@ -67,6 +67,7 @@ describe("CrashDetector", () => {
       rmSync(testDataDir, { recursive: true, force: true });
     }
     await beadsTestEnv.cleanup();
+    cleanupBeadsEnv();
     delete process.env.ASHEP_WORKER_ID;
   });
 

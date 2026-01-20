@@ -80,6 +80,7 @@ describe("Container Handling - Integration Tests", () => {
       if (existsSync(testDataDir)) {
         rmSync(testDataDir, { recursive: true, force: true });
       }
+      cleanupBeadsEnv();
       delete process.env.ASHEP_DIR;
       resetIssuePicker();
     }

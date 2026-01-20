@@ -38,6 +38,7 @@ describe("Phase Tracking Functions", () => {
 
   afterEach(async () => {
     await beadsTestEnv.cleanup();
+    cleanupBeadsEnv();
   });
 
   describe("setPhaseLabel", () => {
