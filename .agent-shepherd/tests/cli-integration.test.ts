@@ -80,7 +80,7 @@ describe('CLI Integration Tests', () => {
     const testConfig = `
 version: "1.0"
 worker:
-  poll_interval_ms: 1000
+  poll_interval_ms: 100
   max_concurrent_runs: 1
 execution:
   sdk_base_url: http://localhost:12345
@@ -215,7 +215,7 @@ execution:
         const testConfig = `
 version: "1.0"
 worker:
-  poll_interval_ms: 1000
+  poll_interval_ms: 100
   max_concurrent_runs: 1
 execution:
   sdk_base_url: http://localhost:12345
@@ -290,7 +290,7 @@ agents:
         const testConfig = `
 version: "1.0"
 worker:
-  poll_interval_ms: 1000
+  poll_interval_ms: 100
   max_concurrent_runs: 1
 execution:
   sdk_base_url: http://localhost:12345
@@ -364,7 +364,7 @@ agents:
         const testConfig = `
 version: "1.0"
 worker:
-  poll_interval_ms: 1000
+  poll_interval_ms: 100
   max_concurrent_runs: 1
   picking:
     mode: simple
@@ -443,7 +443,7 @@ agents:
         const testConfig = {
           version: "1.0",
           worker: {
-            poll_interval_ms: 1000,
+            poll_interval_ms: 100,
             max_concurrent_runs: 1,
             picking: {
               mode: "smart"
