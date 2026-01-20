@@ -98,10 +98,19 @@ const TEMP_DIR = join(__dirname, "..", "tmp_test");
 describe("WorkerEngine Policy Override", () => {
   let worker: WorkerEngine;
   let testDataDir: string;
+  let originalWarn: any;
+  let originalLog: any;
 
   beforeEach(() => {
     // Restore mocks before each test to ensure clean slate from other tests
     mock.restore(); 
+    
+    // Suppress console.warn/log for expected failures during partial execution
+    originalWarn = console.warn;
+    console.warn = mock(() => {});
+    
+    originalLog = console.log;
+    console.log = mock(() => {});
     
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(7);
@@ -123,6 +132,9 @@ describe("WorkerEngine Policy Override", () => {
 
   afterEach(() => {
     mock.restore(); // Clean up mocks immediately after test
+    console.warn = originalWarn;
+    console.log = originalLog;
+    
     if (existsSync(testDataDir)) {
       rmSync(testDataDir, { recursive: true, force: true });
     }

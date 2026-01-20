@@ -3,7 +3,7 @@
  * Tests for template loading, prompt generation, response validation, and analytics
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { mkdirSync, writeFileSync, unlinkSync, existsSync, rmSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -126,15 +126,22 @@ default_template: "fallback-template"
     });
 
     it("should get fallback template when requested template not found", () => {
+      console.log("[EXPECTED WARNING] The following 'Template not found' warning is expected:");
       const template = builder.getTemplate("non-existent");
       expect(template).not.toBeNull();
       expect(template?.name).toBe("Fallback");
     });
 
     it("should return null when config is not loaded", () => {
+      const originalWarn = console.warn;
+      console.warn = mock(() => {});
+
       const brokenBuilder = new DecisionPromptBuilder("/nonexistent/path.yaml");
       const template = brokenBuilder.getTemplate("test-decision");
       expect(template).toBeNull();
+
+      expect(console.warn).toHaveBeenCalled();
+      console.warn = originalWarn;
     });
 
     it("should reload config", () => {
@@ -178,6 +185,7 @@ default_template: "fallback-template"
         allowed_destinations: [],
       };
 
+      console.log("[EXPECTED WARNING] The following 'Template not found' warning is expected:");
       const promptData = builder.buildPrompt("non-existent", context);
       expect(promptData).toBeNull();
     });
@@ -306,6 +314,17 @@ default_template: "fallback-template"
   });
 
   describe("2.5.4 Implement Response Validation", () => {
+    let originalError: any;
+
+    beforeEach(() => {
+      originalError = console.error;
+      console.error = mock(() => {});
+    });
+
+    afterEach(() => {
+      console.error = originalError;
+    });
+
     it("should validate valid response", () => {
       const response = JSON.stringify({
         decision: "advance_to_phase2",
@@ -453,6 +472,17 @@ default_template: "fallback-template"
   });
 
   describe("2.5.6 Add Retry Logic for Decision Agents", () => {
+    let originalError: any;
+
+    beforeEach(() => {
+      originalError = console.error;
+      console.error = mock(() => {});
+    });
+
+    afterEach(() => {
+      console.error = originalError;
+    });
+
     it("should parse valid response correctly", () => {
       const response = JSON.stringify({
         decision: "advance_to_phase2",

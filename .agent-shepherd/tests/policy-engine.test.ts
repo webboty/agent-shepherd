@@ -2,7 +2,7 @@
  * Tests for Policy Engine
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { PolicyEngine } from '../src/core/policy.ts';
 import { writeFileSync, rmSync, mkdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -673,14 +673,28 @@ phases:
     });
 
     it('should handle invalid workflow files gracefully', () => {
+      // Suppress expected warning
+      const originalWarn = console.warn;
+      console.warn = mock(() => {});
+
       const invalidContent = `
 invalid: yaml: content
       `.trim();
       
       writeFileSync(join(enabledDir, 'invalid.yaml'), invalidContent);
       
-      // Should not throw, just log warning
-      expect(() => new PolicyEngine(policiesPath)).not.toThrow();
+      // Should not throw and should log warning (which we suppressed)
+      policyEngine = new PolicyEngine(policiesPath);
+      
+      // Verify warning was called
+      expect(console.warn).toHaveBeenCalled();
+
+      // Restore console.warn
+      console.warn = originalWarn;
+
+      // Should still load other valid workflows (none here, but shouldn't crash)
+      const policy = policyEngine.getPolicy('invalid');
+      expect(policy).toBeNull();
     });
   });
 
