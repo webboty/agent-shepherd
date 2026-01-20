@@ -13,6 +13,7 @@ import { getConfigPath } from "../src/core/path-utils";
 import { PolicyEngine } from "../src/core/policy";
 import {
   setupBeadsIsolation,
+  cleanupBeadsEnv,
   type BeadsTestEnv,
   cleanupTestIssues
 } from "./helpers/beads-test-isolation";

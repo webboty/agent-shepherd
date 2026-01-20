@@ -14,6 +14,7 @@ import {
 } from "../src/core/config";
 import {
   setupBeadsIsolation,
+  cleanupBeadsEnv,
   type BeadsTestEnv
 } from "./helpers/beads-test-isolation";
 

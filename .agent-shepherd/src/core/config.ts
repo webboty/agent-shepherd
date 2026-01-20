@@ -200,14 +200,13 @@ export function loadConfig(configDir?: string): AgentShepherdConfig {
         poll_interval_ms: 30000,
         max_concurrent_runs: 3,
         concurrency_strategy: "active_sessions",
-        worker_id: config.worker?.worker_id,
+        ...config.worker,
         picking: {
           mode: "simple",
           max_issues: 3,
           prefer_epic_affinity: true,
           ...config.worker?.picking
-        },
-        ...config.worker
+        }
       },
       monitor: {
         poll_interval_ms: 10000,

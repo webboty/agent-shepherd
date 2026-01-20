@@ -8117,7 +8117,7 @@ __export(exports_beads, {
   clearContainerValidationLabels: () => clearContainerValidationLabels,
   addIssueLabel: () => addIssueLabel
 });
-async function execBeadsCommand(args) {
+async function execBeadsCommand(args, cwd) {
   const env = {};
   for (const [key2, value] of Object.entries(process.env)) {
     if (value !== undefined) {
@@ -8133,11 +8133,25 @@ async function execBeadsCommand(args) {
   if (process.env.BD_SANDBOX) {
     env.BD_SANDBOX = process.env.BD_SANDBOX;
   }
-  const proc = Bun.spawn(["bd", ...args], {
+  let workingDir = cwd;
+  if (!workingDir && process.env.BEADS_DIR) {
+    const beadsDir = process.env.BEADS_DIR;
+    if (beadsDir.endsWith("/.beads") || beadsDir.endsWith("\\.beads")) {
+      workingDir = beadsDir.substring(0, beadsDir.lastIndexOf("/"));
+      if (!workingDir) {
+        workingDir = beadsDir.substring(0, beadsDir.lastIndexOf("\\"));
+      }
+    }
+  }
+  const spawnOptions = {
     stdout: "pipe",
     stderr: "pipe",
     env
-  });
+  };
+  if (workingDir) {
+    spawnOptions.cwd = workingDir;
+  }
+  const proc = Bun.spawn(["bd", ...args], spawnOptions);
   const output = await new Response(proc.stdout).text();
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
@@ -8179,13 +8193,18 @@ async function getReadyIssues() {
 async function getIssue(issueId) {
   try {
     const output = await execBeadsCommand(["show", issueId, "--json"]);
+    if (!output || output.trim() === "") {
+      console.warn(`getIssue: Empty output for ${issueId}`);
+      return null;
+    }
     const result = JSON.parse(output);
     const issue = Array.isArray(result) ? result[0] || null : result;
     if (issue) {
       issue.labels = await getIssueLabels(issueId);
     }
     return issue;
-  } catch {
+  } catch (error) {
+    console.error(`getIssue failed for ${issueId}:`, error);
     return null;
   }
 }
@@ -8596,14 +8615,13 @@ function loadConfig(configDir) {
         poll_interval_ms: 30000,
         max_concurrent_runs: 3,
         concurrency_strategy: "active_sessions",
-        worker_id: config.worker?.worker_id,
+        ...config.worker,
         picking: {
           mode: "simple",
           max_issues: 3,
           prefer_epic_affinity: true,
           ...config.worker?.picking
-        },
-        ...config.worker
+        }
       },
       monitor: {
         poll_interval_ms: 1e4,
@@ -8691,6 +8709,23 @@ function loadConfig(configDir) {
       } : {
         mode: "sdk",
         sdk_base_url: undefined
+      },
+      opencode: config.opencode ? {
+        server: config.opencode.server ? {
+          auto_start: config.opencode.server.auto_start ?? true,
+          base_url: config.opencode.server.base_url ?? "http://localhost:4321",
+          startup_timeout_ms: config.opencode.server.startup_timeout_ms ?? 5000
+        } : {
+          auto_start: true,
+          base_url: "http://localhost:4321",
+          startup_timeout_ms: 5000
+        }
+      } : {
+        server: {
+          auto_start: true,
+          base_url: "http://localhost:4321",
+          startup_timeout_ms: 5000
+        }
       },
       container_handling: config.container_handling ? {
         enabled: config.container_handling.enabled ?? true,
@@ -12241,6 +12276,145 @@ var init_dist2 = __esm(() => {
   init_server();
 });
 
+// src/core/process-manager.ts
+var {spawn } = globalThis.Bun;
+import { existsSync as existsSync7, mkdirSync as mkdirSync3, readFileSync as readFileSync6, writeFileSync as writeFileSync2, unlinkSync, openSync } from "fs";
+import { join as join7 } from "path";
+function getRunDir() {
+  const root2 = findAgentShepherdDir();
+  const runDir = join7(root2, "run");
+  if (!existsSync7(runDir)) {
+    mkdirSync3(runDir, { recursive: true });
+  }
+  return runDir;
+}
+function getPidFilePath() {
+  return join7(getRunDir(), PID_FILE_NAME);
+}
+async function isServerRunning(baseUrl) {
+  try {
+    const controller = new AbortController;
+    const timeoutId = setTimeout(() => controller.abort(), 1000);
+    try {
+      const response = await fetch(`${baseUrl}/api/status`, {
+        method: "GET",
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch {
+      clearTimeout(timeoutId);
+      const controller2 = new AbortController;
+      const timeoutId2 = setTimeout(() => controller2.abort(), 1000);
+      try {
+        const response = await fetch(baseUrl, {
+          method: "GET",
+          signal: controller2.signal
+        });
+        clearTimeout(timeoutId2);
+        return response.ok;
+      } catch {
+        clearTimeout(timeoutId2);
+        return false;
+      }
+    }
+  } catch {
+    return false;
+  }
+}
+function getServerPid() {
+  const pidPath = getPidFilePath();
+  if (existsSync7(pidPath)) {
+    try {
+      const pid = parseInt(readFileSync6(pidPath, "utf-8").trim(), 10);
+      if (!isNaN(pid)) {
+        try {
+          process.kill(pid, 0);
+          return pid;
+        } catch {
+          unlinkSync(pidPath);
+        }
+      }
+    } catch {
+      try {
+        unlinkSync(pidPath);
+      } catch {}
+    }
+  }
+  return null;
+}
+async function startServer(config) {
+  if (await isServerRunning(config.base_url)) {
+    return true;
+  }
+  const existingPid = getServerPid();
+  if (existingPid) {
+    return true;
+  }
+  let port = 4321;
+  try {
+    const url = new URL(config.base_url);
+    if (url.port)
+      port = parseInt(url.port, 10);
+  } catch {}
+  console.log(`Starting OpenCode server on port ${port}...`);
+  const logFile = join7(getRunDir(), "opencode-server.log");
+  try {
+    const logFd = openSync(logFile, "a");
+    const proc = spawn(["opencode", "serve", "--port", port.toString()], {
+      stdin: "ignore",
+      stdout: logFd,
+      stderr: logFd,
+      detached: true
+    });
+    writeFileSync2(getPidFilePath(), proc.pid.toString());
+    proc.unref();
+    const start = Date.now();
+    while (Date.now() - start < config.startup_timeout_ms) {
+      if (await isServerRunning(config.base_url)) {
+        console.log("\u2705 OpenCode server started successfully.");
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    console.error("\u274C Timeout waiting for OpenCode server to start.");
+    return false;
+  } catch (error) {
+    console.error("\u274C Failed to spawn opencode serve:", error);
+    return false;
+  }
+}
+function stopServer() {
+  const pid = getServerPid();
+  if (!pid) {
+    return false;
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+    const pidPath = getPidFilePath();
+    if (existsSync7(pidPath))
+      unlinkSync(pidPath);
+    console.log(`Stopped OpenCode server (PID: ${pid}).`);
+    return true;
+  } catch (error) {
+    console.error(`Failed to stop server (PID: ${pid}):`, error);
+    return false;
+  }
+}
+async function ensureServerRunning(config) {
+  if (await isServerRunning(config.base_url)) {
+    return true;
+  }
+  if (!config.auto_start) {
+    return false;
+  }
+  return startServer(config);
+}
+var PID_FILE_NAME = "opencode-server.pid";
+var init_process_manager = __esm(() => {
+  init_path_utils();
+});
+
 // src/core/opencode_sdk.ts
 var exports_opencode_sdk = {};
 __export(exports_opencode_sdk, {
@@ -12254,10 +12428,28 @@ __export(exports_opencode_sdk, {
 class OpenCodeSDKClient {
   client;
   baseUrl;
+  serverChecked = false;
   constructor(config) {
     this.baseUrl = config?.baseUrl || process.env.OPENCODE_URL || "http://localhost:4321";
     console.log(`[OpenCode SDK] Initializing client with URL: ${this.baseUrl}`);
     this.client = createOpencodeClient({ baseUrl: this.baseUrl });
+  }
+  async ensureConnection() {
+    if (this.serverChecked)
+      return;
+    try {
+      const config = loadConfig();
+      if (config.opencode?.server?.auto_start) {
+        const configuredUrl = config.opencode.server.base_url.replace(/\/$/, "");
+        const currentUrl = this.baseUrl.replace(/\/$/, "");
+        if (configuredUrl === currentUrl) {
+          await ensureServerRunning(config.opencode.server);
+        }
+      }
+      this.serverChecked = true;
+    } catch (error) {
+      console.warn("Failed to check/start OpenCode server:", error);
+    }
   }
   classifyError(error) {
     const errorMessage = error?.message || String(error);
@@ -12292,6 +12484,7 @@ class OpenCodeSDKClient {
     }
   }
   async createSession(title) {
+    await this.ensureConnection();
     try {
       const result = await this.client.session.create({
         body: {
@@ -12310,6 +12503,7 @@ class OpenCodeSDKClient {
     }
   }
   async executeAgentInSession(sessionId, config) {
+    await this.ensureConnection();
     try {
       const body = {
         agent: config.agent || "default",
@@ -12700,6 +12894,8 @@ function resetSDKClient() {
 var SDKErrorType, SDKError, defaultSDKClient = null;
 var init_opencode_sdk = __esm(() => {
   init_dist2();
+  init_process_manager();
+  init_config();
   ((SDKErrorType2) => {
     SDKErrorType2["NETWORK_ERROR"] = "NETWORK_ERROR";
     SDKErrorType2["AGENT_NOT_FOUND"] = "AGENT_NOT_FOUND";
@@ -12736,7 +12932,7 @@ class OpenCodeClient {
     this.baseUrl = config?.baseUrl;
   }
   async runAgentCLI(config) {
-    const { spawn } = await Promise.resolve(globalThis.Bun);
+    const { spawn: spawn2 } = await Promise.resolve(globalThis.Bun);
     const args = [
       "run",
       "--agent",
@@ -12756,7 +12952,7 @@ class OpenCodeClient {
       args.push(config.message);
     }
     console.log(`Running: opencode ${args.join(" ")}`);
-    const proc = spawn(["opencode", ...args], {
+    const proc = spawn2(["opencode", ...args], {
       cwd: this.directory,
       stdout: "pipe",
       stderr: "pipe"
@@ -12864,7 +13060,9 @@ class OpenCodeClient {
         console.log(`Skipping prompt submission (reattaching to running session)`);
       }
       progressCallback("Agent started working...");
-      const finalResult = await sdkClient.waitForCompletion(sessionId, 600000, 60000, progressCallback);
+      const pollInterval = process.env.OPENCODE_POLL_INTERVAL_MS ? parseInt(process.env.OPENCODE_POLL_INTERVAL_MS, 10) : 60000;
+      const executionTimeout = process.env.OPENCODE_EXECUTION_TIMEOUT_MS ? parseInt(process.env.OPENCODE_EXECUTION_TIMEOUT_MS, 10) : 600000;
+      const finalResult = await sdkClient.waitForCompletion(sessionId, executionTimeout, pollInterval, progressCallback);
       if (!finalResult.success) {
         let errorMessage = finalResult.error || "Agent execution failed";
         if (finalResult.errorType === SDKErrorType2.EXECUTION_TIMEOUT) {
@@ -13282,15 +13480,15 @@ __export(exports_phase_messenger, {
   PhaseMessenger: () => PhaseMessenger
 });
 import { Database as Database3 } from "bun:sqlite";
-import { existsSync as existsSync7, readFileSync as readFileSync6, appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, statSync as statSync2 } from "fs";
-import { join as join7 } from "path";
+import { existsSync as existsSync8, readFileSync as readFileSync7, appendFileSync as appendFileSync2, mkdirSync as mkdirSync4, statSync as statSync2 } from "fs";
+import { join as join8 } from "path";
 function loadConfig2(dataDir) {
-  const configPath = join7(dataDir || process.cwd(), ".agent-shepherd", "config", "phase-messenger.yaml");
-  if (!existsSync7(configPath)) {
+  const configPath = join8(dataDir || process.cwd(), ".agent-shepherd", "config", "phase-messenger.yaml");
+  if (!existsSync8(configPath)) {
     return DEFAULT_CONFIG;
   }
   try {
-    const configContent = readFileSync6(configPath, "utf-8");
+    const configContent = readFileSync7(configPath, "utf-8");
     const userConfig = import_yaml5.default.parse(configContent);
     return {
       size_limits: {
@@ -13318,12 +13516,12 @@ class PhaseMessenger {
   config;
   constructor(dataDir) {
     this.config = loadConfig2(dataDir);
-    const dir = dataDir || join7(process.cwd(), this.config.storage.data_dir);
-    if (!existsSync7(dir)) {
-      mkdirSync3(dir, { recursive: true });
+    const dir = dataDir || join8(process.cwd(), this.config.storage.data_dir);
+    if (!existsSync8(dir)) {
+      mkdirSync4(dir, { recursive: true });
     }
-    this.jsonlPath = join7(dir, this.config.storage.jsonl_file);
-    const dbPath = join7(dir, this.config.storage.database_file);
+    this.jsonlPath = join8(dir, this.config.storage.jsonl_file);
+    const dbPath = join8(dir, this.config.storage.database_file);
     this.db = new Database3(dbPath);
     this.initializeSchema();
     this.syncFromJSONL();
@@ -13357,10 +13555,10 @@ class PhaseMessenger {
     indexes.forEach((idx) => this.db.exec(idx));
   }
   syncFromJSONL() {
-    if (!existsSync7(this.jsonlPath)) {
+    if (!existsSync8(this.jsonlPath)) {
       return;
     }
-    const content = readFileSync6(this.jsonlPath, "utf-8");
+    const content = readFileSync7(this.jsonlPath, "utf-8");
     const lines = content.trim().split(`
 `);
     for (const line2 of lines) {
@@ -13540,11 +13738,11 @@ class PhaseMessenger {
     };
   }
   getArchivePath(issueId) {
-    const archiveDir = join7(this.jsonlPath, "..", "messages_archive");
-    if (!existsSync7(archiveDir)) {
-      mkdirSync3(archiveDir, { recursive: true });
+    const archiveDir = join8(this.jsonlPath, "..", "messages_archive");
+    if (!existsSync8(archiveDir)) {
+      mkdirSync4(archiveDir, { recursive: true });
     }
-    return join7(archiveDir, `${issueId}.jsonl`);
+    return join8(archiveDir, `${issueId}.jsonl`);
   }
   archiveMessagesForIssue(issueId, reason = "cleanup") {
     const messages = this.listMessages({ issue_id: issueId });
@@ -13566,7 +13764,7 @@ class PhaseMessenger {
     return { archived: messages.length };
   }
   cleanupPhaseMessages(issueId, reason = "manual") {
-    const dbPath = join7(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbPath = join8(this.jsonlPath, "..", this.config.storage.database_file);
     const dbSizeBefore = this.getDatabaseSize(dbPath);
     const archiveResult = this.archiveMessagesForIssue(issueId, reason);
     this.deleteIssueMessages(issueId);
@@ -13580,14 +13778,14 @@ class PhaseMessenger {
     };
   }
   getDatabaseSize(dbPath) {
-    if (existsSync7(dbPath)) {
+    if (existsSync8(dbPath)) {
       const stats = statSync2(dbPath);
       return stats.size;
     }
     return 0;
   }
   recordCleanupMetric(issueId, reason, archived, deleted, sizeBefore, sizeAfter) {
-    const cleanupMetricsPath = join7(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+    const cleanupMetricsPath = join8(this.jsonlPath, "..", "cleanup_metrics.jsonl");
     const metric = {
       timestamp: Date.now(),
       issue_id: issueId,
@@ -13603,12 +13801,12 @@ class PhaseMessenger {
 `);
   }
   getCleanupMetrics(issueId) {
-    const { existsSync: existsSync8, readFileSync: readFileSync7 } = __require("fs");
-    const cleanupMetricsPath = join7(this.jsonlPath, "..", "cleanup_metrics.jsonl");
-    if (!existsSync8(cleanupMetricsPath)) {
+    const { existsSync: existsSync9, readFileSync: readFileSync8 } = __require("fs");
+    const cleanupMetricsPath = join8(this.jsonlPath, "..", "cleanup_metrics.jsonl");
+    if (!existsSync9(cleanupMetricsPath)) {
       return [];
     }
-    const content = readFileSync7(cleanupMetricsPath, "utf-8");
+    const content = readFileSync8(cleanupMetricsPath, "utf-8");
     const lines = content.trim().split(`
 `);
     const metrics = [];
@@ -13642,7 +13840,7 @@ class PhaseMessenger {
         byIssue[m.issue_id] = (byIssue[m.issue_id] || 0) + 1;
       });
     }
-    const dbPath = join7(this.jsonlPath, "..", this.config.storage.database_file);
+    const dbPath = join8(this.jsonlPath, "..", this.config.storage.database_file);
     const dbSize = this.getDatabaseSize(dbPath) / (1024 * 1024);
     return {
       total_messages: total,
@@ -20530,8 +20728,8 @@ __export(exports_config_validator, {
   configValidator: () => configValidator,
   ConfigurationValidator: () => ConfigurationValidator
 });
-import { readFileSync as readFileSync8, existsSync as existsSync11 } from "fs";
-import { join as join12, extname as extname3 } from "path";
+import { readFileSync as readFileSync9, existsSync as existsSync12 } from "fs";
+import { join as join13, extname as extname3 } from "path";
 
 class ConfigurationValidator {
   ajv;
@@ -20545,9 +20743,9 @@ class ConfigurationValidator {
   }
   async validateConfig(configPath, schemaPath) {
     try {
-      const configContent = readFileSync8(configPath, "utf-8");
+      const configContent = readFileSync9(configPath, "utf-8");
       const config = JSON.parse(configContent);
-      const schemaContent = readFileSync8(schemaPath, "utf-8");
+      const schemaContent = readFileSync9(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const ajv = new import_ajv.default({
         allErrors: true,
@@ -20600,20 +20798,20 @@ class ConfigurationValidator {
     ];
     for (const task of validationTasks) {
       const extensions = [".yaml", ".yml", ".json", ".json5"];
-      let configPath = join12(baseDir, task.baseName + ".yaml");
+      let configPath = join13(baseDir, task.baseName + ".yaml");
       for (const ext of extensions) {
-        const p = join12(baseDir, task.baseName + ext);
-        if (existsSync11(p)) {
+        const p = join13(baseDir, task.baseName + ext);
+        if (existsSync12(p)) {
           configPath = p;
           break;
         }
       }
       const localAgentShepherdDir = findAgentShepherdDir2();
-      let schemaPath = join12(localAgentShepherdDir, task.schema);
-      if (!existsSync11(schemaPath)) {
-        schemaPath = join12(installDir, task.schema);
+      let schemaPath = join13(localAgentShepherdDir, task.schema);
+      if (!existsSync12(schemaPath)) {
+        schemaPath = join13(installDir, task.schema);
       }
-      if (!existsSync11(configPath)) {
+      if (!existsSync12(configPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -20627,7 +20825,7 @@ class ConfigurationValidator {
         });
         continue;
       }
-      if (!existsSync11(schemaPath)) {
+      if (!existsSync12(schemaPath)) {
         results.push({
           valid: false,
           errors: [{
@@ -20646,15 +20844,15 @@ class ConfigurationValidator {
       results.push(result);
     }
     const workflowsDir = findWorkflowsDir2();
-    const enabledDir = join12(workflowsDir, "enabled");
-    if (existsSync11(enabledDir)) {
+    const enabledDir = join13(workflowsDir, "enabled");
+    if (existsSync12(enabledDir)) {
       const workflowFiles = scanRecursive2(enabledDir, [".yaml", ".yml", ".json", ".json5"]);
       const localAgentShepherdDir = findAgentShepherdDir2();
-      let policiesSchemaPath = join12(localAgentShepherdDir, "schemas/policies.schema.json");
-      if (!existsSync11(policiesSchemaPath)) {
-        policiesSchemaPath = join12(installDir, "schemas/policies.schema.json");
+      let policiesSchemaPath = join13(localAgentShepherdDir, "schemas/policies.schema.json");
+      if (!existsSync12(policiesSchemaPath)) {
+        policiesSchemaPath = join13(installDir, "schemas/policies.schema.json");
       }
-      if (existsSync11(policiesSchemaPath)) {
+      if (existsSync12(policiesSchemaPath)) {
         for (const file of workflowFiles) {
           const result = await this.validateWorkflowFile(file, policiesSchemaPath);
           result.summary = `${result.valid ? "\u2705" : "\u274C"} Workflow ${file}: ${result.summary}`;
@@ -20663,15 +20861,15 @@ class ConfigurationValidator {
       }
     }
     const agentsDir = findAgentsDir2();
-    const enabledAgentsDir = join12(agentsDir, "enabled");
-    if (existsSync11(enabledAgentsDir)) {
+    const enabledAgentsDir = join13(agentsDir, "enabled");
+    if (existsSync12(enabledAgentsDir)) {
       const agentFiles = scanRecursive2(enabledAgentsDir, [".yaml", ".yml", ".json", ".json5"]);
       const localAgentShepherdDir = findAgentShepherdDir2();
-      let agentsSchemaPath = join12(localAgentShepherdDir, "schemas/agents.schema.json");
-      if (!existsSync11(agentsSchemaPath)) {
-        agentsSchemaPath = join12(installDir, "schemas/agents.schema.json");
+      let agentsSchemaPath = join13(localAgentShepherdDir, "schemas/agents.schema.json");
+      if (!existsSync12(agentsSchemaPath)) {
+        agentsSchemaPath = join13(installDir, "schemas/agents.schema.json");
       }
-      if (existsSync11(agentsSchemaPath)) {
+      if (existsSync12(agentsSchemaPath)) {
         for (const file of agentFiles) {
           const result = await this.validateAnyConfig(file, agentsSchemaPath);
           result.summary = `${result.valid ? "\u2705" : "\u274C"} Agent file ${file}: ${result.summary}`;
@@ -20712,7 +20910,7 @@ class ConfigurationValidator {
   }
   async validateConfigObject(config, schemaPath, contextPath) {
     try {
-      const schemaContent = readFileSync8(schemaPath, "utf-8");
+      const schemaContent = readFileSync9(schemaPath, "utf-8");
       const schema = JSON.parse(schemaContent);
       const ajv = new import_ajv.default({
         allErrors: true,
@@ -20743,7 +20941,7 @@ class ConfigurationValidator {
   }
   async validateAnyConfig(filePath, schemaPath) {
     try {
-      const content = readFileSync8(filePath, "utf-8");
+      const content = readFileSync9(filePath, "utf-8");
       const ext = extname3(filePath).toLowerCase();
       let config;
       if (ext === ".json") {
@@ -20772,7 +20970,7 @@ class ConfigurationValidator {
   }
   async validateYAMLConfig(yamlPath, schemaPath) {
     try {
-      const yamlContent = readFileSync8(yamlPath, "utf-8");
+      const yamlContent = readFileSync9(yamlPath, "utf-8");
       const { parse: parse3 } = await Promise.resolve().then(() => __toESM(require_dist(), 1));
       const config = parse3(yamlContent);
       return this.validateConfigObject(config, schemaPath, yamlPath);
@@ -20792,7 +20990,7 @@ class ConfigurationValidator {
   }
   async validateWorkflowFile(filePath, schemaPath) {
     try {
-      const content = readFileSync8(filePath, "utf-8");
+      const content = readFileSync9(filePath, "utf-8");
       const ext = extname3(filePath).toLowerCase();
       let config;
       if (ext === ".json") {
@@ -39287,7 +39485,7 @@ var require_view = __commonJS((exports, module) => {
   var dirname2 = path.dirname;
   var basename2 = path.basename;
   var extname4 = path.extname;
-  var join13 = path.join;
+  var join14 = path.join;
   var resolve = path.resolve;
   module.exports = View;
   function View(name, options) {
@@ -39349,12 +39547,12 @@ var require_view = __commonJS((exports, module) => {
   };
   View.prototype.resolve = function resolve(dir, file) {
     var ext = this.ext;
-    var path2 = join13(dir, file);
+    var path2 = join14(dir, file);
     var stat = tryStat(path2);
     if (stat && stat.isFile()) {
       return path2;
     }
-    path2 = join13(dir, basename2(file, ext), "index" + ext);
+    path2 = join14(dir, basename2(file, ext), "index" + ext);
     stat = tryStat(path2);
     if (stat && stat.isFile()) {
       return path2;
@@ -43049,7 +43247,7 @@ var require_send = __commonJS((exports, module) => {
   var Stream = __require("stream");
   var util2 = __require("util");
   var extname4 = path.extname;
-  var join13 = path.join;
+  var join14 = path.join;
   var normalize = path.normalize;
   var resolve = path.resolve;
   var sep = path.sep;
@@ -43221,7 +43419,7 @@ var require_send = __commonJS((exports, module) => {
         return res;
       }
       parts = path2.split(sep);
-      path2 = normalize(join13(root2, path2));
+      path2 = normalize(join14(root2, path2));
     } else {
       if (UP_PATH_REGEXP.test(path2)) {
         debug('malicious path "%s"', path2);
@@ -43361,7 +43559,7 @@ var require_send = __commonJS((exports, module) => {
           return self.onStatError(err);
         return self.error(404);
       }
-      var p = join13(path2, self._index[i]);
+      var p = join14(path2, self._index[i]);
       debug('stat "%s"', p);
       fs.stat(p, function(err2, stat) {
         if (err2)
@@ -44269,9 +44467,9 @@ var exports_ui_server = {};
 __export(exports_ui_server, {
   UIServer: () => UIServer
 });
-import { join as join13, dirname as dirname2, resolve } from "path";
-import { readFileSync as readFileSync9, existsSync as existsSync12 } from "fs";
-import { spawn } from "child_process";
+import { join as join14, dirname as dirname2, resolve } from "path";
+import { readFileSync as readFileSync10, existsSync as existsSync13 } from "fs";
+import { spawn as spawn2 } from "child_process";
 import { fileURLToPath } from "url";
 
 class UIServer {
@@ -44284,11 +44482,11 @@ class UIServer {
     this.setupRoutes();
   }
   async ensureUIBuilt() {
-    const distDir = join13(PROJECT_ROOT, "dist");
-    if (!existsSync12(join13(distDir, "AgentShepherdFlow.js"))) {
+    const distDir = join14(PROJECT_ROOT, "dist");
+    if (!existsSync13(join14(distDir, "AgentShepherdFlow.js"))) {
       console.log("Building UI...");
       return new Promise((resolve2, reject) => {
-        const build = spawn("bun", ["run", "build:ui"], {
+        const build = spawn2("bun", ["run", "build:ui"], {
           cwd: PROJECT_ROOT,
           stdio: "inherit"
         });
@@ -44310,7 +44508,7 @@ class UIServer {
       console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
       next();
     });
-    const isDev = existsSync12(join13(PROJECT_ROOT, "package.json"));
+    const isDev = existsSync13(join14(PROJECT_ROOT, "package.json"));
     if (isDev) {
       this.ensureUIBuilt().catch((err) => {
         console.error("Failed to build UI:", err);
@@ -44365,6 +44563,7 @@ class UIServer {
           name: phase.name,
           description: phase.description || "",
           capabilities: phase.capabilities || [],
+          transitions: phase.transitions,
           timeout_multiplier: phase.timeout_multiplier || 1,
           status: "idle"
         }));
@@ -44378,14 +44577,14 @@ class UIServer {
     });
     this.app.get("/", (_req, res) => {
       try {
-        const filePath = join13(UI_DIR, "index.html");
+        const filePath = join14(UI_DIR, "index.html");
         console.log("Serving dashboard from:", filePath);
-        if (!existsSync12(filePath)) {
+        if (!existsSync13(filePath)) {
           console.error("index.html not found at:", filePath);
           res.status(404).send("index.html not found");
           return;
         }
-        const content = readFileSync9(filePath, "utf8");
+        const content = readFileSync10(filePath, "utf8");
         res.setHeader("Content-Type", "text/html");
         res.send(content);
       } catch (error) {
@@ -44439,8 +44638,8 @@ var init_ui_server = __esm(() => {
     resolve(process.cwd(), ".agent-shepherd"),
     process.cwd()
   ];
-  PROJECT_ROOT = possibleRoots.find((root2) => existsSync12(join13(root2, "src", "ui", "index.html"))) || possibleRoots[0];
-  UI_DIR = join13(PROJECT_ROOT, "src", "ui");
+  PROJECT_ROOT = possibleRoots.find((root2) => existsSync13(join14(root2, "src", "ui", "index.html"))) || possibleRoots[0];
+  UI_DIR = join14(PROJECT_ROOT, "src", "ui");
 });
 
 // src/core/policy-tree-visualizer.ts
@@ -47387,8 +47586,8 @@ function getMonitorEngine(config) {
 init_path_utils();
 init_config();
 init_policy_capability_validator();
-import { existsSync as existsSync13, mkdirSync as mkdirSync5, writeFileSync as writeFileSync3, readdirSync as readdirSync2, readFileSync as readFileSync10, cpSync, rmSync } from "fs";
-import { join as join14 } from "path";
+import { existsSync as existsSync14, mkdirSync as mkdirSync6, writeFileSync as writeFileSync4, readdirSync as readdirSync2, readFileSync as readFileSync11, cpSync, rmSync } from "fs";
+import { join as join15 } from "path";
 import path from "path";
 import { execSync } from "child_process";
 import { homedir as homedir2, platform } from "os";
@@ -47399,8 +47598,8 @@ init_config();
 // src/core/garbage-collector.ts
 init_logging();
 import { Database as Database4 } from "bun:sqlite";
-import { existsSync as existsSync8, mkdirSync as mkdirSync4, readFileSync as readFileSync7, writeFileSync as writeFileSync2 } from "fs";
-import { join as join8 } from "path";
+import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync8, writeFileSync as writeFileSync3 } from "fs";
+import { join as join9 } from "path";
 
 // src/core/retention-policy.ts
 init_logging();
@@ -47574,16 +47773,16 @@ class GarbageCollector {
   policyManager;
   isClosed = false;
   constructor(config) {
-    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join8(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join9(process.cwd(), ".agent-shepherd");
     this.policyManager = getRetentionPolicyManager(config.policies);
-    const archiveDir = join8(this.dataDir, "archive");
-    if (!existsSync8(archiveDir)) {
-      mkdirSync4(archiveDir, { recursive: true });
+    const archiveDir = join9(this.dataDir, "archive");
+    if (!existsSync9(archiveDir)) {
+      mkdirSync5(archiveDir, { recursive: true });
     }
-    const archiveDbPath = join8(archiveDir, "archive.db");
+    const archiveDbPath = join9(archiveDir, "archive.db");
     this.archiveDb = new Database4(archiveDbPath);
     this.initializeArchiveSchema();
-    this.archiveJsonlPath = join8(archiveDir, "archive.jsonl");
+    this.archiveJsonlPath = join9(archiveDir, "archive.jsonl");
   }
   initializeArchiveSchema() {
     this.archiveDb.run(`
@@ -47793,7 +47992,7 @@ class GarbageCollector {
       };
       const archiveLine = JSON.stringify(archiveRecord) + `
 `;
-      writeFileSync2(this.archiveJsonlPath, archiveLine, { flag: "a" });
+      writeFileSync3(this.archiveJsonlPath, archiveLine, { flag: "a" });
       this.deleteRunFromMain(run.id);
       return true;
     } catch (error) {
@@ -47849,9 +48048,9 @@ class GarbageCollector {
   }
   deleteRunFromMain(runId) {
     this.logger.deleteRun(runId);
-    const decisionsPath = join8(this.dataDir, "decisions.jsonl");
-    if (existsSync8(decisionsPath)) {
-      const content = readFileSync7(decisionsPath, "utf-8");
+    const decisionsPath = join9(this.dataDir, "decisions.jsonl");
+    if (existsSync9(decisionsPath)) {
+      const content = readFileSync8(decisionsPath, "utf-8");
       const lines = content.trim().split(`
 `);
       const filteredLines = lines.filter((line2) => {
@@ -47864,7 +48063,7 @@ class GarbageCollector {
           return true;
         }
       });
-      writeFileSync2(decisionsPath, filteredLines.join(`
+      writeFileSync3(decisionsPath, filteredLines.join(`
 `) + `
 `);
     }
@@ -47981,15 +48180,15 @@ function resetCollector() {
 // src/core/cleanup-health-check.ts
 init_logging();
 import { Database as Database5 } from "bun:sqlite";
-import { existsSync as existsSync9, statSync as statSync3 } from "fs";
-import { join as join9 } from "path";
+import { existsSync as existsSync10, statSync as statSync3 } from "fs";
+import { join as join10 } from "path";
 
 class CleanupHealthChecker {
   dataDir;
   logger;
   config;
   constructor(config = {}) {
-    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join9(process.cwd(), ".agent-shepherd");
+    this.dataDir = config.dataDir || process.env.ASHEP_DIR || join10(process.cwd(), ".agent-shepherd");
     this.logger = getLogger(this.dataDir);
     this.config = {
       run_vacuum: config.run_vacuum ?? true,
@@ -48039,8 +48238,8 @@ class CleanupHealthChecker {
     return report;
   }
   async checkDatabaseIntegrity() {
-    const dbPath = join9(this.dataDir, "runs.db");
-    if (!existsSync9(dbPath)) {
+    const dbPath = join10(this.dataDir, "runs.db");
+    if (!existsSync10(dbPath)) {
       return {
         check_name: "Database Integrity",
         passed: true,
@@ -48121,8 +48320,8 @@ class CleanupHealthChecker {
     const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
     try {
       const archiveLogger = new ArchiveLogger2(this.dataDir);
-      const dbPath = join9(this.dataDir, "archive", "archive.db");
-      if (!existsSync9(dbPath)) {
+      const dbPath = join10(this.dataDir, "archive", "archive.db");
+      if (!existsSync10(dbPath)) {
         archiveLogger.close();
         return {
           check_name: "Archive Consistency",
@@ -48161,8 +48360,8 @@ class CleanupHealthChecker {
     }
   }
   async checkSizeReduction() {
-    const dbPath = join9(this.dataDir, "runs.db");
-    if (!existsSync9(dbPath)) {
+    const dbPath = join10(this.dataDir, "runs.db");
+    if (!existsSync10(dbPath)) {
       return {
         check_name: "Size Reduction",
         passed: true,
@@ -48213,8 +48412,8 @@ class CleanupHealthChecker {
     }
   }
   async checkIndexHealth() {
-    const dbPath = join9(this.dataDir, "runs.db");
-    if (!existsSync9(dbPath)) {
+    const dbPath = join10(this.dataDir, "runs.db");
+    if (!existsSync10(dbPath)) {
       return {
         check_name: "Index Health",
         passed: true,
@@ -48256,8 +48455,8 @@ class CleanupHealthChecker {
     }
   }
   async runVacuumOptimization() {
-    const dbPath = join9(this.dataDir, "runs.db");
-    if (!existsSync9(dbPath)) {
+    const dbPath = join10(this.dataDir, "runs.db");
+    if (!existsSync10(dbPath)) {
       return {
         check_name: "Vacuum Optimization",
         passed: true,
@@ -48307,7 +48506,7 @@ function resetHealthChecker() {
 }
 
 // src/core/cleanup-engine.ts
-import { join as join10 } from "path";
+import { join as join11 } from "path";
 
 class CleanupEngine {
   config;
@@ -48336,7 +48535,7 @@ class CleanupEngine {
       } : undefined,
       ...config
     };
-    this.dataDir = this.config.dataDir || process.env.ASHEP_DIR || join10(process.cwd(), ".agent-shepherd");
+    this.dataDir = this.config.dataDir || process.env.ASHEP_DIR || join11(process.cwd(), ".agent-shepherd");
     if (this.config.retentionConfig?.enabled && this.config.retentionConfig.policies.length > 0) {
       this.collector = getGarbageCollector({
         dataDir: this.config.dataDir,
@@ -48587,8 +48786,8 @@ function resetCleanupEngine() {
 
 // src/core/size-monitor.ts
 init_logging();
-import { existsSync as existsSync10, statSync as statSync4 } from "fs";
-import { join as join11 } from "path";
+import { existsSync as existsSync11, statSync as statSync4 } from "fs";
+import { join as join12 } from "path";
 class SizeMonitor {
   config;
   logger;
@@ -48601,7 +48800,7 @@ class SizeMonitor {
     this.logger = getLogger(config.dataDir);
     this.cleanupEngine = getCleanupEngine({ dataDir: config.dataDir });
     const fullConfig = {
-      dataDir: config.dataDir || process.env.ASHEP_DIR || join11(process.cwd(), ".agent-shepherd"),
+      dataDir: config.dataDir || process.env.ASHEP_DIR || join12(process.cwd(), ".agent-shepherd"),
       check_interval_ms: config.check_interval_ms || 3600000,
       warning_threshold_percent: config.warning_threshold_percent || 90,
       critical_threshold_percent: config.critical_threshold_percent || 100,
@@ -48646,16 +48845,16 @@ class SizeMonitor {
   }
   async collectSizeMetrics() {
     const dataDir = this.config.dataDir;
-    const activeDbPath = join11(dataDir, "runs.db");
-    const jsonlPath = join11(dataDir, "runs.jsonl");
-    const decisionsPath = join11(dataDir, "decisions.jsonl");
-    const archiveDbPath = join11(dataDir, "archive", "archive.db");
-    const archiveJsonlPath = join11(dataDir, "archive", "archive.jsonl");
-    const activeDbSize = existsSync10(activeDbPath) ? statSync4(activeDbPath).size : 0;
-    const jsonlSize = existsSync10(jsonlPath) ? statSync4(jsonlPath).size : 0;
-    const decisionsSize = existsSync10(decisionsPath) ? statSync4(decisionsPath).size : 0;
-    const archiveDbSize = existsSync10(archiveDbPath) ? statSync4(archiveDbPath).size : 0;
-    const archiveJsonlSize = existsSync10(archiveJsonlPath) ? statSync4(archiveJsonlPath).size : 0;
+    const activeDbPath = join12(dataDir, "runs.db");
+    const jsonlPath = join12(dataDir, "runs.jsonl");
+    const decisionsPath = join12(dataDir, "decisions.jsonl");
+    const archiveDbPath = join12(dataDir, "archive", "archive.db");
+    const archiveJsonlPath = join12(dataDir, "archive", "archive.jsonl");
+    const activeDbSize = existsSync11(activeDbPath) ? statSync4(activeDbPath).size : 0;
+    const jsonlSize = existsSync11(jsonlPath) ? statSync4(jsonlPath).size : 0;
+    const decisionsSize = existsSync11(decisionsPath) ? statSync4(decisionsPath).size : 0;
+    const archiveDbSize = existsSync11(archiveDbPath) ? statSync4(archiveDbPath).size : 0;
+    const archiveJsonlSize = existsSync11(archiveJsonlPath) ? statSync4(archiveJsonlPath).size : 0;
     const totalSizeBytes = activeDbSize + jsonlSize + decisionsSize + archiveDbSize + archiveJsonlSize;
     const runCount = this.logger.queryRuns({}).length;
     const { ArchiveLogger: ArchiveLogger2 } = await Promise.resolve().then(() => (init_archive_logger(), exports_archive_logger));
@@ -48823,6 +49022,7 @@ function getSizeMonitor(config) {
 }
 
 // src/cli/index.ts
+init_process_manager();
 var COMMANDS = {
   quickstart: {
     description: "One-command onboarding with dependencies, configs, and demo workflow",
@@ -48964,6 +49164,23 @@ var COMMANDS = {
     category: "Sessions",
     usage: "ashep list-sessions [issue-id]"
   },
+  "phase-msg-send": {
+    description: "Send a phase message",
+    category: "Messaging",
+    usage: "ashep phase-msg-send <issue-id> <from> <to> <type> <content> [metadata-json]",
+    options: {
+      "--json": "Output as JSON"
+    }
+  },
+  "phase-msg-receive": {
+    description: "Receive (and mark read) messages for a phase",
+    category: "Messaging",
+    usage: "ashep phase-msg-receive <issue-id> <phase> [options]",
+    options: {
+      "--keep-unread": "Don't mark messages as read",
+      "--json": "Output as JSON"
+    }
+  },
   "phase-msg-list": {
     description: "List phase messages for an issue",
     category: "Messaging",
@@ -48983,6 +49200,16 @@ var COMMANDS = {
     options: {
       "--json": "Output as JSON"
     }
+  },
+  "phase-msg-cleanup": {
+    description: "Archive and delete messages for an issue",
+    category: "Messaging",
+    usage: "ashep phase-msg-cleanup <issue-id> [reason]"
+  },
+  "phase-msg-status": {
+    description: "Show messaging system status and statistics",
+    category: "Messaging",
+    usage: "ashep phase-msg-status [issue-id]"
   },
   "plugin-list": {
     description: "List installed plugins",
@@ -49008,6 +49235,31 @@ var COMMANDS = {
     description: "Remove a plugin",
     category: "Plugins",
     usage: "ashep plugin-remove <name>"
+  },
+  "server-status": {
+    description: "Check OpenCode server status",
+    category: "Server",
+    usage: "ashep server-status"
+  },
+  "server-start": {
+    description: "Start OpenCode server in background",
+    category: "Server",
+    usage: "ashep server-start"
+  },
+  "server-stop": {
+    description: "Stop OpenCode server",
+    category: "Server",
+    usage: "ashep server-stop"
+  },
+  "server-enable": {
+    description: "Enable auto-start for OpenCode server",
+    category: "Server",
+    usage: "ashep server-enable"
+  },
+  "server-disable": {
+    description: "Disable auto-start for OpenCode server",
+    category: "Server",
+    usage: "ashep server-disable"
   },
   workflow: {
     description: "Manage workflow files (list, archive, activate, create)",
@@ -49051,27 +49303,27 @@ var LOADED_PLUGINS = [];
 function loadPlugins() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join14(agentShepherdDir, "plugins");
-    if (!existsSync13(pluginsDir)) {
+    const pluginsDir = join15(agentShepherdDir, "plugins");
+    if (!existsSync14(pluginsDir)) {
       return;
     }
     const pluginDirs = readdirSync2(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     for (const pluginName of pluginDirs) {
-      const pluginPath = join14(pluginsDir, pluginName);
-      const manifestPath = join14(pluginPath, "manifest.json");
-      if (!existsSync13(manifestPath)) {
+      const pluginPath = join15(pluginsDir, pluginName);
+      const manifestPath = join15(pluginPath, "manifest.json");
+      if (!existsSync14(manifestPath)) {
         console.warn(`Plugin ${pluginName}: manifest.json not found, skipping`);
         continue;
       }
       try {
-        const manifestContent = readFileSync10(manifestPath, "utf-8");
+        const manifestContent = readFileSync11(manifestPath, "utf-8");
         const manifest = JSON.parse(manifestContent);
         if (!manifest.name || !manifest.commands || !Array.isArray(manifest.commands)) {
           console.warn(`Plugin ${pluginName}: invalid manifest.json, skipping`);
           continue;
         }
-        const indexPath = join14(pluginPath, "index.js");
-        if (!existsSync13(indexPath)) {
+        const indexPath = join15(pluginPath, "index.js");
+        if (!existsSync14(indexPath)) {
           console.warn(`Plugin ${pluginName}: index.js not found, skipping`);
           continue;
         }
@@ -49418,60 +49670,60 @@ Details:`);
 }
 function cmdInit() {
   console.log("Initializing Agent Shepherd configuration...");
-  const configDir = join14(process.cwd(), ".agent-shepherd");
-  const configSubDir = join14(configDir, "config");
-  const pluginsDir = join14(configDir, "plugins");
-  const agentsDir = join14(configDir, "agents");
-  const workflowsDir = join14(configDir, "workflows");
-  const configExists = existsSync13(configSubDir);
+  const configDir = join15(process.cwd(), ".agent-shepherd");
+  const configSubDir = join15(configDir, "config");
+  const pluginsDir = join15(configDir, "plugins");
+  const agentsDir = join15(configDir, "agents");
+  const workflowsDir = join15(configDir, "workflows");
+  const configExists = existsSync14(configSubDir);
   if (!configExists) {
-    mkdirSync5(configSubDir, { recursive: true });
+    mkdirSync6(configSubDir, { recursive: true });
     console.log(`\u2705 Created directory: ${configSubDir}`);
   } else {
     console.log(`\u2139\uFE0F  Configuration directory already exists: ${configSubDir}`);
   }
-  if (!existsSync13(pluginsDir)) {
-    mkdirSync5(pluginsDir, { recursive: true });
+  if (!existsSync14(pluginsDir)) {
+    mkdirSync6(pluginsDir, { recursive: true });
     console.log(`\u2705 Created directory: ${pluginsDir}`);
   }
-  if (!existsSync13(agentsDir)) {
-    mkdirSync5(join14(agentsDir, "enabled"), { recursive: true });
-    mkdirSync5(join14(agentsDir, "available"), { recursive: true });
+  if (!existsSync14(agentsDir)) {
+    mkdirSync6(join15(agentsDir, "enabled"), { recursive: true });
+    mkdirSync6(join15(agentsDir, "available"), { recursive: true });
     console.log(`\u2705 Created directory: ${agentsDir}`);
   }
-  if (!existsSync13(workflowsDir)) {
-    mkdirSync5(join14(workflowsDir, "enabled"), { recursive: true });
-    mkdirSync5(join14(workflowsDir, "available"), { recursive: true });
+  if (!existsSync14(workflowsDir)) {
+    mkdirSync6(join15(workflowsDir, "enabled"), { recursive: true });
+    mkdirSync6(join15(workflowsDir, "available"), { recursive: true });
     console.log(`\u2705 Created directory: ${workflowsDir}`);
   }
   try {
     const installDir = findInstallDir();
-    const schemasSource = join14(installDir, "schemas");
-    const schemasDest = join14(configDir, "schemas");
-    if (existsSync13(schemasSource) && !existsSync13(schemasDest)) {
+    const schemasSource = join15(installDir, "schemas");
+    const schemasDest = join15(configDir, "schemas");
+    if (existsSync14(schemasSource) && !existsSync14(schemasDest)) {
       cpSync(schemasSource, schemasDest, { recursive: true });
       console.log(`\u2705 Created directory: ${schemasDest}`);
-    } else if (!existsSync13(schemasSource)) {
+    } else if (!existsSync14(schemasSource)) {
       console.log(`\u26A0\uFE0F  Warning: Schemas directory not found in installation`);
     }
   } catch {}
   try {
     const installDir = findInstallDir();
-    const pluginsSource = join14(installDir, "plugins");
-    if (existsSync13(pluginsSource)) {
+    const pluginsSource = join15(installDir, "plugins");
+    if (existsSync14(pluginsSource)) {
       const pluginDirs = readdirSync2(pluginsSource, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
       for (const pluginName of pluginDirs) {
-        const sourcePath = join14(pluginsSource, pluginName);
-        const destPath = join14(pluginsDir, pluginName);
-        if (!existsSync13(destPath)) {
+        const sourcePath = join15(pluginsSource, pluginName);
+        const destPath = join15(pluginsDir, pluginName);
+        if (!existsSync14(destPath)) {
           cpSync(sourcePath, destPath, { recursive: true });
           console.log(`\u2705 Copied plugin: ${pluginName}`);
         }
       }
     }
   } catch {}
-  const policiesPath = join14(configSubDir, "policies.yaml");
-  if (!existsSync13(policiesPath)) {
+  const policiesPath = join15(configSubDir, "policies.yaml");
+  if (!existsSync14(policiesPath)) {
     const defaultPolicies = `policies:
   # Simple beginner workflow - works out-of-the-box with basic OpenCode agents
   simple:
@@ -49553,13 +49805,13 @@ function cmdInit() {
 
 default_policy: simple
 `;
-    writeFileSync3(policiesPath, defaultPolicies);
+    writeFileSync4(policiesPath, defaultPolicies);
     console.log(`\u2705 Created: ${policiesPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${policiesPath}`);
   }
-  const agentsPath = join14(configSubDir, "agents.yaml");
-  if (!existsSync13(agentsPath)) {
+  const agentsPath = join15(configSubDir, "agents.yaml");
+  if (!existsSync14(agentsPath)) {
     const defaultAgents = `version: "1.0"
 agents:
   - id: default-coder
@@ -49600,13 +49852,13 @@ agents:
     constraints:
       performance_tier: balanced
     `;
-    writeFileSync3(agentsPath, defaultAgents);
+    writeFileSync4(agentsPath, defaultAgents);
     console.log(`\u2705 Created: ${agentsPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${agentsPath}`);
   }
-  const configPath = join14(configSubDir, "config.yaml");
-  if (!existsSync13(configPath)) {
+  const configPath = join15(configSubDir, "config.yaml");
+  if (!existsSync14(configPath)) {
     const defaultConfig = `version: "1.0"
 
 worker:
@@ -49662,7 +49914,7 @@ hitl:
     # - alphanumeric-dash-underscore: Letters, numbers, dashes, underscores
     custom_validation: alphanumeric-dash-underscore
  `;
-    writeFileSync3(configPath, defaultConfig);
+    writeFileSync4(configPath, defaultConfig);
     console.log(`\u2705 Created: ${configPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${configPath}`);
@@ -49864,6 +50116,74 @@ async function cmdShowPolicyTree(format) {
     process.exit(1);
   }
 }
+async function cmdServerStatus() {
+  const config = loadConfig();
+  const url = config.opencode?.server?.base_url || "http://localhost:4321";
+  const pid = getServerPid();
+  const running = await isServerRunning(url);
+  console.log("OpenCode Server Status:");
+  console.log(`  URL: ${url}`);
+  console.log(`  Auto-start: ${config.opencode?.server?.auto_start ? "Enabled" : "Disabled"}`);
+  console.log(`  Status: ${running ? "\u2705 Running" : "\uD83D\uDD34 Stopped"}`);
+  if (pid) {
+    console.log(`  PID: ${pid} (Daemon process)`);
+  } else if (running) {
+    console.log(`  PID: External/Manual process`);
+  }
+}
+async function cmdServerStart() {
+  const config = loadConfig();
+  const serverConfig = config.opencode?.server || {
+    auto_start: true,
+    base_url: "http://localhost:4321",
+    startup_timeout_ms: 5000
+  };
+  const success = await startServer(serverConfig);
+  if (!success) {
+    process.exit(1);
+  }
+}
+function cmdServerStop() {
+  const success = stopServer();
+  if (!success) {
+    console.log("Could not stop server (maybe not running or not started by agent-shepherd?)");
+    process.exit(1);
+  }
+}
+function cmdServerConfig(enable) {
+  const { getConfigPath: getConfigPath2 } = (init_path_utils(), __toCommonJS(exports_path_utils));
+  const configPath = getConfigPath2("config.yaml");
+  if (!existsSync14(configPath)) {
+    console.error("Config file not found.");
+    process.exit(1);
+  }
+  let content = readFileSync11(configPath, "utf-8");
+  const autoStartRegex = /auto_start:\s*(true|false)/;
+  if (autoStartRegex.test(content)) {
+    console.log("Updating configuration...");
+    const config = import_yaml7.parse(content);
+    if (!config.opencode)
+      config.opencode = {};
+    if (!config.opencode.server)
+      config.opencode.server = { base_url: "http://localhost:4321", startup_timeout_ms: 5000 };
+    config.opencode.server.auto_start = enable;
+    const newContent = import_yaml7.stringify(config);
+    writeFileSync4(configPath, newContent);
+    console.log(`\u2705 Server auto-start ${enable ? "enabled" : "disabled"}.`);
+    console.log("\u26A0\uFE0F  Note: Comments in config.yaml may have been removed by YAML parser.");
+  } else {
+    console.log("Updating configuration...");
+    const config = import_yaml7.parse(content);
+    if (!config.opencode)
+      config.opencode = {};
+    if (!config.opencode.server)
+      config.opencode.server = { base_url: "http://localhost:4321", startup_timeout_ms: 5000 };
+    config.opencode.server.auto_start = enable;
+    const newContent = import_yaml7.stringify(config);
+    writeFileSync4(configPath, newContent);
+    console.log(`\u2705 Server auto-start ${enable ? "enabled" : "disabled"}.`);
+  }
+}
 async function cmdPluginInstall(source2) {
   if (!source2) {
     console.error("Usage: ashep plugin-install <path-or-url>");
@@ -49874,28 +50194,28 @@ async function cmdPluginInstall(source2) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join14(agentShepherdDir, "plugins");
-    if (!existsSync13(pluginsDir)) {
-      mkdirSync5(pluginsDir, { recursive: true });
+    const pluginsDir = join15(agentShepherdDir, "plugins");
+    if (!existsSync14(pluginsDir)) {
+      mkdirSync6(pluginsDir, { recursive: true });
     }
     if (source2.startsWith("http")) {
       console.log(`Cloning plugin from ${source2}...`);
       const pluginName = source2.split("/").pop()?.replace(".git", "") || "plugin";
-      const pluginPath = join14(pluginsDir, pluginName);
-      if (existsSync13(pluginPath)) {
+      const pluginPath = join15(pluginsDir, pluginName);
+      if (existsSync14(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
       execSync(`git clone "${source2}" "${pluginPath}"`, { stdio: "inherit" });
     } else {
       const sourcePath = path.resolve(source2);
-      if (!existsSync13(sourcePath)) {
+      if (!existsSync14(sourcePath)) {
         console.error(`Source path does not exist: ${sourcePath}`);
         process.exit(1);
       }
       const pluginName = path.basename(sourcePath);
-      const pluginPath = join14(pluginsDir, pluginName);
-      if (existsSync13(pluginPath)) {
+      const pluginPath = join15(pluginsDir, pluginName);
+      if (existsSync14(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
@@ -49914,14 +50234,14 @@ function cmdPluginActivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join14(agentShepherdDir, "plugins");
-    const pluginPath = join14(pluginsDir, name);
-    if (!existsSync13(pluginPath)) {
+    const pluginsDir = join15(agentShepherdDir, "plugins");
+    const pluginPath = join15(pluginsDir, name);
+    if (!existsSync14(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
-    const manifestPath = join14(pluginPath, "manifest.json");
-    if (!existsSync13(manifestPath)) {
+    const manifestPath = join15(pluginPath, "manifest.json");
+    if (!existsSync14(manifestPath)) {
       console.error(`Plugin ${name} has no manifest.json`);
       process.exit(1);
     }
@@ -49938,9 +50258,9 @@ function cmdPluginDeactivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join14(agentShepherdDir, "plugins");
-    const pluginPath = join14(pluginsDir, name);
-    if (!existsSync13(pluginPath)) {
+    const pluginsDir = join15(agentShepherdDir, "plugins");
+    const pluginPath = join15(pluginsDir, name);
+    if (!existsSync14(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -49957,9 +50277,9 @@ function cmdPluginRemove(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join14(agentShepherdDir, "plugins");
-    const pluginPath = join14(pluginsDir, name);
-    if (!existsSync13(pluginPath)) {
+    const pluginsDir = join15(agentShepherdDir, "plugins");
+    const pluginPath = join15(pluginsDir, name);
+    if (!existsSync14(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -50086,13 +50406,13 @@ You can try running individual commands:`);
 function getCurrentVersion() {
   try {
     const installDir = findInstallDir();
-    const versionFile = join14(installDir, "VERSION");
-    if (existsSync13(versionFile)) {
-      return readFileSync10(versionFile, "utf-8").trim();
+    const versionFile = join15(installDir, "VERSION");
+    if (existsSync14(versionFile)) {
+      return readFileSync11(versionFile, "utf-8").trim();
     }
-    const packageJsonPath = join14(installDir, "package.json");
-    if (existsSync13(packageJsonPath)) {
-      const packageJson = JSON.parse(readFileSync10(packageJsonPath, "utf-8"));
+    const packageJsonPath = join15(installDir, "package.json");
+    if (existsSync14(packageJsonPath)) {
+      const packageJson = JSON.parse(readFileSync11(packageJsonPath, "utf-8"));
       return packageJson.version || "unknown";
     }
   } catch {}
@@ -50117,18 +50437,18 @@ async function cmdUpdate(version) {
   console.log(`Updating Agent Shepherd to ${targetVersion}...`);
   try {
     const installDir = findInstallDir();
-    const tempDir = join14(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
-    mkdirSync5(tempDir, { recursive: true });
-    const configDir = join14(installDir, "config");
-    const pluginsDir = join14(installDir, "plugins");
-    if (existsSync13(configDir)) {
-      cpSync(configDir, join14(tempDir, "config"), { recursive: true });
+    const tempDir = join15(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
+    mkdirSync6(tempDir, { recursive: true });
+    const configDir = join15(installDir, "config");
+    const pluginsDir = join15(installDir, "plugins");
+    if (existsSync14(configDir)) {
+      cpSync(configDir, join15(tempDir, "config"), { recursive: true });
     }
-    if (existsSync13(pluginsDir)) {
-      cpSync(pluginsDir, join14(tempDir, "plugins"), { recursive: true });
+    if (existsSync14(pluginsDir)) {
+      cpSync(pluginsDir, join15(tempDir, "plugins"), { recursive: true });
     }
     const repoUrl = "https://github.com/USER/agent-shepherd.git";
-    const cloneDir = join14(tempDir, "clone");
+    const cloneDir = join15(tempDir, "clone");
     if (targetVersion === "latest") {
       execSync(`git clone --depth 1 "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
     } else {
@@ -50137,26 +50457,26 @@ async function cmdUpdate(version) {
     const items = readdirSync2(installDir);
     for (const item of items) {
       if (item !== "logs" && item !== "config" && item !== "plugins") {
-        const itemPath = join14(installDir, item);
-        if (existsSync13(itemPath)) {
+        const itemPath = join15(installDir, item);
+        if (existsSync14(itemPath)) {
           rmSync(itemPath, { recursive: true, force: true });
         }
       }
     }
-    const sourceDir = join14(cloneDir, ".agent-shepherd");
+    const sourceDir = join15(cloneDir, ".agent-shepherd");
     const sourceItems = readdirSync2(sourceDir);
     for (const item of sourceItems) {
-      const srcPath = join14(sourceDir, item);
-      const destPath = join14(installDir, item);
+      const srcPath = join15(sourceDir, item);
+      const destPath = join15(installDir, item);
       cpSync(srcPath, destPath, { recursive: true });
     }
-    if (existsSync13(join14(tempDir, "config"))) {
-      cpSync(join14(tempDir, "config"), configDir, { recursive: true });
+    if (existsSync14(join15(tempDir, "config"))) {
+      cpSync(join15(tempDir, "config"), configDir, { recursive: true });
     }
-    if (existsSync13(join14(tempDir, "plugins"))) {
-      cpSync(join14(tempDir, "plugins"), pluginsDir, { recursive: true });
+    if (existsSync14(join15(tempDir, "plugins"))) {
+      cpSync(join15(tempDir, "plugins"), pluginsDir, { recursive: true });
     }
-    writeFileSync3(join14(installDir, "VERSION"), targetVersion);
+    writeFileSync4(join15(installDir, "VERSION"), targetVersion);
     console.log("Installing dependencies...");
     execSync("bun install", { cwd: installDir, stdio: "inherit" });
     rmSync(tempDir, { recursive: true, force: true });
@@ -50245,8 +50565,8 @@ async function cmdCleanupStatus() {
 function cmdPluginList() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join14(agentShepherdDir, "plugins");
-    if (!existsSync13(pluginsDir)) {
+    const pluginsDir = join15(agentShepherdDir, "plugins");
+    if (!existsSync14(pluginsDir)) {
       console.log("No plugins directory found");
       return;
     }
@@ -50257,13 +50577,13 @@ function cmdPluginList() {
     }
     console.log("Installed plugins:");
     for (const pluginName of pluginDirs) {
-      const pluginPath = join14(pluginsDir, pluginName);
-      const manifestPath = join14(pluginPath, "manifest.json");
+      const pluginPath = join15(pluginsDir, pluginName);
+      const manifestPath = join15(pluginPath, "manifest.json");
       let status = "\u274C Invalid";
       let description = "";
-      if (existsSync13(manifestPath)) {
+      if (existsSync14(manifestPath)) {
         try {
-          const manifest = JSON.parse(readFileSync10(manifestPath, "utf-8"));
+          const manifest = JSON.parse(readFileSync11(manifestPath, "utf-8"));
           status = "\u2705 Active";
           description = manifest.description || "";
         } catch {
@@ -50650,6 +50970,123 @@ Content:`);
     process.exit(1);
   }
 }
+async function cmdSendMessage(issueId, fromPhase, toPhase, type, content, metadataStr, asJson) {
+  if (!issueId || !fromPhase || !toPhase || !type || !content) {
+    console.error("Usage: ashep phase-msg-send <issue-id> <from> <to> <type> <content> [metadata-json]");
+    console.error("Types: context, result, decision, data");
+    process.exit(1);
+  }
+  try {
+    const { getPhaseMessenger: getPhaseMessenger2 } = await Promise.resolve().then(() => (init_phase_messenger(), exports_phase_messenger));
+    const messenger = getPhaseMessenger2();
+    let metadata = undefined;
+    if (metadataStr && !metadataStr.startsWith("-")) {
+      try {
+        metadata = JSON.parse(metadataStr);
+      } catch {
+        console.warn("\u26A0\uFE0F  Warning: Invalid metadata JSON, ignoring.");
+      }
+    }
+    const message = messenger.sendMessage({
+      issue_id: issueId,
+      from_phase: fromPhase,
+      to_phase: toPhase,
+      message_type: type,
+      content,
+      metadata
+    });
+    if (asJson) {
+      console.log(JSON.stringify(message, null, 2));
+    } else {
+      console.log("\u2705 Message sent successfully");
+      console.log(`ID: ${message.id}`);
+    }
+  } catch (error) {
+    console.error("\u274C Failed to send message:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdReceiveMessages(issueId, phase, keepUnread = false, asJson = false) {
+  if (!issueId || !phase) {
+    console.error("Usage: ashep phase-msg-receive <issue-id> <phase> [--keep-unread]");
+    process.exit(1);
+  }
+  try {
+    const { getPhaseMessenger: getPhaseMessenger2 } = await Promise.resolve().then(() => (init_phase_messenger(), exports_phase_messenger));
+    const messenger = getPhaseMessenger2();
+    const messages = messenger.receiveMessages(issueId, phase, !keepUnread);
+    if (asJson) {
+      console.log(JSON.stringify(messages, null, 2));
+      return;
+    }
+    if (messages.length === 0) {
+      console.log(`No unread messages for issue ${issueId} in phase ${phase}.`);
+    } else {
+      console.log(`Received ${messages.length} messages:`);
+      for (const msg of messages) {
+        console.log(`
+From: ${msg.from_phase} (${msg.message_type})`);
+        console.log(`Content: ${msg.content}`);
+        if (msg.metadata)
+          console.log(`Metadata: ${JSON.stringify(msg.metadata)}`);
+      }
+      if (!keepUnread) {
+        console.log(`
+\u2705 Marked all as read.`);
+      }
+    }
+  } catch (error) {
+    console.error("\u274C Failed to receive messages:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdCleanupMessages(issueId, reason = "manual") {
+  if (!issueId) {
+    console.error("Usage: ashep phase-msg-cleanup <issue-id> [reason]");
+    process.exit(1);
+  }
+  try {
+    const { getPhaseMessenger: getPhaseMessenger2 } = await Promise.resolve().then(() => (init_phase_messenger(), exports_phase_messenger));
+    const messenger = getPhaseMessenger2();
+    console.log(`Cleaning up messages for ${issueId}...`);
+    const result = messenger.cleanupPhaseMessages(issueId, reason);
+    console.log("\u2705 Cleanup complete");
+    console.log(`  Archived: ${result.archived}`);
+    console.log(`  Deleted:  ${result.deleted}`);
+    console.log(`  DB Size:  ${(result.db_size_after / 1024 / 1024).toFixed(2)} MB (was ${(result.db_size_before / 1024 / 1024).toFixed(2)} MB)`);
+  } catch (error) {
+    console.error("\u274C Failed to cleanup messages:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+async function cmdMessageStatus(issueId) {
+  try {
+    const { getPhaseMessenger: getPhaseMessenger2 } = await Promise.resolve().then(() => (init_phase_messenger(), exports_phase_messenger));
+    const messenger = getPhaseMessenger2();
+    const stats = messenger.getMessageStats(issueId);
+    console.log(`
+Phase Messenger Status`);
+    console.log("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    console.log(`Total Messages:  ${stats.total_messages}`);
+    console.log(`Unread Messages: ${stats.unread_messages}`);
+    console.log(`Read Messages:   ${stats.read_messages}`);
+    console.log(`DB Size:         ${stats.db_size_mb.toFixed(2)} MB`);
+    if (issueId) {
+      console.log(`Scope:           Issue ${issueId}`);
+    } else {
+      console.log(`
+Top Issues by Message Count:`);
+      const topIssues = Object.entries(stats.by_issue).sort(([, a], [, b]) => b - a).slice(0, 5);
+      for (const [id, count] of topIssues) {
+        console.log(`  ${id.padEnd(20)}: ${count}`);
+      }
+    }
+    console.log();
+  } catch (error) {
+    console.error("\u274C Failed to get status:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 async function cmdListSessions(issueId) {
   try {
     const { getOpenCodeClient: getOpenCodeClient2 } = await Promise.resolve().then(() => exports_opencode);
@@ -50768,10 +51205,10 @@ Enabled Workflows (Active):`);
     }
   }
   const workflowsDir = findWorkflowsDir();
-  const availableDir = join14(workflowsDir, "available");
+  const availableDir = join15(workflowsDir, "available");
   console.log(`
 Available Workflows (Archived):`);
-  if (existsSync13(availableDir)) {
+  if (existsSync14(availableDir)) {
     const files = scanRecursive2(availableDir, [".yaml", ".yml"]);
     if (files.length === 0) {
       console.log("  (none)");
@@ -50788,16 +51225,16 @@ Available Workflows (Archived):`);
 }
 async function cmdWorkflowArchive(name) {
   const workflowsDir = findWorkflowsDir();
-  const enabledDir = join14(workflowsDir, "enabled");
-  const availableDir = join14(workflowsDir, "available");
-  if (!existsSync13(enabledDir)) {
+  const enabledDir = join15(workflowsDir, "enabled");
+  const availableDir = join15(workflowsDir, "available");
+  if (!existsSync14(enabledDir)) {
     console.error(`Enabled workflows directory not found: ${enabledDir}`);
     process.exit(1);
   }
   let targetFile;
   const candidates = [`${name}.yaml`, `${name}.yml`];
   for (const c2 of candidates) {
-    if (existsSync13(join14(enabledDir, c2))) {
+    if (existsSync14(join15(enabledDir, c2))) {
       targetFile = c2;
       break;
     }
@@ -50818,10 +51255,10 @@ async function cmdWorkflowArchive(name) {
     }
     process.exit(1);
   }
-  const srcPath = join14(enabledDir, targetFile);
-  const destPath = join14(availableDir, path.basename(targetFile));
-  if (!existsSync13(availableDir)) {
-    mkdirSync5(availableDir, { recursive: true });
+  const srcPath = join15(enabledDir, targetFile);
+  const destPath = join15(availableDir, path.basename(targetFile));
+  if (!existsSync14(availableDir)) {
+    mkdirSync6(availableDir, { recursive: true });
   }
   try {
     cpSync(srcPath, destPath);
@@ -50834,16 +51271,16 @@ async function cmdWorkflowArchive(name) {
 }
 async function cmdWorkflowActivate(name) {
   const workflowsDir = findWorkflowsDir();
-  const enabledDir = join14(workflowsDir, "enabled");
-  const availableDir = join14(workflowsDir, "available");
-  if (!existsSync13(availableDir)) {
+  const enabledDir = join15(workflowsDir, "enabled");
+  const availableDir = join15(workflowsDir, "available");
+  if (!existsSync14(availableDir)) {
     console.error(`No available workflows found (directory missing)`);
     process.exit(1);
   }
   let targetFile;
   const candidates = [`${name}.yaml`, `${name}.yml`];
   for (const c2 of candidates) {
-    if (existsSync13(join14(availableDir, c2))) {
+    if (existsSync14(join15(availableDir, c2))) {
       targetFile = c2;
       break;
     }
@@ -50860,10 +51297,10 @@ async function cmdWorkflowActivate(name) {
     console.error(`Workflow file '${name}' not found in ${availableDir}`);
     process.exit(1);
   }
-  const srcPath = join14(availableDir, targetFile);
-  const destPath = join14(enabledDir, path.basename(targetFile));
-  if (!existsSync13(enabledDir)) {
-    mkdirSync5(enabledDir, { recursive: true });
+  const srcPath = join15(availableDir, targetFile);
+  const destPath = join15(enabledDir, path.basename(targetFile));
+  if (!existsSync14(enabledDir)) {
+    mkdirSync6(enabledDir, { recursive: true });
   }
   try {
     cpSync(srcPath, destPath);
@@ -50877,7 +51314,7 @@ async function cmdWorkflowActivate(name) {
 async function cmdWorkflowCreate(name) {
   const { findWorkflowsDir: findWorkflowsDir2, findLocalAgentShepherdDir: findLocalAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
-  const { existsSync: existsSync14, mkdirSync: mkdirSync6, writeFileSync: writeFileSync4 } = await import("fs");
+  const { existsSync: existsSync15, mkdirSync: mkdirSync7, writeFileSync: writeFileSync5 } = await import("fs");
   let workflowsDir;
   const localDir = findLocalAgentShepherdDir2();
   if (localDir) {
@@ -50886,26 +51323,24 @@ async function cmdWorkflowCreate(name) {
     workflowsDir = findWorkflowsDir2();
   }
   const enabledDir = path2.join(workflowsDir, "enabled");
-  if (!existsSync14(enabledDir)) {
-    mkdirSync6(enabledDir, { recursive: true });
+  if (!existsSync15(enabledDir)) {
+    mkdirSync7(enabledDir, { recursive: true });
   }
   const filePath = path2.join(enabledDir, `${name}.yaml`);
-  if (existsSync14(filePath)) {
+  if (existsSync15(filePath)) {
     console.error(`Workflow file '${filePath}' already exists`);
     process.exit(1);
   }
-  const template = `policies:
-  ${name}:
-    name: ${name}
-    description: New workflow created via CLI
-    phases:
-      - name: plan
-        capabilities: [planning]
-      - name: implement
-        capabilities: [coding]
+  const template = `name: ${name}
+description: New workflow created via CLI
+phases:
+  - name: plan
+    capabilities: [planning]
+  - name: implement
+    capabilities: [coding]
 `;
   try {
-    writeFileSync4(filePath, template);
+    writeFileSync5(filePath, template);
     console.log(`\u2705 Created workflow file: ${filePath}`);
   } catch (error) {
     console.error(`Failed to create workflow file: ${error}`);
@@ -50950,18 +51385,18 @@ Agents (${agents.length}):`);
 async function cmdAgentArchive(name) {
   const { findAgentsDir: findAgentsDir2, scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
-  const { existsSync: existsSync14, mkdirSync: mkdirSync6, cpSync: cpSync2, rmSync: rmSync2 } = await import("fs");
+  const { existsSync: existsSync15, mkdirSync: mkdirSync7, cpSync: cpSync2, rmSync: rmSync2 } = await import("fs");
   const agentsDir = findAgentsDir2();
   const enabledDir = path2.join(agentsDir, "enabled");
   const availableDir = path2.join(agentsDir, "available");
-  if (!existsSync14(enabledDir)) {
+  if (!existsSync15(enabledDir)) {
     console.error(`Enabled agents directory not found: ${enabledDir}`);
     process.exit(1);
   }
   let targetFile;
   const candidates = [`${name}.yaml`, `${name}.yml`];
   for (const c2 of candidates) {
-    if (existsSync14(path2.join(enabledDir, c2))) {
+    if (existsSync15(path2.join(enabledDir, c2))) {
       targetFile = c2;
       break;
     }
@@ -50983,8 +51418,8 @@ async function cmdAgentArchive(name) {
   }
   const srcPath = path2.join(enabledDir, targetFile);
   const destPath = path2.join(availableDir, path2.basename(targetFile));
-  if (!existsSync14(availableDir)) {
-    mkdirSync6(availableDir, { recursive: true });
+  if (!existsSync15(availableDir)) {
+    mkdirSync7(availableDir, { recursive: true });
   }
   try {
     cpSync2(srcPath, destPath);
@@ -50998,18 +51433,18 @@ async function cmdAgentArchive(name) {
 async function cmdAgentActivate(name) {
   const { findAgentsDir: findAgentsDir2, scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
-  const { existsSync: existsSync14, mkdirSync: mkdirSync6, cpSync: cpSync2, rmSync: rmSync2 } = await import("fs");
+  const { existsSync: existsSync15, mkdirSync: mkdirSync7, cpSync: cpSync2, rmSync: rmSync2 } = await import("fs");
   const agentsDir = findAgentsDir2();
   const enabledDir = path2.join(agentsDir, "enabled");
   const availableDir = path2.join(agentsDir, "available");
-  if (!existsSync14(availableDir)) {
+  if (!existsSync15(availableDir)) {
     console.error(`No available agents found (directory missing)`);
     process.exit(1);
   }
   let targetFile;
   const candidates = [`${name}.yaml`, `${name}.yml`];
   for (const c2 of candidates) {
-    if (existsSync14(path2.join(availableDir, c2))) {
+    if (existsSync15(path2.join(availableDir, c2))) {
       targetFile = c2;
       break;
     }
@@ -51027,8 +51462,8 @@ async function cmdAgentActivate(name) {
   }
   const srcPath = path2.join(availableDir, targetFile);
   const destPath = path2.join(enabledDir, path2.basename(targetFile));
-  if (!existsSync14(enabledDir)) {
-    mkdirSync6(enabledDir, { recursive: true });
+  if (!existsSync15(enabledDir)) {
+    mkdirSync7(enabledDir, { recursive: true });
   }
   try {
     cpSync2(srcPath, destPath);
@@ -51046,12 +51481,12 @@ async function cmdConvertConfig(source2, destination) {
   }
   const sourcePath = path.resolve(source2);
   const destPath = path.resolve(destination);
-  if (!existsSync13(sourcePath)) {
+  if (!existsSync14(sourcePath)) {
     console.error(`Source file not found: ${sourcePath}`);
     process.exit(1);
   }
   try {
-    const sourceContent = readFileSync10(sourcePath, "utf-8");
+    const sourceContent = readFileSync11(sourcePath, "utf-8");
     const sourceExt = path.extname(sourcePath).toLowerCase();
     const destExt = path.extname(destPath).toLowerCase();
     let data;
@@ -51076,7 +51511,7 @@ async function cmdConvertConfig(source2, destination) {
       console.error(`Unsupported destination format: ${destExt}`);
       process.exit(1);
     }
-    writeFileSync3(destPath, destContent);
+    writeFileSync4(destPath, destContent);
     console.log(`Converted ${source2} to ${destination}`);
   } catch (error) {
     console.error("Conversion failed:", error instanceof Error ? error.message : String(error));
@@ -51086,7 +51521,7 @@ async function cmdConvertConfig(source2, destination) {
 async function cmdAgentCreate(name) {
   const { findAgentsDir: findAgentsDir2, findLocalAgentShepherdDir: findLocalAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
-  const { existsSync: existsSync14, mkdirSync: mkdirSync6, writeFileSync: writeFileSync4 } = await import("fs");
+  const { existsSync: existsSync15, mkdirSync: mkdirSync7, writeFileSync: writeFileSync5 } = await import("fs");
   let agentsDir;
   const localDir = findLocalAgentShepherdDir2();
   if (localDir) {
@@ -51095,11 +51530,11 @@ async function cmdAgentCreate(name) {
     agentsDir = findAgentsDir2();
   }
   const enabledDir = path2.join(agentsDir, "enabled");
-  if (!existsSync14(enabledDir)) {
-    mkdirSync6(enabledDir, { recursive: true });
+  if (!existsSync15(enabledDir)) {
+    mkdirSync7(enabledDir, { recursive: true });
   }
   const filePath = path2.join(enabledDir, `${name}.yaml`);
-  if (existsSync14(filePath)) {
+  if (existsSync15(filePath)) {
     console.error(`Agent file '${filePath}' already exists`);
     process.exit(1);
   }
@@ -51116,7 +51551,7 @@ async function cmdAgentCreate(name) {
       performance_tier: balanced
 `;
   try {
-    writeFileSync4(filePath, template);
+    writeFileSync5(filePath, template);
     console.log(`\u2705 Created agent file: ${filePath}`);
   } catch (error) {
     console.error(`Failed to create agent file: ${error}`);
@@ -51245,6 +51680,21 @@ async function main() {
     case "plugin-remove":
       cmdPluginRemove(args[1]);
       break;
+    case "server-status":
+      await cmdServerStatus();
+      break;
+    case "server-start":
+      await cmdServerStart();
+      break;
+    case "server-stop":
+      cmdServerStop();
+      break;
+    case "server-enable":
+      cmdServerConfig(true);
+      break;
+    case "server-disable":
+      cmdServerConfig(false);
+      break;
     case "plugin-list":
       cmdPluginList();
       break;
@@ -51288,6 +51738,40 @@ async function main() {
         const asJson = args.includes("--json");
         const messageId = args[1];
         await cmdReadMessage(messageId, asJson);
+      }
+      break;
+    case "phase-msg-send":
+      {
+        const issueId = args[1];
+        const fromPhase = args[2];
+        const toPhase = args[3];
+        const type = args[4];
+        const content = args[5];
+        const metadataStr = args[6];
+        const asJson = args.includes("--json");
+        await cmdSendMessage(issueId, fromPhase, toPhase, type, content, metadataStr, asJson);
+      }
+      break;
+    case "phase-msg-receive":
+      {
+        const issueId = args[1];
+        const phase = args[2];
+        const keepUnread = args.includes("--keep-unread");
+        const asJson = args.includes("--json");
+        await cmdReceiveMessages(issueId, phase, keepUnread, asJson);
+      }
+      break;
+    case "phase-msg-cleanup":
+      {
+        const issueId = args[1];
+        const reason = args[2];
+        await cmdCleanupMessages(issueId, reason);
+      }
+      break;
+    case "phase-msg-status":
+      {
+        const issueId = args[1];
+        await cmdMessageStatus(issueId);
       }
       break;
     case "list-sessions":

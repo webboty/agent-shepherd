@@ -298,10 +298,20 @@ export class OpenCodeClient {
       // Wait for completion with progress feedback
       progressCallback('Agent started working...');
 
+      // Allow configuring poll interval for testing (default 60s is too long for tests)
+      const pollInterval = process.env.OPENCODE_POLL_INTERVAL_MS 
+        ? parseInt(process.env.OPENCODE_POLL_INTERVAL_MS, 10) 
+        : 60 * 1000;
+
+      // Allow configuring execution timeout for testing
+      const executionTimeout = process.env.OPENCODE_EXECUTION_TIMEOUT_MS
+        ? parseInt(process.env.OPENCODE_EXECUTION_TIMEOUT_MS, 10)
+        : 10 * 60 * 1000;
+
       const finalResult = await sdkClient.waitForCompletion(
         sessionId,
-        10 * 60 * 1000, // 10 minute timeout
-        60 * 1000, // 1 minute polling
+        executionTimeout,
+        pollInterval, // Configurable polling
         progressCallback
       );
 

@@ -13,7 +13,8 @@ import ReactFlow, {
   applyNodeChanges,
   applyEdgeChanges,
   NodeChange,
-  EdgeChange
+  EdgeChange,
+  MarkerType
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -29,6 +30,12 @@ interface Run {
   outcome?: string;
 }
 
+interface TransitionConfig {
+  capability: string;
+  prompt: string;
+  allowed_destinations: string[];
+}
+
 interface PhaseData {
   id: string;
   name: string;
@@ -36,6 +43,12 @@ interface PhaseData {
   capabilities?: string[];
   status: string;
   runCount: number;
+  transitions?: {
+    on_success?: string | TransitionConfig;
+    on_failure?: string | TransitionConfig;
+    on_partial_success?: TransitionConfig;
+    on_unclear?: TransitionConfig;
+  };
 }
 
 interface PhaseNode extends Node {
@@ -257,6 +270,7 @@ const AgentShepherdFlow: React.FC = () => {
             name: phase.name,
             description: phase.description,
             capabilities: phase.capabilities,
+            transitions: phase.transitions,
             status: phase.status,
             runCount: runs.filter((r: Run) => r.phase === phase.id).length
           }
@@ -283,17 +297,91 @@ const AgentShepherdFlow: React.FC = () => {
         };
       });
 
-      // Create edges between phases
+      // Create edges based on transitions
       const phaseEdges: Edge[] = [];
-      for (let i = 0; i < phases.length - 1; i++) {
-        phaseEdges.push({
-          id: `phase-edge-${i}`,
-          source: `phase-${phases[i].id}`,
-          target: `phase-${phases[i + 1].id}`,
+      
+      const createPhaseEdge = (sourceId: string, targetId: string, type: 'success' | 'failure' | 'partial' | 'default', dashed = false) => {
+        let color = '#94a3b8'; // default grey
+        if (type === 'success') color = '#22c55e'; // green
+        else if (type === 'failure') color = '#ef4444'; // red
+        else if (type === 'partial') color = '#f59e0b'; // orange
+
+        return {
+          id: `edge-${sourceId}-${targetId}-${type}`,
+          source: sourceId,
+          target: targetId,
           animated: true,
-          style: { stroke: '#94a3b8' }
-        });
-      }
+          style: { 
+            stroke: color, 
+            strokeDasharray: dashed ? '5,5' : undefined,
+            strokeWidth: 2
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: color,
+          },
+          type: 'smoothstep', // Better for backward loops
+          label: type !== 'default' ? type : undefined,
+          labelStyle: { fill: color, fontWeight: 700 }
+        };
+      };
+
+      phases.forEach((phase: any, index: number) => {
+        const sourceId = `phase-${phase.id}`;
+        let hasSuccessTransition = false;
+
+        if (phase.transitions) {
+          // Success Transitions
+          if (phase.transitions.on_success) {
+            hasSuccessTransition = true;
+            if (typeof phase.transitions.on_success === 'string') {
+               // Direct string transition
+               if (phase.transitions.on_success !== 'close') {
+                 phaseEdges.push(createPhaseEdge(sourceId, `phase-${phase.transitions.on_success}`, 'success'));
+               }
+            } else if (phase.transitions.on_success.allowed_destinations) {
+              // Decision transition
+              phase.transitions.on_success.allowed_destinations.forEach((dest: string) => {
+                if (dest !== 'close') {
+                  phaseEdges.push(createPhaseEdge(sourceId, `phase-${dest}`, 'success', true));
+                }
+              });
+            }
+          }
+
+          // Failure Transitions
+          if (phase.transitions.on_failure) {
+            if (typeof phase.transitions.on_failure === 'string') {
+              if (phase.transitions.on_failure !== 'close') {
+                phaseEdges.push(createPhaseEdge(sourceId, `phase-${phase.transitions.on_failure}`, 'failure'));
+              }
+            } else if (phase.transitions.on_failure.allowed_destinations) {
+              phase.transitions.on_failure.allowed_destinations.forEach((dest: string) => {
+                if (dest !== 'close') {
+                  phaseEdges.push(createPhaseEdge(sourceId, `phase-${dest}`, 'failure', true));
+                }
+              });
+            }
+          }
+          
+          // Partial/Unclear Transitions
+          ['on_partial_success', 'on_unclear'].forEach(key => {
+            const config = phase.transitions[key];
+            if (config && config.allowed_destinations) {
+              config.allowed_destinations.forEach((dest: string) => {
+                 if (dest !== 'close') {
+                   phaseEdges.push(createPhaseEdge(sourceId, `phase-${dest}`, 'partial', true));
+                 }
+              });
+            }
+          });
+        }
+
+        // Default sequential fallback
+        if (!hasSuccessTransition && index < phases.length - 1) {
+          phaseEdges.push(createPhaseEdge(sourceId, `phase-${phases[index + 1].id}`, 'default'));
+        }
+      });
 
       // Create edges from phases to runs
       const runEdges: Edge[] = runs.map((run: Run) => ({

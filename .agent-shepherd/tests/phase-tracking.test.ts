@@ -10,6 +10,7 @@ import {
 } from "../src/core/beads";
 import {
   setupBeadsIsolation,
+  cleanupBeadsEnv,
   type BeadsTestEnv
 } from "./helpers/beads-test-isolation";
 

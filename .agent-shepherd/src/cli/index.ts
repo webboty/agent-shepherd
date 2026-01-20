@@ -3054,15 +3054,13 @@ async function cmdWorkflowCreate(name: string): Promise<void> {
     process.exit(1);
   }
   
-  const template = `policies:
-  ${name}:
-    name: ${name}
-    description: New workflow created via CLI
-    phases:
-      - name: plan
-        capabilities: [planning]
-      - name: implement
-        capabilities: [coding]
+  const template = `name: ${name}
+description: New workflow created via CLI
+phases:
+  - name: plan
+    capabilities: [planning]
+  - name: implement
+    capabilities: [coding]
 `;
 
   try {

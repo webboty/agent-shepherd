@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { writeFileSync, rmSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, rmSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
@@ -19,7 +19,7 @@ async function runCLICommand(command: string, args: string[] = [], testDir?: str
   const cliPath = join(__dirname, '..', 'bin', 'ashep');
   const workingDir = testDir || process.cwd();
   console.log(`DEBUG: Spawning CLI with ASHEP_DIR=${workingDir}, BEADS_DIR=${beadsDir}`);
-  const proc = spawn(cliPath, [command, ...args], {
+    const proc = spawn(cliPath, [command, ...args], {
     cwd: workingDir,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { 
@@ -28,7 +28,9 @@ async function runCLICommand(command: string, args: string[] = [], testDir?: str
       ASHEP_DIR: workingDir,
       ...(beadsDir && { BEADS_DIR: beadsDir }),
       BD_NO_DAEMON: 'true',
-      BD_SANDBOX: 'true'
+      BD_SANDBOX: 'true',
+      OPENCODE_POLL_INTERVAL_MS: '100', // Fast polling for tests
+      OPENCODE_EXECUTION_TIMEOUT_MS: '1000' // Fail fast if agent doesn't complete
     }
   });
 
@@ -80,6 +82,8 @@ version: "1.0"
 worker:
   poll_interval_ms: 1000
   max_concurrent_runs: 1
+execution:
+  sdk_base_url: http://localhost:12345
     `.trim();
 
     writeFileSync(join(configDir, 'config.yaml'), testConfig);
@@ -213,6 +217,8 @@ version: "1.0"
 worker:
   poll_interval_ms: 1000
   max_concurrent_runs: 1
+execution:
+  sdk_base_url: http://localhost:12345
         `.trim();
         writeFileSync(join(configDir, 'config.yaml'), testConfig);
 
@@ -286,6 +292,8 @@ version: "1.0"
 worker:
   poll_interval_ms: 1000
   max_concurrent_runs: 1
+execution:
+  sdk_base_url: http://localhost:12345
         `.trim();
         writeFileSync(join(configDir, 'config.yaml'), testConfig);
 
@@ -360,8 +368,13 @@ worker:
   max_concurrent_runs: 1
   picking:
     mode: simple
+execution:
+  sdk_base_url: http://localhost:12345
         `.trim();
         writeFileSync(join(configDir, 'config.yaml'), testConfig);
+        
+        console.log(`DEBUG: Wrote config.yaml to ${join(configDir, 'config.yaml')}`);
+        console.log(`DEBUG: Config content:\n${testConfig}`);
 
         const testPolicies = `
 policies:
@@ -426,15 +439,21 @@ agents:
         const configDir = join(testDir, '.agent-shepherd', 'config');
         mkdirSync(configDir, { recursive: true });
 
-        const testConfig = `
-version: "1.0"
-worker:
-  poll_interval_ms: 1000
-  max_concurrent_runs: 1
-  picking:
-    mode: smart
-        `.trim();
-        writeFileSync(join(configDir, 'config.yaml'), testConfig);
+        // Use JSON config to avoid YAML indentation issues
+        const testConfig = {
+          version: "1.0",
+          worker: {
+            poll_interval_ms: 1000,
+            max_concurrent_runs: 1,
+            picking: {
+              mode: "smart"
+            }
+          },
+          execution: {
+            sdk_base_url: "http://localhost:12345"
+          }
+        };
+        writeFileSync(join(configDir, 'config.json'), JSON.stringify(testConfig, null, 2));
 
         const testPolicies = `
 policies:

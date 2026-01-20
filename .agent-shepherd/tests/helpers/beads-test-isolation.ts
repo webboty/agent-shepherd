@@ -185,3 +185,13 @@ export async function cleanupTestIssues(
     console.warn(`Failed to cleanup test issues with prefix "${prefix}":`, error);
   }
 }
+
+/**
+ * Clean up Beads-related environment variables
+ * Call this in afterEach/afterAll to prevent pollution across test files
+ */
+export function cleanupBeadsEnv(): void {
+  delete process.env.BEADS_DIR;
+  delete process.env.BD_NO_DAEMON;
+  delete process.env.BD_SANDBOX;
+}

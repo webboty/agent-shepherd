@@ -11,6 +11,7 @@ import {
 } from "../src/core/beads";
 import {
   setupBeadsIsolation,
+  cleanupBeadsEnv,
   type BeadsTestEnv
 } from "./helpers/beads-test-isolation";
 
@@ -44,6 +45,7 @@ describe("Beads Label Functions", () => {
 
   afterEach(async () => {
     await beadsTestEnv.cleanup();
+    cleanupBeadsEnv();
   });
 
   describe("getIssueLabels", () => {
@@ -139,7 +141,7 @@ describe("Beads Label Functions", () => {
       
       // Retry a few times if null (file system latency in test env)
       if (!issue) {
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 10; i++) {
           await new Promise(resolve => setTimeout(resolve, 500));
           issue = await getIssue(testIssueId);
           if (issue) break;
@@ -151,7 +153,7 @@ describe("Beads Label Functions", () => {
         expect(issue.labels).toBeDefined();
         expect(Array.isArray(issue.labels)).toBe(true);
       }
-    });
+    }, 10000);
   });
 
   describe("getReadyIssues includes labels", () => {

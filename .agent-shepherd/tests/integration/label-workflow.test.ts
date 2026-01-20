@@ -16,6 +16,7 @@ import { loadConfig } from "../../src/core/config.ts";
 import { getConfigPath } from "../../src/core/path-utils";
 import {
   setupBeadsIsolation,
+  cleanupBeadsEnv,
   type BeadsTestEnv
 } from "../helpers/beads-test-isolation.ts";
 
@@ -67,6 +68,7 @@ describe("Label-Based Workflow Integration Tests", () => {
   afterAll(async () => {
     await cleanupIsolatedTestIssues(beadsTestEnv, TEST_ISSUE_PREFIX);
     await beadsTestEnv.cleanup();
+    cleanupBeadsEnv();
   });
   
   describe("Explicit Workflow Label Trigger", () => {

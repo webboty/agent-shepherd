@@ -138,6 +138,7 @@ export class UIServer {
           name: phase.name,
           description: phase.description || '',
           capabilities: phase.capabilities || [],
+          transitions: phase.transitions, // Include transitions configuration
           timeout_multiplier: phase.timeout_multiplier || 1.0,
           status: 'idle' // TODO: Get real status from runs
         }));
