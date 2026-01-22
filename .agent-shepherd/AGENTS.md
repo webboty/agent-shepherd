@@ -104,6 +104,7 @@ Agent Shepherd is designed to work on **macOS, Linux, and Windows**. All code an
 - **Decision Builder** (`src/core/decision-builder.ts`) - Builds prompts and parses AI decision responses
 - **Policy Capability Validator** (`src/core/policy-capability-validator.ts`) - Validates policy→capability→agent chains
 - **Policy Tree Visualizer** (`src/core/policy-tree-visualizer.ts`) - Visualizes relationship trees
+- **Preset Manager** (`src/core/preset-manager.ts`) - Manages preset installation and lifecycle
 - **Phase Messenger** (`src/core/phase-messenger.ts`) - Inter-phase communication system
 - **Garbage Collector** (`src/core/garbage-collector.ts`) - Data archival and cleanup system
 - **Retention Policy Manager** (`src/core/retention-policy.ts`) - Manages data retention rules

@@ -331,6 +331,20 @@ const COMMANDS: Record<string, CommandDef> = {
     }
   },
 
+  // Presets
+  preset: {
+    description: "Manage presets (list, info, install, uninstall, create)",
+    category: "System",
+    usage: "ashep preset <command> [name]",
+    options: {
+      "list": "List available presets",
+      "info <name>": "Show preset details",
+      "install <name>": "Install a preset",
+      "uninstall <name>": "Uninstall a preset",
+      "create <name>": "Create a new preset template"
+    }
+  },
+
   // Aliases (hidden from main list usually)
   "get-messages": {
     description: "Alias for phase-msg-list",
@@ -3347,6 +3361,98 @@ async function cmdAgentCreate(name: string): Promise<void> {
   }
 }
 
+async function cmdAgent(subCmd: string, name?: string): Promise<void> {
+  switch (subCmd) {
+    case "list":
+      await cmdAgentList();
+      break;
+    case "archive":
+      if (!name) { console.error("Name required"); process.exit(1); }
+      await cmdAgentArchive(name);
+      break;
+    case "activate":
+      if (!name) { console.error("Name required"); process.exit(1); }
+      await cmdAgentActivate(name);
+      break;
+    case "create":
+      if (!name) { console.error("Name required"); process.exit(1); }
+      await cmdAgentCreate(name);
+      break;
+    default:
+      console.error("Unknown agent command. Use: list, archive, activate, create");
+      console.log("Run 'ashep agent help' for details");
+      process.exit(1);
+  }
+}
+
+async function cmdPreset(subCmd: string, name?: string): Promise<void> {
+  const { PresetManager } = await import("../core/preset-manager.ts");
+  const manager = new PresetManager();
+
+  switch (subCmd) {
+    case "list":
+      const presets = manager.list();
+      if (presets.length === 0) {
+        console.log("No presets found.");
+      } else {
+        console.log("\nPresets:");
+        for (const p of presets) {
+          const status = p.installed ? `(Installed v${p.installed_version})` : "";
+          console.log(`  • ${p.manifest.name.padEnd(20)} ${status}`);
+          console.log(`    ${p.manifest.description}`);
+        }
+      }
+      break;
+
+    case "info":
+      if (!name) { console.error("Name required"); process.exit(1); }
+      const entry = manager.get(name);
+      if (!entry) {
+        console.error(`Preset '${name}' not found`);
+        process.exit(1);
+      }
+      const m = entry.manifest;
+      console.log(`\nPreset: ${m.name} (v${m.version})`);
+      console.log(`Category: ${m.category}`);
+      console.log(`Description: ${m.description}`);
+      console.log(`Installed: ${entry.installed ? "Yes" : "No"}`);
+      if (m.dependencies) {
+        console.log("\nDependencies:");
+        for (const [k, v] of Object.entries(m.dependencies)) {
+          console.log(`  - ${k}: ${v}`);
+        }
+      }
+      if (m.components) {
+        console.log("\nComponents:");
+        if (m.components.opencode_agents) console.log(`  - OpenCode Agents: ${m.components.opencode_agents.length}`);
+        if (m.components.agent_registries) console.log(`  - Agent Registries: ${m.components.agent_registries.length}`);
+        if (m.components.workflows) console.log(`  - Workflows: ${m.components.workflows.length}`);
+      }
+      break;
+
+    case "install":
+      if (!name) { console.error("Name required"); process.exit(1); }
+      manager.install(name);
+      break;
+
+    case "uninstall":
+      if (!name) { console.error("Name required"); process.exit(1); }
+      manager.uninstall(name);
+      break;
+
+    case "create":
+      if (!name) { console.error("Name required"); process.exit(1); }
+      // TODO: Implement create
+      console.log("Create preset not implemented yet");
+      break;
+
+    default:
+      console.error("Unknown preset command. Use: list, info, install, uninstall, create");
+      console.log("Run 'ashep preset help' for details");
+      process.exit(1);
+  }
+}
+
 /**
  * Simple prompt for issue ID using Bun's built-in readline
  */
@@ -3694,30 +3800,23 @@ async function main(): Promise<void> {
       
       if (!subCmd || subCmd === "help" || subCmd === "--help" || subCmd === "-h") {
         showCommandHelp("agent");
-        return;
+        process.exit(0);
       }
+      
+      await cmdAgent(subCmd, name);
+      break;
+    }
 
-      switch (subCmd) {
-        case "list":
-          await cmdAgentList();
-          break;
-        case "archive":
-          if (!name) { console.error("Name required"); process.exit(1); }
-          await cmdAgentArchive(name);
-          break;
-        case "activate":
-          if (!name) { console.error("Name required"); process.exit(1); }
-          await cmdAgentActivate(name);
-          break;
-        case "create":
-          if (!name) { console.error("Name required"); process.exit(1); }
-          await cmdAgentCreate(name);
-          break;
-        default:
-          console.error("Unknown agent command. Use: list, archive, activate, create");
-          console.log("Run 'ashep agent help' for details");
-          process.exit(1);
+    case "preset": {
+      const subCmd = args[1];
+      const name = args[2];
+      
+      if (!subCmd || subCmd === "help" || subCmd === "--help" || subCmd === "-h") {
+        showCommandHelp("preset");
+        process.exit(0);
       }
+      
+      await cmdPreset(subCmd, name);
       break;
     }
 

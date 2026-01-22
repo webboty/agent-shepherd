@@ -808,6 +808,67 @@ ashep agent activate my-agent
 - Agent files in `enabled/` are loaded recursively.
 - Agents defined in `config/agents.yaml` take precedence over files if IDs conflict.
 
+## Preset Commands
+
+### `ashep preset list`
+
+List all available presets (installed and bundled).
+
+**Usage:**
+```bash
+ashep preset list
+```
+
+**Behavior:**
+- Scans `presets/` directory for available bundles
+- Checks `installed-presets/` for installation status
+- Displays name, description, and status
+
+### `ashep preset info <name>`
+
+View detailed information about a preset.
+
+**Usage:**
+```bash
+ashep preset info full-stack-dev
+```
+
+**Behavior:**
+- Shows description, capabilities, dependencies
+- Lists components (agents, workflows, etc.)
+- Checks if installed
+
+### `ashep preset install <name>`
+
+Install a preset into your project configuration.
+
+**Usage:**
+```bash
+ashep preset install full-stack-dev
+```
+
+**Behavior:**
+- Validates dependencies (OpenCode, Beads)
+- Copies OpenCode agent files to `.opencode/agents/` (skips if exists)
+- Copies agent registry files to `.agent-shepherd/agents/enabled/`
+- Copies workflow files to `.agent-shepherd/workflows/enabled/`
+- Creates installation record in `.agent-shepherd/installed-presets/`
+
+### `ashep preset uninstall <name>`
+
+Uninstall a preset and cleanup associated files.
+
+**Usage:**
+```bash
+ashep preset uninstall full-stack-dev
+```
+
+**Behavior:**
+- Checks if shared resources (OpenCode agents) are used by other installed presets
+- Removes dedicated agent registry and workflow files
+- Removes OpenCode agents only if not used by others
+- Removes installation record
+
 ## Configuration Files
 
 For detailed configuration guides, see:

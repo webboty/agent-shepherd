@@ -112,6 +112,32 @@ export function findAgentsDir(): string {
   return join(global, "agents");
 }
 
+export function findPresetsDir(): string {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "presets"))) {
+    return join(envOverride, "presets");
+  }
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "presets"))) {
+    return join(local, "presets");
+  }
+  const global = getGlobalInstallDir();
+  return join(global, "presets");
+}
+
+export function findInstalledPresetsDir(): string {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "installed-presets"))) {
+    return join(envOverride, "installed-presets");
+  }
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "installed-presets"))) {
+    return join(local, "installed-presets");
+  }
+  const global = getGlobalInstallDir();
+  return join(global, "installed-presets");
+}
+
 // Legacy function - backward compatibility
 export function findAgentShepherdDir(): string {
   const envOverride = process.env.ASHEP_DIR;

@@ -205,6 +205,61 @@ export class ConfigurationValidator {
       }
     }
 
+    // Validate Preset Manifests (Installed)
+    // We only validate installed manifests because available presets in bundles are just files.
+    // However, if the user asks to "validate all", we might want to scan bundles?
+    // Let's validate installed presets for now.
+    
+    const { findInstalledPresetsDir } = await import('./path-utils');
+    const installedPresetsDir = findInstalledPresetsDir();
+    
+    if (existsSync(installedPresetsDir)) {
+      const manifests = scanRecursive(installedPresetsDir, ['.json']);
+      // We don't have a formal JSON schema for presets yet in this file's imports, 
+      // but we can add basic structural validation here or add a schema later.
+      // For Phase 4, we'll implement basic validation via PresetManager.validate() logic re-use?
+      // Or better, just check if they are valid JSON and have required fields.
+      
+      for (const file of manifests) {
+        try {
+          const content = readFileSync(file, 'utf-8');
+          const manifest = JSON.parse(content);
+          
+          if (!manifest.name || !manifest.version) {
+             results.push({
+               valid: false,
+               errors: [{
+                 keyword: 'required',
+                 instancePath: '',
+                 schemaPath: '',
+                 params: { missingProperty: 'name/version' },
+                 message: "Missing required property 'name' or 'version'"
+               }],
+               summary: `❌ Preset manifest ${file}: Invalid format`
+             });
+          } else {
+             results.push({
+               valid: true,
+               errors: [],
+               summary: `✅ Preset manifest ${file}: Valid`
+             });
+          }
+        } catch (err) {
+           results.push({
+             valid: false,
+             errors: [{
+               keyword: 'parse-error',
+               instancePath: '',
+               schemaPath: '',
+               params: {},
+               message: String(err)
+             }],
+             summary: `❌ Preset manifest ${file}: Parse error`
+           });
+        }
+      }
+    }
+
     // Add policy chain validation
     const chainResult = await this.validatePolicyChain();
     results.push(chainResult);
