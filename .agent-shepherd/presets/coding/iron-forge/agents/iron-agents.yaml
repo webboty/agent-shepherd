@@ -24,15 +24,27 @@ agents:
     metadata:
       role: tester
 
-  # 3. Advanced Tester (GLM 4.7)
-  - id: iron-tester-advanced
-    name: "Iron Advanced Tester"
-    description: "Integration and Functional tests (GLM 4.7)"
+  # 3. Functional Tester (GLM 4.7)
+  - id: iron-tester-func
+    name: "Iron Functional Tester"
+    description: "Unit and Functional tests (GLM 4.7)"
     capabilities: [integration-testing, deep-testing, worker-assistant]
-    opencode_agent: ashep-tester-integration
+    opencode_agent: ashep-tester-functional
     model_id: zai-coding-plan/glm-4.7
     priority: 10
     active: true
+    metadata:
+      role: tester
+
+  # 3b. System Tester (Disabled by default)
+  - id: iron-tester-system
+    name: "Iron System Tester"
+    description: "Full Integration/System tests (GLM 4.7)"
+    capabilities: [system-testing]
+    opencode_agent: ashep-tester-system
+    model_id: zai-coding-plan/glm-4.7
+    priority: 8
+    active: false
     metadata:
       role: tester
 

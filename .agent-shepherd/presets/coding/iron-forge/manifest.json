@@ -2,7 +2,7 @@
   "name": "iron-forge",
   "version": "1.0.0",
   "category": "coding",
-  "description": "Coding Workflow: Verified development loop with dedicated linting, integration testing, and deep-reasoning validation (Develop -> Lint -> Test -> Validate -> Commit).",
+  "description": "Coding Workflow: Verified development loop with dedicated linting, functional testing, and deep-reasoning validation (Develop -> Lint -> Test -> Validate -> Commit).",
   "dependencies": {
     "opencode": "installed",
     "beads": "initialized"
@@ -10,7 +10,8 @@
   "components": {
     "opencode_agents": [
       "ashep-tester-lint.md",
-      "ashep-tester-integration.md",
+      "ashep-tester-functional.md",
+      "ashep-tester-system.md",
       "ashep-task-completion-validator.md",
       "ashep-github-master.md"
     ],
