@@ -1,0 +1,84 @@
+policies:
+  iron-forge:
+    name: "Iron Forge Workflow"
+    description: "Verified coding loop: Develop -> Lint -> Function -> Validate -> Commit."
+    phases:
+      # 1. Develop
+      - name: develop
+        description: "Initial Implementation"
+        capabilities: [coding]
+        worker_assistant:
+          enabled: true
+        transitions:
+          on_success: lint-test
+          on_failure:
+            type: retry
+            reason: "Development failed"
+
+      # 2. Lint Test (Shared Session)
+      - name: lint-test
+        description: "Linting Verification"
+        capabilities: [linting]
+        reuse_session_from_phase: develop
+        worker_assistant:
+          enabled: true
+        transitions:
+          on_success: function-test
+          on_failure:
+            type: jump_back
+            jump_target_phase: debugger
+            reason: "Linting failed"
+
+      # 3. Function Test (New Session)
+      - name: function-test
+        description: "Functional Verification"
+        capabilities: [integration-testing]
+        worker_assistant:
+          enabled: true
+        transitions:
+          on_success: task-validation
+          on_failure:
+            type: jump_back
+            jump_target_phase: debugger
+            reason: "Functional tests failed"
+
+      # 4. Debugger (Shared Session, Gemini, Smart Routing)
+      - name: debugger
+        description: "Fix Bugs"
+        capabilities: [debugging]
+        reuse_session_from_phase: develop
+        worker_assistant:
+          enabled: true
+        transitions:
+          on_success:
+            capability: debugger-routing
+            prompt: "You fixed a bug. Where should we re-verify? If syntax/lint fix -> jump_to_lint-test. If logic/function fix -> jump_to_function-test."
+            allowed_destinations: [lint-test, function-test]
+            confidence_thresholds:
+              auto_advance: 0.9
+              require_approval: 0.7
+
+      # 5. Validation (New Session, Grok)
+      - name: task-validation
+        description: "Requirements Verification"
+        capabilities: [validation]
+        worker_assistant:
+          enabled: false
+        transitions:
+          on_success:
+            capability: validation-decision
+            prompt: "Analyze report. If PASS -> advance_to_commit-close. If FAIL -> jump_to_debugger."
+            allowed_destinations: [commit-close, debugger]
+            confidence_thresholds:
+              auto_advance: 0.9
+              require_approval: 0.7
+
+      # 6. Commit (Shared Session)
+      - name: commit-close
+        description: "Commit and Close"
+        capabilities: [git-ops]
+        reuse_session_from_phase: develop
+        worker_assistant:
+          enabled: true
+        transitions:
+          on_success: close

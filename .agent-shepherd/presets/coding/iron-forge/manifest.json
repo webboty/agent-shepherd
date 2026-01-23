@@ -1,0 +1,25 @@
+{
+  "name": "iron-forge",
+  "version": "1.0.0",
+  "category": "coding",
+  "description": "Coding Workflow: Verified development loop with dedicated linting, integration testing, and deep-reasoning validation (Develop -> Lint -> Test -> Validate -> Commit).",
+  "dependencies": {
+    "opencode": "installed",
+    "beads": "initialized"
+  },
+  "components": {
+    "opencode_agents": [
+      "iron-developer.md",
+      "iron-tester-simple.md",
+      "iron-tester-advanced.md",
+      "iron-fixer.md",
+      "iron-validator.md",
+      "iron-git.md"
+    ],
+    "agent_registries": ["iron-agents.yaml"],
+    "workflows": ["iron-policy.yaml"]
+  },
+  "compatibility": {
+    "min_agent_shepherd_version": "0.3.0"
+  }
+}

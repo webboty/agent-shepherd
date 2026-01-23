@@ -1,0 +1,73 @@
+version: "1.0"
+agents:
+  # 1. Developer (GLM 4.7)
+  - id: iron-developer
+    name: "Iron Developer"
+    description: "Initial code implementation (GLM 4.7)"
+    capabilities: [coding, planning, worker-assistant]
+    opencode_agent: iron-developer
+    model_id: glm-4-plus
+    priority: 10
+    active: true
+    metadata:
+      role: developer
+
+  # 2. Simple Tester (GLM 4.7)
+  - id: iron-tester-simple
+    name: "Iron Simple Tester"
+    description: "Linting and Syntax checks (GLM 4.7)"
+    capabilities: [linting, basic-testing, worker-assistant]
+    opencode_agent: iron-tester-simple
+    model_id: glm-4-plus
+    priority: 10
+    active: true
+    metadata:
+      role: tester
+
+  # 3. Advanced Tester (GLM 4.7)
+  - id: iron-tester-advanced
+    name: "Iron Advanced Tester"
+    description: "Integration and Functional tests (GLM 4.7)"
+    capabilities: [integration-testing, deep-testing, worker-assistant]
+    opencode_agent: iron-tester-advanced
+    model_id: glm-4-plus
+    priority: 10
+    active: true
+    metadata:
+      role: tester
+
+  # 4. Fixer (Gemini)
+  - id: iron-fixer
+    name: "Iron Fixer"
+    description: "Fixes bugs found by testers (Gemini 1.5 Pro)"
+    capabilities: [debugging, coding-fix, debugger-routing]
+    opencode_agent: iron-fixer
+    model_id: gemini-1.5-pro-latest
+    priority: 10
+    active: true
+    metadata:
+      role: fixer
+
+  # 5. Validator (Grok)
+  - id: iron-validator
+    name: "Iron Validator"
+    description: "Task requirements validation (Grok Code)"
+    capabilities: [validation, validation-decision]
+    opencode_agent: iron-validator
+    model_id: opencode/grok-code
+    priority: 10
+    active: true
+    metadata:
+      role: validator
+
+  # 6. Git Operator (Grok)
+  - id: iron-git
+    name: "Iron Git Operator"
+    description: "Commit and Close (Grok Code)"
+    capabilities: [git-ops]
+    opencode_agent: iron-git
+    model_id: opencode/grok-code
+    priority: 10
+    active: true
+    metadata:
+      role: ops
