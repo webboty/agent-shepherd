@@ -704,6 +704,8 @@ cat .agent-shepherd/config/agents.yaml
 
 **Supported Agent Name Formats**: Agent IDs can contain letters, numbers, underscores (`_`), and hyphens (`-`).
 
+**Model Selection**: Find available models at [https://models.dev](https://models.dev).
+
 ### Model Override Capability
 
 Policies can override the default model specified in OpenCode agent configuration:

@@ -1,12 +1,12 @@
 version: "1.0"
 agents:
-  # 1. Developer (GLM 4.7)
+  # 1. Developer (GLM 4.7) - Uses standard Build Agent
   - id: iron-developer
     name: "Iron Developer"
     description: "Initial code implementation (GLM 4.7)"
     capabilities: [coding, planning, worker-assistant]
-    opencode_agent: iron-developer
-    model_id: glm-4-plus
+    opencode_agent: build
+    model_id: zai-coding-plan/glm-4.7
     priority: 10
     active: true
     metadata:
@@ -17,8 +17,8 @@ agents:
     name: "Iron Simple Tester"
     description: "Linting and Syntax checks (GLM 4.7)"
     capabilities: [linting, basic-testing, worker-assistant]
-    opencode_agent: iron-tester-simple
-    model_id: glm-4-plus
+    opencode_agent: ashep-tester-lint
+    model_id: zai-coding-plan/glm-4.7
     priority: 10
     active: true
     metadata:
@@ -29,43 +29,43 @@ agents:
     name: "Iron Advanced Tester"
     description: "Integration and Functional tests (GLM 4.7)"
     capabilities: [integration-testing, deep-testing, worker-assistant]
-    opencode_agent: iron-tester-advanced
-    model_id: glm-4-plus
+    opencode_agent: ashep-tester-integration
+    model_id: zai-coding-plan/glm-4.7
     priority: 10
     active: true
     metadata:
       role: tester
 
-  # 4. Fixer (Gemini)
+  # 4. Fixer (Gemini 3 Pro) - Uses standard Build Agent
   - id: iron-fixer
     name: "Iron Fixer"
-    description: "Fixes bugs found by testers (Gemini 1.5 Pro)"
+    description: "Fixes bugs found by testers (Gemini 3 Pro)"
     capabilities: [debugging, coding-fix, debugger-routing]
-    opencode_agent: iron-fixer
-    model_id: gemini-1.5-pro-latest
+    opencode_agent: build
+    model_id: google/gemini-3-pro-preview
     priority: 10
     active: true
     metadata:
       role: fixer
 
-  # 5. Validator (Grok)
+  # 5. Validator (Grok Code)
   - id: iron-validator
     name: "Iron Validator"
     description: "Task requirements validation (Grok Code)"
     capabilities: [validation, validation-decision]
-    opencode_agent: iron-validator
+    opencode_agent: ashep-task-completion-validator
     model_id: opencode/grok-code
     priority: 10
     active: true
     metadata:
       role: validator
 
-  # 6. Git Operator (Grok)
+  # 6. Git Operator (Grok Code)
   - id: iron-git
     name: "Iron Git Operator"
     description: "Commit and Close (Grok Code)"
     capabilities: [git-ops]
-    opencode_agent: iron-git
+    opencode_agent: ashep-github-master
     model_id: opencode/grok-code
     priority: 10
     active: true

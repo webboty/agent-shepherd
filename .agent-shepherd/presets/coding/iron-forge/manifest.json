@@ -9,12 +9,10 @@
   },
   "components": {
     "opencode_agents": [
-      "iron-developer.md",
-      "iron-tester-simple.md",
-      "iron-tester-advanced.md",
-      "iron-fixer.md",
-      "iron-validator.md",
-      "iron-git.md"
+      "ashep-tester-lint.md",
+      "ashep-tester-integration.md",
+      "ashep-task-completion-validator.md",
+      "ashep-github-master.md"
     ],
     "agent_registries": ["iron-agents.yaml"],
     "workflows": ["iron-policy.yaml"]
