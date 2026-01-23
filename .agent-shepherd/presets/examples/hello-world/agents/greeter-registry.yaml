@@ -1,0 +1,11 @@
+version: "1.0"
+agents:
+  - id: greeter
+    name: "Greeter Agent"
+    description: "An agent that specializes in greetings"
+    capabilities: [greeting]
+    provider_id: anthropic
+    model_id: claude-3-5-sonnet-20241022
+    priority: 10
+    metadata:
+      agent_type: primary
