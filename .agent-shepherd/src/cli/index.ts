@@ -3392,27 +3392,55 @@ async function cmdPreset(subCmd: string, name?: string): Promise<void> {
   switch (subCmd) {
     case "list":
       const presets = manager.list();
+      
+      // Check for table flag
+      // Note: We need to parse args for flags if they aren't passed cleanly to subCmd
+      // Currently cmdPreset receives subCmd ('list') and name (undefined or flag?)
+      // If user typed `ashep preset list --table`, args[2] is `--table`?
+      // Let's inspect how cmdPreset is called.
+      // It is called with args[1] (subCmd) and args[2] (name).
+      // If args[2] is --table, we should handle it.
+      
+      const useTable = name === "--table";
+
       if (presets.length === 0) {
         console.log("No presets found.");
       } else {
         console.log(`\nPresets (${presets.length}):`);
-        console.log("┌──────────────────────────┬──────────────────────┬────────────────────────────────────────────────────┐");
-        console.log("│ Name                     │ Category             │ Description                                        │");
-        console.log("├──────────────────────────┼──────────────────────┼────────────────────────────────────────────────────┤");
         
-        for (const p of presets) {
-          const name = p.manifest.name.substring(0, 24) + (p.manifest.name.length > 24 ? "..." : "");
-          const category = p.manifest.category.substring(0, 20) + (p.manifest.category.length > 20 ? "..." : "");
+        if (useTable) {
+          console.log("┌──────────────────────────┬──────────────────────┬────────────────────────────────────────────────────┐");
+          console.log("│ Name                     │ Category             │ Description                                        │");
+          console.log("├──────────────────────────┼──────────────────────┼────────────────────────────────────────────────────┤");
           
-          let desc = p.manifest.description || "";
-          if (p.installed) {
-            desc = `[INSTALLED] ${desc}`;
-          }
-          desc = desc.substring(0, 50) + (desc.length > 50 ? "..." : "");
+          for (const p of presets) {
+            const nameStr = p.manifest.name.substring(0, 24) + (p.manifest.name.length > 24 ? "..." : "");
+            const category = p.manifest.category.substring(0, 20) + (p.manifest.category.length > 20 ? "..." : "");
+            
+            let desc = p.manifest.description || "";
+            if (p.installed) {
+              desc = `[INSTALLED] ${desc}`;
+            }
+            desc = desc.substring(0, 50) + (desc.length > 50 ? "..." : "");
 
-          console.log(`│ ${name.padEnd(24)} │ ${category.padEnd(20)} │ ${desc.padEnd(50)} │`);
+            console.log(`│ ${nameStr.padEnd(24)} │ ${category.padEnd(20)} │ ${desc.padEnd(50)} │`);
+          }
+          console.log("└──────────────────────────┴──────────────────────┴────────────────────────────────────────────────────┘");
+        } else {
+          // Colorful list view
+          for (const p of presets) {
+            const installedTag = p.installed ? " \x1b[32m[INSTALLED]\x1b[0m" : "";
+            const installedVer = p.installed && p.installed_version ? ` \x1b[90mv${p.installed_version}\x1b[0m` : "";
+            
+            console.log(`\n  \x1b[36m• ${p.manifest.name}\x1b[0m${installedVer}${installedTag}`);
+            console.log(`    \x1b[90mCategory: ${p.manifest.category}\x1b[0m`);
+            
+            // Wrap description nicely if needed, or just print
+            // For CLI simple print is usually fine
+            console.log(`    ${p.manifest.description}`);
+          }
+          console.log();
         }
-        console.log("└──────────────────────────┴──────────────────────┴────────────────────────────────────────────────────┘");
       }
       break;
 
