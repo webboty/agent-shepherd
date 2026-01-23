@@ -3395,12 +3395,24 @@ async function cmdPreset(subCmd: string, name?: string): Promise<void> {
       if (presets.length === 0) {
         console.log("No presets found.");
       } else {
-        console.log("\nPresets:");
+        console.log(`\nPresets (${presets.length}):`);
+        console.log("┌──────────────────────────┬──────────────────────┬────────────────────────────────────────────────────┐");
+        console.log("│ Name                     │ Category             │ Description                                        │");
+        console.log("├──────────────────────────┼──────────────────────┼────────────────────────────────────────────────────┤");
+        
         for (const p of presets) {
-          const status = p.installed ? `(Installed v${p.installed_version})` : "";
-          console.log(`  • ${p.manifest.name.padEnd(20)} ${status}`);
-          console.log(`    ${p.manifest.description}`);
+          const name = p.manifest.name.substring(0, 24) + (p.manifest.name.length > 24 ? "..." : "");
+          const category = p.manifest.category.substring(0, 20) + (p.manifest.category.length > 20 ? "..." : "");
+          
+          let desc = p.manifest.description || "";
+          if (p.installed) {
+            desc = `[INSTALLED] ${desc}`;
+          }
+          desc = desc.substring(0, 50) + (desc.length > 50 ? "..." : "");
+
+          console.log(`│ ${name.padEnd(24)} │ ${category.padEnd(20)} │ ${desc.padEnd(50)} │`);
         }
+        console.log("└──────────────────────────┴──────────────────────┴────────────────────────────────────────────────────┘");
       }
       break;
 
