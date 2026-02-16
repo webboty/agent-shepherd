@@ -8410,8 +8410,10 @@ __export(exports_path_utils, {
   getConfigPath: () => getConfigPath,
   getConfigDir: () => getConfigDir,
   findWorkflowsDir: () => findWorkflowsDir,
+  findPresetsDir: () => findPresetsDir,
   findPluginsDir: () => findPluginsDir,
   findLocalAgentShepherdDir: () => findLocalAgentShepherdDir,
+  findInstalledPresetsDir: () => findInstalledPresetsDir,
   findInstallDir: () => findInstallDir,
   findConfigDir: () => findConfigDir,
   findAgentsDir: () => findAgentsDir,
@@ -8511,6 +8513,30 @@ function findAgentsDir() {
   }
   const global2 = getGlobalInstallDir();
   return join(global2, "agents");
+}
+function findPresetsDir() {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "presets"))) {
+    return join(envOverride, "presets");
+  }
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "presets"))) {
+    return join(local, "presets");
+  }
+  const global2 = getGlobalInstallDir();
+  return join(global2, "presets");
+}
+function findInstalledPresetsDir() {
+  const envOverride = process.env.ASHEP_DIR;
+  if (envOverride && existsSync(join(envOverride, "installed-presets"))) {
+    return join(envOverride, "installed-presets");
+  }
+  const local = findLocalAgentShepherdDir();
+  if (local && existsSync(join(local, "installed-presets"))) {
+    return join(local, "installed-presets");
+  }
+  const global2 = getGlobalInstallDir();
+  return join(global2, "installed-presets");
 }
 function findAgentShepherdDir() {
   const envOverride = process.env.ASHEP_DIR;
@@ -20874,6 +20900,48 @@ class ConfigurationValidator {
           const result = await this.validateAnyConfig(file, agentsSchemaPath);
           result.summary = `${result.valid ? "\u2705" : "\u274C"} Agent file ${file}: ${result.summary}`;
           results.push(result);
+        }
+      }
+    }
+    const { findInstalledPresetsDir: findInstalledPresetsDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+    const installedPresetsDir = findInstalledPresetsDir2();
+    if (existsSync12(installedPresetsDir)) {
+      const manifests = scanRecursive2(installedPresetsDir, [".json"]);
+      for (const file of manifests) {
+        try {
+          const content = readFileSync9(file, "utf-8");
+          const manifest = JSON.parse(content);
+          if (!manifest.name || !manifest.version) {
+            results.push({
+              valid: false,
+              errors: [{
+                keyword: "required",
+                instancePath: "",
+                schemaPath: "",
+                params: { missingProperty: "name/version" },
+                message: "Missing required property 'name' or 'version'"
+              }],
+              summary: `\u274C Preset manifest ${file}: Invalid format`
+            });
+          } else {
+            results.push({
+              valid: true,
+              errors: [],
+              summary: `\u2705 Preset manifest ${file}: Valid`
+            });
+          }
+        } catch (err) {
+          results.push({
+            valid: false,
+            errors: [{
+              keyword: "parse-error",
+              instancePath: "",
+              schemaPath: "",
+              params: {},
+              message: String(err)
+            }],
+            summary: `\u274C Preset manifest ${file}: Parse error`
+          });
         }
       }
     }
@@ -44916,6 +44984,292 @@ var init_policy_tree_visualizer = __esm(() => {
   policyTreeVisualizer = new PolicyTreeVisualizer;
 });
 
+// src/core/preset-manager.ts
+var exports_preset_manager = {};
+__export(exports_preset_manager, {
+  PresetManager: () => PresetManager
+});
+import { existsSync as existsSync14, readFileSync as readFileSync11, mkdirSync as mkdirSync6, copyFileSync, rmSync, writeFileSync as writeFileSync4 } from "fs";
+import { join as join15, dirname as dirname3, basename as basename2 } from "path";
+function compareVersions(v1, v2) {
+  const cleanV1 = v1.replace(/^v/, "");
+  const cleanV2 = v2.replace(/^v/, "");
+  const parts1 = cleanV1.split(".").map((p) => parseInt(p, 10) || 0);
+  const parts2 = cleanV2.split(".").map((p) => parseInt(p, 10) || 0);
+  for (let i = 0;i < 3; i++) {
+    const p1 = parts1[i] || 0;
+    const p2 = parts2[i] || 0;
+    if (p1 > p2)
+      return 1;
+    if (p1 < p2)
+      return -1;
+  }
+  return 0;
+}
+
+class PresetManager {
+  presetsDir;
+  installedPresetsDir;
+  constructor() {
+    this.presetsDir = findPresetsDir();
+    this.installedPresetsDir = findInstalledPresetsDir();
+  }
+  list() {
+    if (!existsSync14(this.presetsDir)) {
+      return [];
+    }
+    const entries = [];
+    const jsonFiles = scanRecursive(this.presetsDir, [".json"]);
+    const manifestFiles = jsonFiles.filter((file) => basename2(file) === "manifest.json");
+    for (const file of manifestFiles) {
+      try {
+        const content = readFileSync11(file, "utf-8");
+        const manifest = JSON.parse(content);
+        if (!manifest.name || !manifest.version) {
+          console.warn(`Skipping invalid preset manifest at ${file}: missing name or version`);
+          continue;
+        }
+        const entry = {
+          manifest,
+          path: dirname3(file),
+          installed: false
+        };
+        const installPath = join15(this.installedPresetsDir, `${manifest.name}.json`);
+        if (existsSync14(installPath)) {
+          try {
+            const installedManifest = JSON.parse(readFileSync11(installPath, "utf-8"));
+            entry.installed = true;
+            entry.installed_version = installedManifest.version;
+          } catch (err) {
+            console.warn(`Failed to read installed manifest for ${manifest.name}:`, err);
+          }
+        }
+        entries.push(entry);
+      } catch (error) {
+        console.warn(`Failed to load preset manifest at ${file}:`, error);
+      }
+    }
+    return entries;
+  }
+  get(name) {
+    const presets = this.list();
+    return presets.find((p) => p.manifest.name === name) || null;
+  }
+  validate(name, workspaceRoot = process.cwd()) {
+    const entry = this.get(name);
+    const result = {
+      valid: true,
+      errors: [],
+      warnings: []
+    };
+    if (!entry) {
+      result.valid = false;
+      result.errors.push(`Preset '${name}' not found`);
+      return result;
+    }
+    const manifest = entry.manifest;
+    if (manifest.dependencies) {
+      if (manifest.dependencies.opencode) {
+        const opencodePath = join15(workspaceRoot, ".opencode");
+        if (!existsSync14(opencodePath)) {
+          result.valid = false;
+          result.errors.push("OpenCode is not installed (missing .opencode directory)");
+        }
+      }
+      if (manifest.dependencies.beads) {
+        const beadsPath = join15(workspaceRoot, ".beads");
+        if (!existsSync14(beadsPath)) {
+          result.valid = false;
+          result.errors.push("Beads is not initialized (missing .beads directory)");
+        }
+      }
+    }
+    if (manifest.compatibility && manifest.compatibility.min_agent_shepherd_version) {
+      try {
+        const ashepDir = findAgentShepherdDir();
+        const pkgPath = join15(ashepDir, "package.json");
+        if (existsSync14(pkgPath)) {
+          const pkg = JSON.parse(readFileSync11(pkgPath, "utf-8"));
+          const currentVersion = pkg.version;
+          const minVersion = manifest.compatibility.min_agent_shepherd_version;
+          if (compareVersions(currentVersion, minVersion) < 0) {
+            result.valid = false;
+            result.errors.push(`Agent Shepherd version incompatible. Required: >=${minVersion}, Current: ${currentVersion}`);
+          }
+        } else {
+          result.warnings.push("Could not determine Agent Shepherd version (package.json not found)");
+        }
+      } catch (err) {
+        result.warnings.push(`Failed to check Agent Shepherd version: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return result;
+  }
+  checkConflicts(manifest, workspaceRoot = process.cwd()) {
+    const conflicts = [];
+    const ashepDir = process.env.ASHEP_DIR || join15(workspaceRoot, ".agent-shepherd");
+    if (manifest.components?.opencode_agents) {
+      const dir = join15(workspaceRoot, ".opencode", "agents");
+      for (const f of manifest.components.opencode_agents) {
+        if (existsSync14(join15(dir, f))) {}
+      }
+    }
+    return conflicts;
+  }
+  install(name, workspaceRoot = process.cwd(), force = false) {
+    const validation = this.validate(name, workspaceRoot);
+    if (!validation.valid) {
+      console.error(`Cannot install preset '${name}':`, validation.errors);
+      return false;
+    }
+    const entry = this.get(name);
+    if (!entry)
+      return false;
+    const manifest = entry.manifest;
+    const presetDir = entry.path;
+    const ashepDir = process.env.ASHEP_DIR || join15(workspaceRoot, ".agent-shepherd");
+    if (manifest.components?.opencode_agents) {
+      const opencodeAgentsDir = join15(workspaceRoot, ".opencode", "agents");
+      if (!existsSync14(opencodeAgentsDir)) {
+        mkdirSync6(opencodeAgentsDir, { recursive: true });
+      }
+      for (const agentFile of manifest.components.opencode_agents) {
+        const srcPath = join15(presetDir, "opencode-agents", agentFile);
+        const destPath = join15(opencodeAgentsDir, agentFile);
+        if (existsSync14(srcPath)) {
+          if (existsSync14(destPath)) {
+            console.log(`Skipping existing OpenCode agent: ${agentFile}`);
+          } else {
+            copyFileSync(srcPath, destPath);
+            console.log(`Installed OpenCode agent: ${agentFile}`);
+          }
+        } else {
+          console.warn(`Source file not found for OpenCode agent: ${agentFile}`);
+        }
+      }
+    }
+    if (manifest.components?.agent_registries) {
+      const agentsEnabledDir = join15(ashepDir, "agents", "enabled");
+      if (!existsSync14(agentsEnabledDir)) {
+        mkdirSync6(agentsEnabledDir, { recursive: true });
+      }
+      for (const registryFile of manifest.components.agent_registries) {
+        const srcPath = join15(presetDir, "agents", registryFile);
+        const destPath = join15(agentsEnabledDir, registryFile);
+        if (existsSync14(srcPath)) {
+          if (existsSync14(destPath)) {
+            console.log(`Skipping existing agent registry: ${registryFile}`);
+          } else {
+            copyFileSync(srcPath, destPath);
+            console.log(`Installed agent registry: ${registryFile}`);
+          }
+        } else {
+          console.warn(`Source file not found for agent registry: ${registryFile}`);
+        }
+      }
+    }
+    if (manifest.components?.workflows) {
+      const workflowsEnabledDir = join15(ashepDir, "workflows", "enabled");
+      if (!existsSync14(workflowsEnabledDir)) {
+        mkdirSync6(workflowsEnabledDir, { recursive: true });
+      }
+      for (const workflowFile of manifest.components.workflows) {
+        const srcPath = join15(presetDir, "workflows", workflowFile);
+        const destPath = join15(workflowsEnabledDir, workflowFile);
+        if (existsSync14(srcPath)) {
+          if (existsSync14(destPath)) {
+            console.log(`Skipping existing workflow: ${workflowFile}`);
+          } else {
+            copyFileSync(srcPath, destPath);
+            console.log(`Installed workflow: ${workflowFile}`);
+          }
+        } else {
+          console.warn(`Source file not found for workflow: ${workflowFile}`);
+        }
+      }
+    }
+    try {
+      const installedPresetsDir = join15(ashepDir, "installed-presets");
+      if (!existsSync14(installedPresetsDir)) {
+        mkdirSync6(installedPresetsDir, { recursive: true });
+      }
+      const installRecordPath = join15(installedPresetsDir, `${manifest.name}.json`);
+      writeFileSync4(installRecordPath, JSON.stringify(manifest, null, 2));
+      console.log(`Preset '${name}' installed successfully.`);
+      return true;
+    } catch (err) {
+      console.error("Installation failed during finalization:", err);
+      this.uninstall(name, workspaceRoot, true);
+      return false;
+    }
+  }
+  isOpencodeAgentUsed(agentFile, excludePreset, workspaceRoot = process.cwd()) {
+    const installed = this.list().filter((p) => p.installed && p.manifest.name !== excludePreset);
+    for (const preset of installed) {
+      if (preset.manifest.components?.opencode_agents?.includes(agentFile)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  uninstall(name, workspaceRoot = process.cwd(), force = false) {
+    const ashepDir = process.env.ASHEP_DIR || join15(workspaceRoot, ".agent-shepherd");
+    const installedPresetsDir = join15(ashepDir, "installed-presets");
+    const installPath = join15(installedPresetsDir, `${name}.json`);
+    if (!existsSync14(installPath)) {
+      console.error(`Preset '${name}' is not installed.`);
+      return false;
+    }
+    try {
+      const content = readFileSync11(installPath, "utf-8");
+      const manifest = JSON.parse(content);
+      if (manifest.components?.opencode_agents) {
+        const opencodeAgentsDir = join15(workspaceRoot, ".opencode", "agents");
+        for (const agentFile of manifest.components.opencode_agents) {
+          const agentPath = join15(opencodeAgentsDir, agentFile);
+          if (existsSync14(agentPath)) {
+            if (!force && this.isOpencodeAgentUsed(agentFile, name, workspaceRoot)) {
+              console.log(`Skipping shared OpenCode agent: ${agentFile} (used by other presets)`);
+            } else {
+              rmSync(agentPath);
+              console.log(`Removed OpenCode agent: ${agentFile}`);
+            }
+          }
+        }
+      }
+      if (manifest.components?.agent_registries) {
+        const agentsDir = join15(ashepDir, "agents", "enabled");
+        for (const file of manifest.components.agent_registries) {
+          const filePath = join15(agentsDir, file);
+          if (existsSync14(filePath)) {
+            rmSync(filePath);
+            console.log(`Removed agent registry: ${file}`);
+          }
+        }
+      }
+      if (manifest.components?.workflows) {
+        const workflowsDir = join15(ashepDir, "workflows", "enabled");
+        for (const file of manifest.components.workflows) {
+          const filePath = join15(workflowsDir, file);
+          if (existsSync14(filePath)) {
+            rmSync(filePath);
+            console.log(`Removed workflow: ${file}`);
+          }
+        }
+      }
+      rmSync(installPath);
+      console.log(`Preset '${name}' uninstalled successfully.`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to uninstall preset '${name}':`, error);
+      return false;
+    }
+  }
+}
+var init_preset_manager = __esm(() => {
+  init_path_utils();
+});
+
 // src/cli/index.ts
 init_dist();
 var import_yaml7 = __toESM(require_dist(), 1);
@@ -47586,8 +47940,8 @@ function getMonitorEngine(config) {
 init_path_utils();
 init_config();
 init_policy_capability_validator();
-import { existsSync as existsSync14, mkdirSync as mkdirSync6, writeFileSync as writeFileSync4, readdirSync as readdirSync2, readFileSync as readFileSync11, cpSync, rmSync } from "fs";
-import { join as join15 } from "path";
+import { existsSync as existsSync15, mkdirSync as mkdirSync7, writeFileSync as writeFileSync5, readdirSync as readdirSync3, readFileSync as readFileSync12, cpSync, rmSync as rmSync2 } from "fs";
+import { join as join16 } from "path";
 import path from "path";
 import { execSync } from "child_process";
 import { homedir as homedir2, platform } from "os";
@@ -49283,6 +49637,18 @@ var COMMANDS = {
       "create <name>": "Create a new agent"
     }
   },
+  preset: {
+    description: "Manage presets (list, info, install, uninstall, create)",
+    category: "System",
+    usage: "ashep preset <command> [name]",
+    options: {
+      list: "List available presets",
+      "info <name>": "Show preset details",
+      "install <name>": "Install a preset",
+      "uninstall <name>": "Uninstall a preset",
+      "create <name>": "Create a new preset template"
+    }
+  },
   "get-messages": {
     description: "Alias for phase-msg-list",
     category: "Messaging",
@@ -49303,27 +49669,27 @@ var LOADED_PLUGINS = [];
 function loadPlugins() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join15(agentShepherdDir, "plugins");
-    if (!existsSync14(pluginsDir)) {
+    const pluginsDir = join16(agentShepherdDir, "plugins");
+    if (!existsSync15(pluginsDir)) {
       return;
     }
-    const pluginDirs = readdirSync2(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+    const pluginDirs = readdirSync3(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     for (const pluginName of pluginDirs) {
-      const pluginPath = join15(pluginsDir, pluginName);
-      const manifestPath = join15(pluginPath, "manifest.json");
-      if (!existsSync14(manifestPath)) {
+      const pluginPath = join16(pluginsDir, pluginName);
+      const manifestPath = join16(pluginPath, "manifest.json");
+      if (!existsSync15(manifestPath)) {
         console.warn(`Plugin ${pluginName}: manifest.json not found, skipping`);
         continue;
       }
       try {
-        const manifestContent = readFileSync11(manifestPath, "utf-8");
+        const manifestContent = readFileSync12(manifestPath, "utf-8");
         const manifest = JSON.parse(manifestContent);
         if (!manifest.name || !manifest.commands || !Array.isArray(manifest.commands)) {
           console.warn(`Plugin ${pluginName}: invalid manifest.json, skipping`);
           continue;
         }
-        const indexPath = join15(pluginPath, "index.js");
-        if (!existsSync14(indexPath)) {
+        const indexPath = join16(pluginPath, "index.js");
+        if (!existsSync15(indexPath)) {
           console.warn(`Plugin ${pluginName}: index.js not found, skipping`);
           continue;
         }
@@ -49670,60 +50036,60 @@ Details:`);
 }
 function cmdInit() {
   console.log("Initializing Agent Shepherd configuration...");
-  const configDir = join15(process.cwd(), ".agent-shepherd");
-  const configSubDir = join15(configDir, "config");
-  const pluginsDir = join15(configDir, "plugins");
-  const agentsDir = join15(configDir, "agents");
-  const workflowsDir = join15(configDir, "workflows");
-  const configExists = existsSync14(configSubDir);
+  const configDir = join16(process.cwd(), ".agent-shepherd");
+  const configSubDir = join16(configDir, "config");
+  const pluginsDir = join16(configDir, "plugins");
+  const agentsDir = join16(configDir, "agents");
+  const workflowsDir = join16(configDir, "workflows");
+  const configExists = existsSync15(configSubDir);
   if (!configExists) {
-    mkdirSync6(configSubDir, { recursive: true });
+    mkdirSync7(configSubDir, { recursive: true });
     console.log(`\u2705 Created directory: ${configSubDir}`);
   } else {
     console.log(`\u2139\uFE0F  Configuration directory already exists: ${configSubDir}`);
   }
-  if (!existsSync14(pluginsDir)) {
-    mkdirSync6(pluginsDir, { recursive: true });
+  if (!existsSync15(pluginsDir)) {
+    mkdirSync7(pluginsDir, { recursive: true });
     console.log(`\u2705 Created directory: ${pluginsDir}`);
   }
-  if (!existsSync14(agentsDir)) {
-    mkdirSync6(join15(agentsDir, "enabled"), { recursive: true });
-    mkdirSync6(join15(agentsDir, "available"), { recursive: true });
+  if (!existsSync15(agentsDir)) {
+    mkdirSync7(join16(agentsDir, "enabled"), { recursive: true });
+    mkdirSync7(join16(agentsDir, "available"), { recursive: true });
     console.log(`\u2705 Created directory: ${agentsDir}`);
   }
-  if (!existsSync14(workflowsDir)) {
-    mkdirSync6(join15(workflowsDir, "enabled"), { recursive: true });
-    mkdirSync6(join15(workflowsDir, "available"), { recursive: true });
+  if (!existsSync15(workflowsDir)) {
+    mkdirSync7(join16(workflowsDir, "enabled"), { recursive: true });
+    mkdirSync7(join16(workflowsDir, "available"), { recursive: true });
     console.log(`\u2705 Created directory: ${workflowsDir}`);
   }
   try {
     const installDir = findInstallDir();
-    const schemasSource = join15(installDir, "schemas");
-    const schemasDest = join15(configDir, "schemas");
-    if (existsSync14(schemasSource) && !existsSync14(schemasDest)) {
+    const schemasSource = join16(installDir, "schemas");
+    const schemasDest = join16(configDir, "schemas");
+    if (existsSync15(schemasSource) && !existsSync15(schemasDest)) {
       cpSync(schemasSource, schemasDest, { recursive: true });
       console.log(`\u2705 Created directory: ${schemasDest}`);
-    } else if (!existsSync14(schemasSource)) {
+    } else if (!existsSync15(schemasSource)) {
       console.log(`\u26A0\uFE0F  Warning: Schemas directory not found in installation`);
     }
   } catch {}
   try {
     const installDir = findInstallDir();
-    const pluginsSource = join15(installDir, "plugins");
-    if (existsSync14(pluginsSource)) {
-      const pluginDirs = readdirSync2(pluginsSource, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+    const pluginsSource = join16(installDir, "plugins");
+    if (existsSync15(pluginsSource)) {
+      const pluginDirs = readdirSync3(pluginsSource, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
       for (const pluginName of pluginDirs) {
-        const sourcePath = join15(pluginsSource, pluginName);
-        const destPath = join15(pluginsDir, pluginName);
-        if (!existsSync14(destPath)) {
+        const sourcePath = join16(pluginsSource, pluginName);
+        const destPath = join16(pluginsDir, pluginName);
+        if (!existsSync15(destPath)) {
           cpSync(sourcePath, destPath, { recursive: true });
           console.log(`\u2705 Copied plugin: ${pluginName}`);
         }
       }
     }
   } catch {}
-  const policiesPath = join15(configSubDir, "policies.yaml");
-  if (!existsSync14(policiesPath)) {
+  const policiesPath = join16(configSubDir, "policies.yaml");
+  if (!existsSync15(policiesPath)) {
     const defaultPolicies = `policies:
   # Simple beginner workflow - works out-of-the-box with basic OpenCode agents
   simple:
@@ -49805,13 +50171,13 @@ function cmdInit() {
 
 default_policy: simple
 `;
-    writeFileSync4(policiesPath, defaultPolicies);
+    writeFileSync5(policiesPath, defaultPolicies);
     console.log(`\u2705 Created: ${policiesPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${policiesPath}`);
   }
-  const agentsPath = join15(configSubDir, "agents.yaml");
-  if (!existsSync14(agentsPath)) {
+  const agentsPath = join16(configSubDir, "agents.yaml");
+  if (!existsSync15(agentsPath)) {
     const defaultAgents = `version: "1.0"
 agents:
   - id: default-coder
@@ -49852,13 +50218,13 @@ agents:
     constraints:
       performance_tier: balanced
     `;
-    writeFileSync4(agentsPath, defaultAgents);
+    writeFileSync5(agentsPath, defaultAgents);
     console.log(`\u2705 Created: ${agentsPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${agentsPath}`);
   }
-  const configPath = join15(configSubDir, "config.yaml");
-  if (!existsSync14(configPath)) {
+  const configPath = join16(configSubDir, "config.yaml");
+  if (!existsSync15(configPath)) {
     const defaultConfig = `version: "1.0"
 
 worker:
@@ -49914,7 +50280,7 @@ hitl:
     # - alphanumeric-dash-underscore: Letters, numbers, dashes, underscores
     custom_validation: alphanumeric-dash-underscore
  `;
-    writeFileSync4(configPath, defaultConfig);
+    writeFileSync5(configPath, defaultConfig);
     console.log(`\u2705 Created: ${configPath}`);
   } else {
     console.log(`\u2139\uFE0F  Skipped (exists): ${configPath}`);
@@ -50153,11 +50519,11 @@ function cmdServerStop() {
 function cmdServerConfig(enable) {
   const { getConfigPath: getConfigPath2 } = (init_path_utils(), __toCommonJS(exports_path_utils));
   const configPath = getConfigPath2("config.yaml");
-  if (!existsSync14(configPath)) {
+  if (!existsSync15(configPath)) {
     console.error("Config file not found.");
     process.exit(1);
   }
-  let content = readFileSync11(configPath, "utf-8");
+  let content = readFileSync12(configPath, "utf-8");
   const autoStartRegex = /auto_start:\s*(true|false)/;
   if (autoStartRegex.test(content)) {
     console.log("Updating configuration...");
@@ -50168,7 +50534,7 @@ function cmdServerConfig(enable) {
       config.opencode.server = { base_url: "http://localhost:4321", startup_timeout_ms: 5000 };
     config.opencode.server.auto_start = enable;
     const newContent = import_yaml7.stringify(config);
-    writeFileSync4(configPath, newContent);
+    writeFileSync5(configPath, newContent);
     console.log(`\u2705 Server auto-start ${enable ? "enabled" : "disabled"}.`);
     console.log("\u26A0\uFE0F  Note: Comments in config.yaml may have been removed by YAML parser.");
   } else {
@@ -50180,7 +50546,7 @@ function cmdServerConfig(enable) {
       config.opencode.server = { base_url: "http://localhost:4321", startup_timeout_ms: 5000 };
     config.opencode.server.auto_start = enable;
     const newContent = import_yaml7.stringify(config);
-    writeFileSync4(configPath, newContent);
+    writeFileSync5(configPath, newContent);
     console.log(`\u2705 Server auto-start ${enable ? "enabled" : "disabled"}.`);
   }
 }
@@ -50194,28 +50560,28 @@ async function cmdPluginInstall(source2) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join15(agentShepherdDir, "plugins");
-    if (!existsSync14(pluginsDir)) {
-      mkdirSync6(pluginsDir, { recursive: true });
+    const pluginsDir = join16(agentShepherdDir, "plugins");
+    if (!existsSync15(pluginsDir)) {
+      mkdirSync7(pluginsDir, { recursive: true });
     }
     if (source2.startsWith("http")) {
       console.log(`Cloning plugin from ${source2}...`);
       const pluginName = source2.split("/").pop()?.replace(".git", "") || "plugin";
-      const pluginPath = join15(pluginsDir, pluginName);
-      if (existsSync14(pluginPath)) {
+      const pluginPath = join16(pluginsDir, pluginName);
+      if (existsSync15(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
       execSync(`git clone "${source2}" "${pluginPath}"`, { stdio: "inherit" });
     } else {
       const sourcePath = path.resolve(source2);
-      if (!existsSync14(sourcePath)) {
+      if (!existsSync15(sourcePath)) {
         console.error(`Source path does not exist: ${sourcePath}`);
         process.exit(1);
       }
       const pluginName = path.basename(sourcePath);
-      const pluginPath = join15(pluginsDir, pluginName);
-      if (existsSync14(pluginPath)) {
+      const pluginPath = join16(pluginsDir, pluginName);
+      if (existsSync15(pluginPath)) {
         console.error(`Plugin ${pluginName} already exists`);
         process.exit(1);
       }
@@ -50234,14 +50600,14 @@ function cmdPluginActivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join15(agentShepherdDir, "plugins");
-    const pluginPath = join15(pluginsDir, name);
-    if (!existsSync14(pluginPath)) {
+    const pluginsDir = join16(agentShepherdDir, "plugins");
+    const pluginPath = join16(pluginsDir, name);
+    if (!existsSync15(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
-    const manifestPath = join15(pluginPath, "manifest.json");
-    if (!existsSync14(manifestPath)) {
+    const manifestPath = join16(pluginPath, "manifest.json");
+    if (!existsSync15(manifestPath)) {
       console.error(`Plugin ${name} has no manifest.json`);
       process.exit(1);
     }
@@ -50258,9 +50624,9 @@ function cmdPluginDeactivate(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join15(agentShepherdDir, "plugins");
-    const pluginPath = join15(pluginsDir, name);
-    if (!existsSync14(pluginPath)) {
+    const pluginsDir = join16(agentShepherdDir, "plugins");
+    const pluginPath = join16(pluginsDir, name);
+    if (!existsSync15(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
@@ -50277,13 +50643,13 @@ function cmdPluginRemove(name) {
   }
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join15(agentShepherdDir, "plugins");
-    const pluginPath = join15(pluginsDir, name);
-    if (!existsSync14(pluginPath)) {
+    const pluginsDir = join16(agentShepherdDir, "plugins");
+    const pluginPath = join16(pluginsDir, name);
+    if (!existsSync15(pluginPath)) {
       console.error(`Plugin ${name} not found`);
       process.exit(1);
     }
-    rmSync(pluginPath, { recursive: true, force: true });
+    rmSync2(pluginPath, { recursive: true, force: true });
     console.log(`Plugin ${name} removed`);
   } catch (error) {
     console.error("Failed to remove plugin:", error);
@@ -50406,13 +50772,13 @@ You can try running individual commands:`);
 function getCurrentVersion() {
   try {
     const installDir = findInstallDir();
-    const versionFile = join15(installDir, "VERSION");
-    if (existsSync14(versionFile)) {
-      return readFileSync11(versionFile, "utf-8").trim();
+    const versionFile = join16(installDir, "VERSION");
+    if (existsSync15(versionFile)) {
+      return readFileSync12(versionFile, "utf-8").trim();
     }
-    const packageJsonPath = join15(installDir, "package.json");
-    if (existsSync14(packageJsonPath)) {
-      const packageJson = JSON.parse(readFileSync11(packageJsonPath, "utf-8"));
+    const packageJsonPath = join16(installDir, "package.json");
+    if (existsSync15(packageJsonPath)) {
+      const packageJson = JSON.parse(readFileSync12(packageJsonPath, "utf-8"));
       return packageJson.version || "unknown";
     }
   } catch {}
@@ -50437,49 +50803,49 @@ async function cmdUpdate(version) {
   console.log(`Updating Agent Shepherd to ${targetVersion}...`);
   try {
     const installDir = findInstallDir();
-    const tempDir = join15(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
-    mkdirSync6(tempDir, { recursive: true });
-    const configDir = join15(installDir, "config");
-    const pluginsDir = join15(installDir, "plugins");
-    if (existsSync14(configDir)) {
-      cpSync(configDir, join15(tempDir, "config"), { recursive: true });
+    const tempDir = join16(__require("os").tmpdir(), `agent-shepherd-update-${Date.now()}`);
+    mkdirSync7(tempDir, { recursive: true });
+    const configDir = join16(installDir, "config");
+    const pluginsDir = join16(installDir, "plugins");
+    if (existsSync15(configDir)) {
+      cpSync(configDir, join16(tempDir, "config"), { recursive: true });
     }
-    if (existsSync14(pluginsDir)) {
-      cpSync(pluginsDir, join15(tempDir, "plugins"), { recursive: true });
+    if (existsSync15(pluginsDir)) {
+      cpSync(pluginsDir, join16(tempDir, "plugins"), { recursive: true });
     }
     const repoUrl = "https://github.com/USER/agent-shepherd.git";
-    const cloneDir = join15(tempDir, "clone");
+    const cloneDir = join16(tempDir, "clone");
     if (targetVersion === "latest") {
       execSync(`git clone --depth 1 "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
     } else {
       execSync(`git clone --depth 1 --branch "${targetVersion}" "${repoUrl}" "${cloneDir}"`, { stdio: "inherit" });
     }
-    const items = readdirSync2(installDir);
+    const items = readdirSync3(installDir);
     for (const item of items) {
       if (item !== "logs" && item !== "config" && item !== "plugins") {
-        const itemPath = join15(installDir, item);
-        if (existsSync14(itemPath)) {
-          rmSync(itemPath, { recursive: true, force: true });
+        const itemPath = join16(installDir, item);
+        if (existsSync15(itemPath)) {
+          rmSync2(itemPath, { recursive: true, force: true });
         }
       }
     }
-    const sourceDir = join15(cloneDir, ".agent-shepherd");
-    const sourceItems = readdirSync2(sourceDir);
+    const sourceDir = join16(cloneDir, ".agent-shepherd");
+    const sourceItems = readdirSync3(sourceDir);
     for (const item of sourceItems) {
-      const srcPath = join15(sourceDir, item);
-      const destPath = join15(installDir, item);
+      const srcPath = join16(sourceDir, item);
+      const destPath = join16(installDir, item);
       cpSync(srcPath, destPath, { recursive: true });
     }
-    if (existsSync14(join15(tempDir, "config"))) {
-      cpSync(join15(tempDir, "config"), configDir, { recursive: true });
+    if (existsSync15(join16(tempDir, "config"))) {
+      cpSync(join16(tempDir, "config"), configDir, { recursive: true });
     }
-    if (existsSync14(join15(tempDir, "plugins"))) {
-      cpSync(join15(tempDir, "plugins"), pluginsDir, { recursive: true });
+    if (existsSync15(join16(tempDir, "plugins"))) {
+      cpSync(join16(tempDir, "plugins"), pluginsDir, { recursive: true });
     }
-    writeFileSync4(join15(installDir, "VERSION"), targetVersion);
+    writeFileSync5(join16(installDir, "VERSION"), targetVersion);
     console.log("Installing dependencies...");
     execSync("bun install", { cwd: installDir, stdio: "inherit" });
-    rmSync(tempDir, { recursive: true, force: true });
+    rmSync2(tempDir, { recursive: true, force: true });
     console.log(`\u2705 Agent Shepherd updated to ${targetVersion}`);
   } catch (error) {
     console.error("\u274C Update failed:", error instanceof Error ? error.message : String(error));
@@ -50565,25 +50931,25 @@ async function cmdCleanupStatus() {
 function cmdPluginList() {
   try {
     const agentShepherdDir = findAgentShepherdDir();
-    const pluginsDir = join15(agentShepherdDir, "plugins");
-    if (!existsSync14(pluginsDir)) {
+    const pluginsDir = join16(agentShepherdDir, "plugins");
+    if (!existsSync15(pluginsDir)) {
       console.log("No plugins directory found");
       return;
     }
-    const pluginDirs = readdirSync2(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
+    const pluginDirs = readdirSync3(pluginsDir, { withFileTypes: true }).filter((dirent) => dirent.isDirectory()).map((dirent) => dirent.name);
     if (pluginDirs.length === 0) {
       console.log("No plugins installed");
       return;
     }
     console.log("Installed plugins:");
     for (const pluginName of pluginDirs) {
-      const pluginPath = join15(pluginsDir, pluginName);
-      const manifestPath = join15(pluginPath, "manifest.json");
+      const pluginPath = join16(pluginsDir, pluginName);
+      const manifestPath = join16(pluginPath, "manifest.json");
       let status = "\u274C Invalid";
       let description = "";
-      if (existsSync14(manifestPath)) {
+      if (existsSync15(manifestPath)) {
         try {
-          const manifest = JSON.parse(readFileSync11(manifestPath, "utf-8"));
+          const manifest = JSON.parse(readFileSync12(manifestPath, "utf-8"));
           status = "\u2705 Active";
           description = manifest.description || "";
         } catch {
@@ -51205,10 +51571,10 @@ Enabled Workflows (Active):`);
     }
   }
   const workflowsDir = findWorkflowsDir();
-  const availableDir = join15(workflowsDir, "available");
+  const availableDir = join16(workflowsDir, "available");
   console.log(`
 Available Workflows (Archived):`);
-  if (existsSync14(availableDir)) {
+  if (existsSync15(availableDir)) {
     const files = scanRecursive2(availableDir, [".yaml", ".yml"]);
     if (files.length === 0) {
       console.log("  (none)");
@@ -51225,16 +51591,16 @@ Available Workflows (Archived):`);
 }
 async function cmdWorkflowArchive(name) {
   const workflowsDir = findWorkflowsDir();
-  const enabledDir = join15(workflowsDir, "enabled");
-  const availableDir = join15(workflowsDir, "available");
-  if (!existsSync14(enabledDir)) {
+  const enabledDir = join16(workflowsDir, "enabled");
+  const availableDir = join16(workflowsDir, "available");
+  if (!existsSync15(enabledDir)) {
     console.error(`Enabled workflows directory not found: ${enabledDir}`);
     process.exit(1);
   }
   let targetFile;
   const candidates = [`${name}.yaml`, `${name}.yml`];
   for (const c2 of candidates) {
-    if (existsSync14(join15(enabledDir, c2))) {
+    if (existsSync15(join16(enabledDir, c2))) {
       targetFile = c2;
       break;
     }
@@ -51255,14 +51621,14 @@ async function cmdWorkflowArchive(name) {
     }
     process.exit(1);
   }
-  const srcPath = join15(enabledDir, targetFile);
-  const destPath = join15(availableDir, path.basename(targetFile));
-  if (!existsSync14(availableDir)) {
-    mkdirSync6(availableDir, { recursive: true });
+  const srcPath = join16(enabledDir, targetFile);
+  const destPath = join16(availableDir, path.basename(targetFile));
+  if (!existsSync15(availableDir)) {
+    mkdirSync7(availableDir, { recursive: true });
   }
   try {
     cpSync(srcPath, destPath);
-    rmSync(srcPath);
+    rmSync2(srcPath);
     console.log(`\u2705 Archived workflow '${name}' to workflows/available/`);
   } catch (error) {
     console.error(`Failed to archive workflow: ${error}`);
@@ -51271,16 +51637,16 @@ async function cmdWorkflowArchive(name) {
 }
 async function cmdWorkflowActivate(name) {
   const workflowsDir = findWorkflowsDir();
-  const enabledDir = join15(workflowsDir, "enabled");
-  const availableDir = join15(workflowsDir, "available");
-  if (!existsSync14(availableDir)) {
+  const enabledDir = join16(workflowsDir, "enabled");
+  const availableDir = join16(workflowsDir, "available");
+  if (!existsSync15(availableDir)) {
     console.error(`No available workflows found (directory missing)`);
     process.exit(1);
   }
   let targetFile;
   const candidates = [`${name}.yaml`, `${name}.yml`];
   for (const c2 of candidates) {
-    if (existsSync14(join15(availableDir, c2))) {
+    if (existsSync15(join16(availableDir, c2))) {
       targetFile = c2;
       break;
     }
@@ -51297,14 +51663,14 @@ async function cmdWorkflowActivate(name) {
     console.error(`Workflow file '${name}' not found in ${availableDir}`);
     process.exit(1);
   }
-  const srcPath = join15(availableDir, targetFile);
-  const destPath = join15(enabledDir, path.basename(targetFile));
-  if (!existsSync14(enabledDir)) {
-    mkdirSync6(enabledDir, { recursive: true });
+  const srcPath = join16(availableDir, targetFile);
+  const destPath = join16(enabledDir, path.basename(targetFile));
+  if (!existsSync15(enabledDir)) {
+    mkdirSync7(enabledDir, { recursive: true });
   }
   try {
     cpSync(srcPath, destPath);
-    rmSync(srcPath);
+    rmSync2(srcPath);
     console.log(`\u2705 Activated workflow '${name}' to workflows/enabled/`);
   } catch (error) {
     console.error(`Failed to activate workflow: ${error}`);
@@ -51312,22 +51678,22 @@ async function cmdWorkflowActivate(name) {
   }
 }
 async function cmdWorkflowCreate(name) {
-  const { findWorkflowsDir: findWorkflowsDir2, findLocalAgentShepherdDir: findLocalAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+  const { findWorkflowsDir: findWorkflowsDir3, findLocalAgentShepherdDir: findLocalAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
-  const { existsSync: existsSync15, mkdirSync: mkdirSync7, writeFileSync: writeFileSync5 } = await import("fs");
+  const { existsSync: existsSync16, mkdirSync: mkdirSync8, writeFileSync: writeFileSync6 } = await import("fs");
   let workflowsDir;
   const localDir = findLocalAgentShepherdDir2();
   if (localDir) {
     workflowsDir = path2.join(localDir, "workflows");
   } else {
-    workflowsDir = findWorkflowsDir2();
+    workflowsDir = findWorkflowsDir3();
   }
   const enabledDir = path2.join(workflowsDir, "enabled");
-  if (!existsSync15(enabledDir)) {
-    mkdirSync7(enabledDir, { recursive: true });
+  if (!existsSync16(enabledDir)) {
+    mkdirSync8(enabledDir, { recursive: true });
   }
   const filePath = path2.join(enabledDir, `${name}.yaml`);
-  if (existsSync15(filePath)) {
+  if (existsSync16(filePath)) {
     console.error(`Workflow file '${filePath}' already exists`);
     process.exit(1);
   }
@@ -51340,7 +51706,7 @@ phases:
     capabilities: [coding]
 `;
   try {
-    writeFileSync5(filePath, template);
+    writeFileSync6(filePath, template);
     console.log(`\u2705 Created workflow file: ${filePath}`);
   } catch (error) {
     console.error(`Failed to create workflow file: ${error}`);
@@ -51349,11 +51715,11 @@ phases:
 }
 async function cmdAgentList() {
   const { getAgentRegistry: getAgentRegistry2 } = await Promise.resolve().then(() => (init_agent_registry(), exports_agent_registry));
-  const { findAgentsDir: findAgentsDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+  const { findAgentsDir: findAgentsDir3 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
   const registry = getAgentRegistry2();
   const agents = registry.getAllAgents();
-  const agentsDir = findAgentsDir2();
+  const agentsDir = findAgentsDir3();
   if (agents.length === 0) {
     console.log("No agents found.");
     return;
@@ -51383,20 +51749,20 @@ Agents (${agents.length}):`);
   console.log("\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518");
 }
 async function cmdAgentArchive(name) {
-  const { findAgentsDir: findAgentsDir2, scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+  const { findAgentsDir: findAgentsDir3, scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
-  const { existsSync: existsSync15, mkdirSync: mkdirSync7, cpSync: cpSync2, rmSync: rmSync2 } = await import("fs");
-  const agentsDir = findAgentsDir2();
+  const { existsSync: existsSync16, mkdirSync: mkdirSync8, cpSync: cpSync2, rmSync: rmSync3 } = await import("fs");
+  const agentsDir = findAgentsDir3();
   const enabledDir = path2.join(agentsDir, "enabled");
   const availableDir = path2.join(agentsDir, "available");
-  if (!existsSync15(enabledDir)) {
+  if (!existsSync16(enabledDir)) {
     console.error(`Enabled agents directory not found: ${enabledDir}`);
     process.exit(1);
   }
   let targetFile;
   const candidates = [`${name}.yaml`, `${name}.yml`];
   for (const c2 of candidates) {
-    if (existsSync15(path2.join(enabledDir, c2))) {
+    if (existsSync16(path2.join(enabledDir, c2))) {
       targetFile = c2;
       break;
     }
@@ -51418,12 +51784,12 @@ async function cmdAgentArchive(name) {
   }
   const srcPath = path2.join(enabledDir, targetFile);
   const destPath = path2.join(availableDir, path2.basename(targetFile));
-  if (!existsSync15(availableDir)) {
-    mkdirSync7(availableDir, { recursive: true });
+  if (!existsSync16(availableDir)) {
+    mkdirSync8(availableDir, { recursive: true });
   }
   try {
     cpSync2(srcPath, destPath);
-    rmSync2(srcPath);
+    rmSync3(srcPath);
     console.log(`\u2705 Archived agent '${name}' to agents/available/`);
   } catch (error) {
     console.error(`Failed to archive agent: ${error}`);
@@ -51431,20 +51797,20 @@ async function cmdAgentArchive(name) {
   }
 }
 async function cmdAgentActivate(name) {
-  const { findAgentsDir: findAgentsDir2, scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+  const { findAgentsDir: findAgentsDir3, scanRecursive: scanRecursive2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
-  const { existsSync: existsSync15, mkdirSync: mkdirSync7, cpSync: cpSync2, rmSync: rmSync2 } = await import("fs");
-  const agentsDir = findAgentsDir2();
+  const { existsSync: existsSync16, mkdirSync: mkdirSync8, cpSync: cpSync2, rmSync: rmSync3 } = await import("fs");
+  const agentsDir = findAgentsDir3();
   const enabledDir = path2.join(agentsDir, "enabled");
   const availableDir = path2.join(agentsDir, "available");
-  if (!existsSync15(availableDir)) {
+  if (!existsSync16(availableDir)) {
     console.error(`No available agents found (directory missing)`);
     process.exit(1);
   }
   let targetFile;
   const candidates = [`${name}.yaml`, `${name}.yml`];
   for (const c2 of candidates) {
-    if (existsSync15(path2.join(availableDir, c2))) {
+    if (existsSync16(path2.join(availableDir, c2))) {
       targetFile = c2;
       break;
     }
@@ -51462,12 +51828,12 @@ async function cmdAgentActivate(name) {
   }
   const srcPath = path2.join(availableDir, targetFile);
   const destPath = path2.join(enabledDir, path2.basename(targetFile));
-  if (!existsSync15(enabledDir)) {
-    mkdirSync7(enabledDir, { recursive: true });
+  if (!existsSync16(enabledDir)) {
+    mkdirSync8(enabledDir, { recursive: true });
   }
   try {
     cpSync2(srcPath, destPath);
-    rmSync2(srcPath);
+    rmSync3(srcPath);
     console.log(`\u2705 Activated agent '${name}' to agents/enabled/`);
   } catch (error) {
     console.error(`Failed to activate agent: ${error}`);
@@ -51481,12 +51847,12 @@ async function cmdConvertConfig(source2, destination) {
   }
   const sourcePath = path.resolve(source2);
   const destPath = path.resolve(destination);
-  if (!existsSync14(sourcePath)) {
+  if (!existsSync15(sourcePath)) {
     console.error(`Source file not found: ${sourcePath}`);
     process.exit(1);
   }
   try {
-    const sourceContent = readFileSync11(sourcePath, "utf-8");
+    const sourceContent = readFileSync12(sourcePath, "utf-8");
     const sourceExt = path.extname(sourcePath).toLowerCase();
     const destExt = path.extname(destPath).toLowerCase();
     let data;
@@ -51511,7 +51877,7 @@ async function cmdConvertConfig(source2, destination) {
       console.error(`Unsupported destination format: ${destExt}`);
       process.exit(1);
     }
-    writeFileSync4(destPath, destContent);
+    writeFileSync5(destPath, destContent);
     console.log(`Converted ${source2} to ${destination}`);
   } catch (error) {
     console.error("Conversion failed:", error instanceof Error ? error.message : String(error));
@@ -51519,22 +51885,22 @@ async function cmdConvertConfig(source2, destination) {
   }
 }
 async function cmdAgentCreate(name) {
-  const { findAgentsDir: findAgentsDir2, findLocalAgentShepherdDir: findLocalAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
+  const { findAgentsDir: findAgentsDir3, findLocalAgentShepherdDir: findLocalAgentShepherdDir2 } = await Promise.resolve().then(() => (init_path_utils(), exports_path_utils));
   const path2 = await import("path");
-  const { existsSync: existsSync15, mkdirSync: mkdirSync7, writeFileSync: writeFileSync5 } = await import("fs");
+  const { existsSync: existsSync16, mkdirSync: mkdirSync8, writeFileSync: writeFileSync6 } = await import("fs");
   let agentsDir;
   const localDir = findLocalAgentShepherdDir2();
   if (localDir) {
     agentsDir = path2.join(localDir, "agents");
   } else {
-    agentsDir = findAgentsDir2();
+    agentsDir = findAgentsDir3();
   }
   const enabledDir = path2.join(agentsDir, "enabled");
-  if (!existsSync15(enabledDir)) {
-    mkdirSync7(enabledDir, { recursive: true });
+  if (!existsSync16(enabledDir)) {
+    mkdirSync8(enabledDir, { recursive: true });
   }
   const filePath = path2.join(enabledDir, `${name}.yaml`);
-  if (existsSync15(filePath)) {
+  if (existsSync16(filePath)) {
     console.error(`Agent file '${filePath}' already exists`);
     process.exit(1);
   }
@@ -51551,11 +51917,174 @@ async function cmdAgentCreate(name) {
       performance_tier: balanced
 `;
   try {
-    writeFileSync5(filePath, template);
+    writeFileSync6(filePath, template);
     console.log(`\u2705 Created agent file: ${filePath}`);
   } catch (error) {
     console.error(`Failed to create agent file: ${error}`);
     process.exit(1);
+  }
+}
+async function cmdAgent(subCmd, name) {
+  switch (subCmd) {
+    case "list":
+      await cmdAgentList();
+      break;
+    case "archive":
+      if (!name) {
+        console.error("Name required");
+        process.exit(1);
+      }
+      await cmdAgentArchive(name);
+      break;
+    case "activate":
+      if (!name) {
+        console.error("Name required");
+        process.exit(1);
+      }
+      await cmdAgentActivate(name);
+      break;
+    case "create":
+      if (!name) {
+        console.error("Name required");
+        process.exit(1);
+      }
+      await cmdAgentCreate(name);
+      break;
+    default:
+      console.error("Unknown agent command. Use: list, archive, activate, create");
+      console.log("Run 'ashep agent help' for details");
+      process.exit(1);
+  }
+}
+async function cmdPreset(subCmd, name) {
+  const { PresetManager: PresetManager2 } = await Promise.resolve().then(() => (init_preset_manager(), exports_preset_manager));
+  const manager = new PresetManager2;
+  switch (subCmd) {
+    case "list":
+      const allArgs = process.argv;
+      const listIdx = allArgs.indexOf("list");
+      const listArgs = listIdx !== -1 ? allArgs.slice(listIdx + 1) : [];
+      const useTable = listArgs.includes("--table");
+      const showInstalledOnly = listArgs.includes("--installed");
+      const showAvailableOnly = listArgs.includes("--available");
+      let categoryFilter;
+      const catIdx = listArgs.indexOf("--category");
+      if (catIdx !== -1 && listArgs[catIdx + 1]) {
+        categoryFilter = listArgs[catIdx + 1];
+      }
+      let presets = manager.list();
+      if (categoryFilter) {
+        presets = presets.filter((p) => p.manifest.category === categoryFilter || p.manifest.category.startsWith(categoryFilter + "/"));
+      }
+      if (showInstalledOnly) {
+        presets = presets.filter((p) => p.installed);
+      }
+      if (showAvailableOnly) {
+        presets = presets.filter((p) => !p.installed);
+      }
+      if (presets.length === 0) {
+        console.log("No presets found matching criteria.");
+      } else {
+        console.log(`
+Presets (${presets.length}):`);
+        if (useTable) {
+          const wName = 24;
+          const wCat = 20;
+          const wDesc = 50;
+          console.log(`\x1B[90m\u250C${"\u2500".repeat(wName + 2)}\u252C${"\u2500".repeat(wCat + 2)}\u252C${"\u2500".repeat(wDesc + 2)}\u2510\x1B[0m`);
+          console.log(`\x1B[90m\u2502\x1B[0m \x1B[1m${"Name".padEnd(wName)}\x1B[0m \x1B[90m\u2502\x1B[0m \x1B[1m${"Category".padEnd(wCat)}\x1B[0m \x1B[90m\u2502\x1B[0m \x1B[1m${"Description".padEnd(wDesc)}\x1B[0m \x1B[90m\u2502\x1B[0m`);
+          console.log(`\x1B[90m\u251C${"\u2500".repeat(wName + 2)}\u253C${"\u2500".repeat(wCat + 2)}\u253C${"\u2500".repeat(wDesc + 2)}\u2524\x1B[0m`);
+          for (const p of presets) {
+            let nameStr = p.manifest.name;
+            if (nameStr.length > wName)
+              nameStr = nameStr.substring(0, wName - 3) + "...";
+            let catStr = p.manifest.category;
+            if (catStr.length > wCat)
+              catStr = catStr.substring(0, wCat - 3) + "...";
+            let descStr = p.manifest.description || "";
+            if (p.installed)
+              descStr = `[INSTALLED] ${descStr}`;
+            descStr = descStr.replace(/[\r\n]+/g, " ");
+            if (descStr.length > wDesc)
+              descStr = descStr.substring(0, wDesc - 3) + "...";
+            const nameColor = p.installed ? "\x1B[32m" : "\x1B[36m";
+            const reset = "\x1B[0m";
+            const border = "\x1B[90m\u2502\x1B[0m";
+            console.log(`${border} ${nameColor}${nameStr.padEnd(wName)}${reset} ${border} ${catStr.padEnd(wCat)} ${border} ${descStr.padEnd(wDesc)} ${border}`);
+          }
+          console.log(`\x1B[90m\u2514${"\u2500".repeat(wName + 2)}\u2534${"\u2500".repeat(wCat + 2)}\u2534${"\u2500".repeat(wDesc + 2)}\u2518\x1B[0m`);
+        } else {
+          for (const p of presets) {
+            const installedTag = p.installed ? " \x1B[32m[INSTALLED]\x1B[0m" : "";
+            const installedVer = p.installed && p.installed_version ? ` \x1B[90mv${p.installed_version}\x1B[0m` : "";
+            console.log(`
+  \x1B[36m\u2022 ${p.manifest.name}\x1B[0m${installedVer}${installedTag}`);
+            console.log(`    \x1B[90mCategory: ${p.manifest.category}\x1B[0m`);
+            console.log(`    ${p.manifest.description}`);
+          }
+          console.log();
+        }
+      }
+      break;
+    case "info":
+      if (!name) {
+        console.error("Name required");
+        process.exit(1);
+      }
+      const entry = manager.get(name);
+      if (!entry) {
+        console.error(`Preset '${name}' not found`);
+        process.exit(1);
+      }
+      const m = entry.manifest;
+      console.log(`
+Preset: ${m.name} (v${m.version})`);
+      console.log(`Category: ${m.category}`);
+      console.log(`Description: ${m.description}`);
+      console.log(`Installed: ${entry.installed ? "Yes" : "No"}`);
+      if (m.dependencies) {
+        console.log(`
+Dependencies:`);
+        for (const [k, v] of Object.entries(m.dependencies)) {
+          console.log(`  - ${k}: ${v}`);
+        }
+      }
+      if (m.components) {
+        console.log(`
+Components:`);
+        if (m.components.opencode_agents)
+          console.log(`  - OpenCode Agents: ${m.components.opencode_agents.length}`);
+        if (m.components.agent_registries)
+          console.log(`  - Agent Registries: ${m.components.agent_registries.length}`);
+        if (m.components.workflows)
+          console.log(`  - Workflows: ${m.components.workflows.length}`);
+      }
+      break;
+    case "install":
+      if (!name) {
+        console.error("Name required");
+        process.exit(1);
+      }
+      manager.install(name);
+      break;
+    case "uninstall":
+      if (!name) {
+        console.error("Name required");
+        process.exit(1);
+      }
+      manager.uninstall(name);
+      break;
+    case "create":
+      if (!name) {
+        console.error("Name required");
+        process.exit(1);
+      }
+      console.log("Create preset not implemented yet");
+      break;
+    default:
+      console.error("Unknown preset command. Use: list, info, install, uninstall, create");
+      console.log("Run 'ashep preset help' for details");
+      process.exit(1);
   }
 }
 async function promptForIssueId() {
@@ -51833,38 +52362,19 @@ async function main() {
       const name = args[2];
       if (!subCmd || subCmd === "help" || subCmd === "--help" || subCmd === "-h") {
         showCommandHelp("agent");
-        return;
+        process.exit(0);
       }
-      switch (subCmd) {
-        case "list":
-          await cmdAgentList();
-          break;
-        case "archive":
-          if (!name) {
-            console.error("Name required");
-            process.exit(1);
-          }
-          await cmdAgentArchive(name);
-          break;
-        case "activate":
-          if (!name) {
-            console.error("Name required");
-            process.exit(1);
-          }
-          await cmdAgentActivate(name);
-          break;
-        case "create":
-          if (!name) {
-            console.error("Name required");
-            process.exit(1);
-          }
-          await cmdAgentCreate(name);
-          break;
-        default:
-          console.error("Unknown agent command. Use: list, archive, activate, create");
-          console.log("Run 'ashep agent help' for details");
-          process.exit(1);
+      await cmdAgent(subCmd, name);
+      break;
+    }
+    case "preset": {
+      const subCmd = args[1];
+      const name = args[2];
+      if (!subCmd || subCmd === "help" || subCmd === "--help" || subCmd === "-h") {
+        showCommandHelp("preset");
+        process.exit(0);
       }
+      await cmdPreset(subCmd, name);
       break;
     }
     case "update":

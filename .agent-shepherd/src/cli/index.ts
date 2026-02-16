@@ -3391,41 +3391,84 @@ async function cmdPreset(subCmd: string, name?: string): Promise<void> {
 
   switch (subCmd) {
     case "list":
-      const presets = manager.list();
+      // Parse list options
+      // args[1] is 'list'
+      // Additional args start from args[2] if present
+      // We need to access the full args array from parent scope or parse name if it contains flags?
+      // Since cmdPreset signature is fixed, let's access process.argv or assume flags are passed in 'name' if misused?
+      // Actually, main() parser passes specific args.
+      // To support flags properly, we should update main() or just parse process.argv here for simplicity in this constrained context.
       
-      // Check for table flag
-      // Note: We need to parse args for flags if they aren't passed cleanly to subCmd
-      // Currently cmdPreset receives subCmd ('list') and name (undefined or flag?)
-      // If user typed `ashep preset list --table`, args[2] is `--table`?
-      // Let's inspect how cmdPreset is called.
-      // It is called with args[1] (subCmd) and args[2] (name).
-      // If args[2] is --table, we should handle it.
+      const allArgs = process.argv;
+      const listIdx = allArgs.indexOf("list");
+      const listArgs = listIdx !== -1 ? allArgs.slice(listIdx + 1) : [];
       
-      const useTable = name === "--table";
+      const useTable = listArgs.includes("--table");
+      const showInstalledOnly = listArgs.includes("--installed");
+      const showAvailableOnly = listArgs.includes("--available");
+      
+      let categoryFilter: string | undefined;
+      const catIdx = listArgs.indexOf("--category");
+      if (catIdx !== -1 && listArgs[catIdx + 1]) {
+        categoryFilter = listArgs[catIdx + 1];
+      }
+
+      let presets = manager.list();
+      
+      // Apply filters
+      if (categoryFilter) {
+        presets = presets.filter(p => p.manifest.category === categoryFilter || p.manifest.category.startsWith(categoryFilter + "/"));
+      }
+      
+      if (showInstalledOnly) {
+        presets = presets.filter(p => p.installed);
+      }
+      
+      if (showAvailableOnly) {
+        presets = presets.filter(p => !p.installed);
+      }
 
       if (presets.length === 0) {
-        console.log("No presets found.");
+        console.log("No presets found matching criteria.");
       } else {
         console.log(`\nPresets (${presets.length}):`);
         
         if (useTable) {
-          console.log("┌──────────────────────────┬──────────────────────┬────────────────────────────────────────────────────┐");
-          console.log("│ Name                     │ Category             │ Description                                        │");
-          console.log("├──────────────────────────┼──────────────────────┼────────────────────────────────────────────────────┤");
+          // Calculate dynamic widths or stick to fixed safe widths?
+          // Let's use fixed but safer truncation to preserve border alignment.
+          const wName = 24;
+          const wCat = 20;
+          const wDesc = 50;
+          
+          // Header
+          console.log(`\x1b[90m┌${"─".repeat(wName + 2)}┬${"─".repeat(wCat + 2)}┬${"─".repeat(wDesc + 2)}┐\x1b[0m`);
+          console.log(`\x1b[90m│\x1b[0m \x1b[1m${"Name".padEnd(wName)}\x1b[0m \x1b[90m│\x1b[0m \x1b[1m${"Category".padEnd(wCat)}\x1b[0m \x1b[90m│\x1b[0m \x1b[1m${"Description".padEnd(wDesc)}\x1b[0m \x1b[90m│\x1b[0m`);
+          console.log(`\x1b[90m├${"─".repeat(wName + 2)}┼${"─".repeat(wCat + 2)}┼${"─".repeat(wDesc + 2)}┤\x1b[0m`);
           
           for (const p of presets) {
-            const nameStr = p.manifest.name.substring(0, 24) + (p.manifest.name.length > 24 ? "..." : "");
-            const category = p.manifest.category.substring(0, 20) + (p.manifest.category.length > 20 ? "..." : "");
+            // Truncate name
+            let nameStr = p.manifest.name;
+            if (nameStr.length > wName) nameStr = nameStr.substring(0, wName - 3) + "...";
             
-            let desc = p.manifest.description || "";
-            if (p.installed) {
-              desc = `[INSTALLED] ${desc}`;
-            }
-            desc = desc.substring(0, 50) + (desc.length > 50 ? "..." : "");
+            // Truncate category
+            let catStr = p.manifest.category;
+            if (catStr.length > wCat) catStr = catStr.substring(0, wCat - 3) + "...";
+            
+            // Format description
+            let descStr = p.manifest.description || "";
+            if (p.installed) descStr = `[INSTALLED] ${descStr}`;
+            // Remove newlines to break table
+            descStr = descStr.replace(/[\r\n]+/g, " ");
+            if (descStr.length > wDesc) descStr = descStr.substring(0, wDesc - 3) + "...";
 
-            console.log(`│ ${nameStr.padEnd(24)} │ ${category.padEnd(20)} │ ${desc.padEnd(50)} │`);
+            // Determine row color
+            const nameColor = p.installed ? "\x1b[32m" : "\x1b[36m"; // Green if installed, Cyan if not
+            const reset = "\x1b[0m";
+            const border = "\x1b[90m│\x1b[0m";
+
+            console.log(`${border} ${nameColor}${nameStr.padEnd(wName)}${reset} ${border} ${catStr.padEnd(wCat)} ${border} ${descStr.padEnd(wDesc)} ${border}`);
           }
-          console.log("└──────────────────────────┴──────────────────────┴────────────────────────────────────────────────────┘");
+          console.log(`\x1b[90m└${"─".repeat(wName + 2)}┴${"─".repeat(wCat + 2)}┴${"─".repeat(wDesc + 2)}┘\x1b[0m`);
         } else {
           // Colorful list view
           for (const p of presets) {
@@ -3435,8 +3478,6 @@ async function cmdPreset(subCmd: string, name?: string): Promise<void> {
             console.log(`\n  \x1b[36m• ${p.manifest.name}\x1b[0m${installedVer}${installedTag}`);
             console.log(`    \x1b[90mCategory: ${p.manifest.category}\x1b[0m`);
             
-            // Wrap description nicely if needed, or just print
-            // For CLI simple print is usually fine
             console.log(`    ${p.manifest.description}`);
           }
           console.log();
